@@ -7,4 +7,9 @@ description = "Number types for the relp crate"
 license = "MIT"
 
 [dependencies]
+num-traits = "0.2.14"
+gcd = "2.0.1"
+smallvec = { version = "1.6.1", features = ["const_generics", "specialization"] }
 
+[build-dependencies]
+cc = "1.0.67"
