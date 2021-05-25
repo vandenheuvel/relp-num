@@ -40,14 +40,18 @@ trait Rational {
 
 /// Ratio between two numbers.
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
-pub struct Ratio<N, D> {
+pub struct Ratio<N, D: NonZero> {
     sign: Sign,
     numerator: N,
     denominator: D,
 }
 
-impl<T: NonZero, S> NonZero for Ratio<T, S> {
+impl<N: NonZero, D: NonZero> NonZero for Ratio<N, D> {
+    #[must_use]
+    #[inline]
     default fn is_not_zero(&self) -> bool {
+        debug_assert!(self.denominator.is_not_zero());
+
         self.numerator.is_not_zero()
     }
 }

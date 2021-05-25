@@ -3,8 +3,10 @@ use smallvec::smallvec;
 use crate::rational::big::Big8;
 use crate::rational::big::ops::BITS_PER_WORD;
 use crate::rational::Rational64;
+use crate::{RB, NonZero};
 use crate::sign::Sign;
 use crate::traits::Abs;
+use crate::RationalBig;
 
 #[test]
 fn eq() {
@@ -91,6 +93,34 @@ fn from() {
     let y = <Big8 as num_traits::FromPrimitive>::from_f64(4f64 / 3f64).unwrap();
     let z = Big8::new(4, 3);
     assert!((y - z).abs() < Big8::new(1, 2 << 10));
+
+    // 2 ** 543
+    assert_eq!(
+        RB!(28793048285076456849987446449190283896766061557132266451844835664715760516297522370041860391064901485759493828054533728788532902755163518009654497157537048672862208_f64),
+        RationalBig {
+            sign: Sign::Positive,
+            numerator: smallvec![0, 0, 0, 0, 0, 0, 0, 0, 1 << 31],
+            denominator: smallvec![1],
+        }
+    )
+}
+
+#[test]
+fn ord() {
+    assert!(RB!(1) > RB!(0));
+    assert!(RB!(0) >= RB!(0));
+    assert_eq!(RB!(45), RB!(45));
+    assert!(RB!(-1) < RB!(1));
+    assert!(RB!(1, 2) < RB!(2, 3));
+    assert!(RB!(232, 8448) < RB!(94899, 6846));
+    assert_eq!(RB!(49684, 49684), RB!(2, 2));
+}
+
+#[test]
+fn zero() {
+    assert!(!RB!(0).is_not_zero());
+    assert_eq!(RB!(0), <RationalBig as num_traits::Zero>::zero());
+    assert!(!<RationalBig as num_traits::Zero>::zero().is_not_zero());
 }
 
 #[test]
@@ -161,4 +191,13 @@ fn mul() {
     let y = Big8::new(2, 2);
     x *= y;
     assert_eq!(x, Big8::new(8, 4));
+}
+
+#[test]
+fn test_display() {
+    assert_eq!(RB!(0).to_string(), "0");
+    assert_eq!(RB!(1).to_string(), "1");
+    assert_eq!(RB!(-1).to_string(), "-1");
+    assert_eq!(RB!(1, 2).to_string(), "1/2");
+    assert_eq!(RB!(-1, 2).to_string(), "-1/2");
 }

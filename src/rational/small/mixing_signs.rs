@@ -1,14 +1,12 @@
 pub trait AddDifferentlySigned<Rhs> {
     type Output;
 
-    #[must_use]
     fn add_differently_signed(self, rhs: Rhs) -> Self::Output;
 }
 
 pub trait MulDifferentlySigned<Rhs> {
     type Output;
 
-    #[must_use]
     fn mul_differently_signed(self, rhs: Rhs) -> Self::Output;
 }
 
@@ -17,6 +15,8 @@ macro_rules! impl_signed_unsigned {
         impl AddDifferentlySigned<$unsigned> for $signed {
             type Output = Self;
 
+            #[must_use]
+            #[inline]
             fn add_differently_signed(self, rhs: $unsigned) -> Self::Output {
                 debug_assert!(if self > 0 {
                     rhs <= (<$signed>::MAX - self) as $unsigned
@@ -34,6 +34,8 @@ macro_rules! impl_signed_unsigned {
         impl MulDifferentlySigned<$unsigned> for $signed {
             type Output = Self;
 
+            #[must_use]
+            #[inline]
             fn mul_differently_signed(self, rhs: $unsigned) -> Self::Output {
                 self * rhs as $signed
             }
@@ -46,31 +48,6 @@ impl_signed_unsigned!(i16, u16);
 impl_signed_unsigned!(i32, u32);
 impl_signed_unsigned!(i64, u64);
 impl_signed_unsigned!(i128, u128);
-
-// impl AddDifferentlySigned<u8> for i8 {
-//     type Output = Self;
-//
-//     fn add_differently_signed(self, rhs: u8) -> Self::Output {
-//         debug_assert!(if self > 0 {
-//             rhs <= (i8::MAX - self) as u8
-//         } else if self == 0 {
-//             rhs <= i8::MAX as u8
-//         } else {
-//             // self < 0
-//             rhs - (-self as u8) <= i8::MAX as u8
-//         });
-//
-//         self.wrapping_add(rhs as i8)
-//     }
-// }
-//
-// impl MulDifferentlySigned<u8> for i8 {
-//     type Output = Self;
-//
-//     fn mul_differently_signed(self, rhs: u8) -> Self::Output {
-//         self * rhs as i8
-//     }
-// }
 
 
 #[cfg(test)]

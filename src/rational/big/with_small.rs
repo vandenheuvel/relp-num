@@ -1,17 +1,19 @@
 //! # Interactions with fixed size ratios
-use std::ops::{Add, AddAssign, Div, Mul};
+use std::ops::{Add, AddAssign, Sub, SubAssign, Div, Mul};
 
 use smallvec::smallvec;
 
 use crate::rational::{Rational16, Rational32, Rational64, Rational8};
-use crate::rational::big::ops::{add_assign, add_assign_single, mul, mul_assign_single};
-use crate::rational::big::ops::building_blocks::shr;
-use crate::rational::big::ops::div::{div, div_assign_one_word};
-use crate::rational::big::ops::normalize::lcm_single;
+use crate::rational::big::ops::{add_assign, add_assign_single, mul_assign_single, subtracting_cmp_ne, UnequalOrdering, subtracting_cmp_ne_single};
+use crate::rational::big::ops::building_blocks::{carrying_sub_mut};
+use crate::rational::big::ops::div::{div_assign_one_word};
+use crate::rational::big::ops::normalize::{prepare_gcd_single, gcd_single, simplify_fraction_gcd};
 use crate::rational::big::ops::normalize::simplify_fraction_gcd_single;
 use crate::sign::Sign;
 
 use super::Big;
+use std::cmp::Ordering;
+use num_traits::One;
 
 impl<const S: usize> Big<S> {
     #[inline]
@@ -20,6 +22,19 @@ impl<const S: usize> Big<S> {
 
         if rhs_denominator == self.denominator[0] && self.denominator.len() == 1 {
             add_assign_single(&mut self.numerator, rhs_numerator);
+
+            if self.denominator[0] != 1 && (self.numerator[0] != 1 || self.numerator.len() > 1) {
+                // let (mut right, left_to_shift, right_to_shift, zero_bits) = prepare_gcd_single_mut(&mut self.numerator, self.denominator[0]);
+                // let right_shifted = right >> right_to_shift;
+                // let other = shr(&self.numerator, 0, left_to_shift);
+                // let gcd = gcd_single(other, right, zero_bits);
+                //
+                // if gcd > 1 {
+                //
+                // }
+
+                self.denominator[0] = simplify_fraction_gcd_single(&mut self.numerator, self.denominator[0]);
+            }
         } else {
             if rhs_denominator == 1 {
                 let mut right_numerator = self.denominator.clone();
@@ -31,34 +46,100 @@ impl<const S: usize> Big<S> {
                 self.denominator.truncate(1);
                 self.denominator[0] = rhs_denominator;
             } else {
-                let lcm = lcm_single(&self.denominator, rhs_denominator);
+                let (left, small, bits) = prepare_gcd_single(&self.denominator, rhs_denominator);
+                let gcd = gcd_single(left, small, bits);
 
-                let left_numerator = div(&lcm, &self.denominator);
-                self.numerator = mul(&self.numerator, &left_numerator);
-                let zero_bits = rhs_denominator.trailing_zeros();
-                let mut right_numerator = shr(&lcm, 0, zero_bits);
-                div_assign_one_word(&mut right_numerator, rhs_denominator >> zero_bits);
+                mul_assign_single(&mut self.numerator, rhs_denominator / gcd);
 
-                add_assign(&mut self.numerator, &right_numerator);
-                self.denominator = lcm;
+                div_assign_one_word(&mut self.denominator, gcd);
+                let mut c_times = self.denominator.clone();
+                mul_assign_single(&mut c_times, rhs_numerator);
+
+                add_assign(&mut self.numerator, &c_times);
+
+                mul_assign_single(&mut self.denominator, rhs_denominator);
+
+                if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                    if self.numerator == self.denominator {
+                        self.set_one();
+                    } else {
+                        simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
+                    }
+                }
             }
         }
     }
     #[inline]
-    fn sub_small(&mut self, rhs_nominator: usize, rhs_denominator: usize) {
+    fn sub_small(&mut self, rhs_numerator: usize, rhs_denominator: usize) {
         debug_assert!(!self.numerator.is_empty());
 
         if rhs_denominator == self.denominator[0] && self.denominator.len() == 1 {
-            todo!();
+            if self.numerator.len() == 1 {
+                // result might be negative
+                match self.numerator[0].cmp(&rhs_numerator) {
+                    Ordering::Less => {
+                        self.sign = !self.sign;
+                        self.numerator[0] = rhs_numerator - self.numerator[0];
+                    }
+                    Ordering::Equal => <Self as num_traits::Zero>::set_zero(self),
+                    Ordering::Greater => self.numerator[0] -= rhs_numerator,
+                }
+
+                if self.denominator[0] != 1 && self.numerator[0] != 1 {
+                    self.denominator[0] = simplify_fraction_gcd_single(&mut self.numerator, self.denominator[0]);
+                }
+            } else {
+                // result won't be negative
+                let mut carry = carrying_sub_mut(&mut self.numerator[0], rhs_numerator, false);
+
+                let mut i = 1;
+                while carry {
+                    carry = carrying_sub_mut(&mut self.numerator[i], 0, true);
+                    i += 1;
+                }
+
+                while let Some(0) = self.numerator.last() {
+                    self.numerator.pop();
+                }
+                
+                if self.denominator[0] != 1 && (self.numerator[0] != 1 || self.numerator.len() > 1) {
+                    self.denominator[0] = simplify_fraction_gcd_single(&mut self.numerator, self.denominator[0]);
+                }
+            }
         } else {
             if rhs_denominator == 1 {
-                todo!();
+                let mut product = self.denominator.clone();
+                mul_assign_single(&mut product, rhs_numerator);
+                match subtracting_cmp_ne(&mut self.numerator, &product) {
+                    UnequalOrdering::Less => self.sign = !self.sign,
+                    UnequalOrdering::Greater => {}
+                }
             } else if self.denominator[0] == 1 && self.denominator.len() == 1 {
-                todo!();
-                self.denominator.truncate(1);
+                mul_assign_single(&mut self.numerator, rhs_denominator);
+                match subtracting_cmp_ne_single(&mut self.numerator, rhs_numerator) {
+                    UnequalOrdering::Less => self.sign = !self.sign,
+                    UnequalOrdering::Greater => {}
+                }
                 self.denominator[0] = rhs_denominator;
             } else {
-                todo!();
+                let (left, small, bits) = prepare_gcd_single(&self.denominator, rhs_denominator);
+                let gcd = gcd_single(left, small, bits);
+
+                mul_assign_single(&mut self.numerator, rhs_denominator / gcd);
+
+                div_assign_one_word(&mut self.denominator, gcd);
+                let mut c_times = self.denominator.clone();
+                mul_assign_single(&mut c_times, rhs_numerator);
+
+                match subtracting_cmp_ne(&mut self.numerator, &c_times) {
+                    UnequalOrdering::Less => self.sign = !self.sign,
+                    UnequalOrdering::Greater => {}
+                }
+                mul_assign_single(&mut self.denominator, rhs_denominator);
+
+                if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                    simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
+                }
             }
         }
     }
@@ -113,7 +194,7 @@ macro_rules! define_interations {
                     }
                 }
             }
-            
+
             mod compare {
                 use super::*;
 
@@ -136,13 +217,24 @@ macro_rules! define_interations {
             }
 
             mod field {
+                use crate::sign::Sign;
                 use super::*;
-            
+
                 mod add {
-                    use crate::sign::Sign;
-            
+
                     use super::*;
-            
+
+                    impl<const S: usize> Add<$small> for Big<S> {
+                        type Output = Self;
+
+                        #[must_use]
+                        #[inline]
+                        fn add(mut self, rhs: $small) -> Self::Output {
+                            AddAssign::add_assign(&mut self, &rhs);
+                            self
+                        }
+                    }
+
                     impl<const S: usize> Add<&$small> for Big<S> {
                         type Output = Self;
 
@@ -153,7 +245,7 @@ macro_rules! define_interations {
                             self
                         }
                     }
-            
+
                     impl<const S: usize> Add<Option<&$small>> for Big<S> {
                         type Output = Self;
 
@@ -166,7 +258,7 @@ macro_rules! define_interations {
                             }
                         }
                     }
-            
+
                     impl<const S: usize> Add<&$small> for &Big<S> {
                         type Output = Big<S>;
 
@@ -179,7 +271,7 @@ macro_rules! define_interations {
                             cloned
                         }
                     }
-            
+
                     impl<const S: usize> Add<Option<&$small>> for &Big<S> {
                         type Output = Big<S>;
 
@@ -194,14 +286,14 @@ macro_rules! define_interations {
                             }
                         }
                     }
-            
+
                     impl<const S: usize> AddAssign<$small> for Big<S> {
                         #[inline]
                         fn add_assign(&mut self, rhs: $small) {
                             AddAssign::add_assign(self, &rhs);
                         }
                     }
-            
+
                     impl<const S: usize> AddAssign<&$small> for Big<S> {
                         #[inline]
                         fn add_assign(&mut self, rhs: &$small) {
@@ -214,7 +306,6 @@ macro_rules! define_interations {
                                 }
                                 (_, Sign::Zero) => {}
                                 (Sign::Zero, _) => {
-                                    debug_assert_eq!(self.sign, Sign::Zero);
                                     self.sign = rhs.sign;
                                     debug_assert_eq!(self.numerator.len(), 0);
                                     self.numerator.push(rhs.numerator as usize);
@@ -226,12 +317,119 @@ macro_rules! define_interations {
                         }
                     }
                 }
-            
+
+                mod sub {
+                    use super::*;
+
+                    impl<const S: usize> Sub<$small> for Big<S> {
+                        type Output = Self;
+
+                        #[must_use]
+                        #[inline]
+                        fn sub(mut self, rhs: $small) -> Self::Output {
+                            SubAssign::sub_assign(&mut self, &rhs);
+                            self
+                        }
+                    }
+
+                    impl<const S: usize> Sub<&$small> for Big<S> {
+                        type Output = Self;
+
+                        #[must_use]
+                        #[inline]
+                        fn sub(mut self, rhs: &$small) -> Self::Output {
+                            SubAssign::sub_assign(&mut self, rhs);
+                            self
+                        }
+                    }
+
+                    impl<const S: usize> Sub<Option<&$small>> for Big<S> {
+                        type Output = Self;
+
+                        #[must_use]
+                        #[inline]
+                        fn sub(self, rhs: Option<&$small>) -> Self::Output {
+                            match rhs {
+                                None => self,
+                                Some(rhs) => Sub::sub(self, rhs),
+                            }
+                        }
+                    }
+
+                    impl<const S: usize> Sub<&$small> for &Big<S> {
+                        type Output = Big<S>;
+
+                        #[must_use]
+                        #[inline]
+                        fn sub(self, rhs: &$small) -> Self::Output {
+                            // TODO(PERFORMANCE): Make sure that this is just as efficient as a native algorithm.
+                            let mut cloned = self.clone();
+                            SubAssign::sub_assign(&mut cloned, rhs);
+                            cloned
+                        }
+                    }
+
+                    impl<const S: usize> Sub<Option<&$small>> for &Big<S> {
+                        type Output = Big<S>;
+
+                        #[must_use]
+                        #[inline]
+                        fn sub(self, rhs: Option<&$small>) -> Self::Output {
+                            // TODO(PERFORMANCE): Make sure that this is just as efficient as a native algorithm.
+                            let copy = self.clone();
+                            match rhs {
+                                None => copy,
+                                Some(rhs) => Sub::sub(copy, rhs),
+                            }
+                        }
+                    }
+
+                    impl<const S: usize> SubAssign<$small> for Big<S> {
+                        #[inline]
+                        fn sub_assign(&mut self, rhs: $small) {
+                            SubAssign::sub_assign(self, &rhs);
+                        }
+                    }
+
+                    impl<const S: usize> SubAssign<&$small> for Big<S> {
+                        #[inline]
+                        fn sub_assign(&mut self, rhs: &$small) {
+                            match (self.sign, rhs.sign) {
+                                (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => {
+                                    self.sub_small(rhs.numerator as usize, rhs.denominator as usize);
+                                },
+                                (Sign::Negative, Sign::Positive) | (Sign::Positive, Sign::Negative) => {
+                                    self.add_small(rhs.numerator as usize, rhs.denominator as usize);
+                                }
+                                (_, Sign::Zero) => {}
+                                (Sign::Zero, _) => {
+                                    self.sign = -rhs.sign;
+                                    debug_assert_eq!(self.numerator.len(), 0);
+                                    self.numerator.push(rhs.numerator as usize);
+                                    debug_assert_eq!(self.denominator.len(), 1);
+                                    debug_assert_eq!(self.denominator[0], 1);
+                                    self.denominator[0] = rhs.denominator as usize;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 mod mul {
                     use super::*;
 
+                    impl<const S: usize> Mul<$small> for Big<S> {
+                        type Output = Self;
+
+                        #[must_use]
+                        #[inline]
+                        fn mul(self, rhs: $small) -> Self::Output {
+                            Mul::mul(self, &rhs)
+                        }
+                    }
+
                     impl<const S: usize> Mul<&$small> for Big<S> {
-                        type Output = Big<S>;
+                        type Output = Self;
 
                         #[must_use]
                         #[inline]
@@ -250,7 +448,7 @@ macro_rules! define_interations {
                             self
                         }
                     }
-            
+
                     impl<const S: usize> Mul<&$small> for &Big<S> {
                         type Output = Big<S>;
 
@@ -261,7 +459,7 @@ macro_rules! define_interations {
                             self.clone() * rhs
                         }
                     }
-            
+
                     impl<const S: usize> Mul<Option<&$small>> for Big<S> {
                         type Output = Big<S>;
 
@@ -277,7 +475,7 @@ macro_rules! define_interations {
                             }
                         }
                     }
-            
+
                     impl<const S: usize> Mul<Option<&$small>> for &Big<S> {
                         type Output = Big<S>;
 
@@ -291,10 +489,10 @@ macro_rules! define_interations {
                         }
                     }
                 }
-            
+
                 mod div {
                     use super::*;
-            
+
                     impl<const S: usize> Div<&$small> for Big<S> {
                         type Output = Big<S>;
 
@@ -325,3 +523,68 @@ define_interations!(Rational8, rational8);
 define_interations!(Rational16, rational16);
 define_interations!(Rational32, rational32);
 define_interations!(Rational64, rational64);
+
+#[cfg(test)]
+mod test {
+
+    use crate::{RB, R64, R32, R16, R8, RationalBig, Sign};
+    use smallvec::smallvec;
+
+    #[test]
+    fn test_eq() {
+        assert_eq!(RB!(0), R64!(0));
+        assert_eq!(RB!(-2), R64!(-2));
+        assert_eq!(RB!(854984, 6868468468), R64!(854984, 6868468468));
+        assert_eq!(RB!(-989888, 4968468421), R64!(-989888, 4968468421));
+        assert_ne!(RB!(668468498646846546846546898997987_u128), R8!(1));
+        assert_ne!(RB!(668468498646846546846546898997987.4385484_f64), R8!(1, 2));
+    }
+
+    #[test]
+    fn test_add_sub() {
+        assert_eq!(RB!(0) + R8!(0), RB!(0));
+        assert_eq!(RB!(89) + R8!(1), RB!(90));
+        assert_eq!(RB!(89) - R16!(1), RB!(88));
+
+        assert_eq!(RB!(2, 3) + R16!(4, 9), RB!(10, 9));
+        assert_eq!(RB!(989, 141) + R8!(1, 141), RB!(990, 141));
+        assert_eq!(RB!(-84, 3) + R8!(1, 3), RB!(-83, 3));
+        assert_eq!(RB!(1, 2) + R8!(1, 2), RB!(1));
+        assert_eq!(RB!(-1, 2) + R8!(1, 2), RB!(0));
+        assert_eq!(RB!(-1, 2) + R8!(1), RB!(1, 2));
+        assert_eq!(RB!(7, 2) + R8!(5, 2), RB!(6));
+        assert_eq!(RB!(-7, 2) + R8!(5, 2), RB!(-1));
+        assert_eq!(RB!(-7, 2) - R8!(5, 2), RB!(-6));
+        assert_eq!(
+            RationalBig { sign: Sign::Positive, numerator: smallvec![1, 1], denominator: smallvec![2] } + R8!(1, 2),
+            RationalBig { sign: Sign::Positive, numerator: smallvec![(1 << 63) + 1], denominator: smallvec![1] },
+        );
+
+        assert_eq!(RB!(2, 3) + R8!(8, 1), RB!(8 * 3 + 2, 3));
+        assert_eq!(RB!(8) + R8!(16, 3), RB!(8 * 3 + 16, 3));
+        assert_eq!(RB!(3, 5) + R16!(2, 5), RB!(1));
+
+        assert_eq!(RB!(5) - R32!(7), RB!(-2));
+        assert_eq!(
+            RationalBig { sign: Sign::Positive, numerator: smallvec![1, 1], denominator: smallvec![2] } - R8!(1, 2),
+            RationalBig { sign: Sign::Positive, numerator: smallvec![1 << 63], denominator: smallvec![1] },
+        );
+        assert_eq!(RB!(5, 2) - R8!(2), RB!(1, 2));
+        assert_eq!(RB!(3) - R8!(1, 2), RB!(5, 2));
+        assert_eq!(RB!(16, 3) - R8!(11, 4), RB!(16 * 4 - 11 * 3, 12));
+
+        assert_eq!(RB!(0) + R8!(1, 2), RB!(1, 2));
+        assert_eq!(RB!(0) - R8!(3, 4), RB!(-3, 4));
+    }
+
+    #[test]
+    fn test_mul_div() {
+        assert_eq!(RB!(0) * R8!(18), RB!(0));
+        assert_eq!(RB!(1) * R8!(6), RB!(6));
+        assert_eq!(RB!(-1) * R64!(65488846), -RB!(65488846));
+        assert_eq!(RB!(7, 11) * R8!(11, 7), RB!(1));
+        assert_eq!(RB!(7, 11) * R16!(22, 7), RB!(2));
+        assert_eq!(RB!(14, 33) * R32!(3, 2), RB!(7, 11));
+        assert_eq!(RB!(4, 3) * R64!(0), RB!(0));
+    }
+}

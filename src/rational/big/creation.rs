@@ -159,10 +159,10 @@ impl<const S: usize> Big<S> {
                 denominator.extend(repeat(0).take(words_shift));
                 denominator.push(1 << bits_shift);
 
-                (smallvec![fraction as usize >> numerator_shift], denominator)
+                (smallvec![fraction >> numerator_shift], denominator)
             }
             Ordering::Equal => {
-                (smallvec![fraction as usize], smallvec![1])
+                (smallvec![fraction], smallvec![1])
             }
             Ordering::Greater => {
                 let shift = power.unsigned_abs() as usize;
@@ -175,7 +175,7 @@ impl<const S: usize> Big<S> {
 
                 numerator.extend(repeat(0).take(words_shift));
 
-                let fraction = fraction as usize;
+                let fraction = fraction;
                 numerator.push(fraction << bits_shift);
                 if overflows {
                     numerator.push(fraction >> (BITS_PER_WORD - bits_shift));

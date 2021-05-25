@@ -257,7 +257,7 @@ fn cmp(left: &[usize], right: &[usize]) -> Ordering {
     }
 }
 
-fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &SmallVec<[usize; S]>) -> Ordering {
+pub fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &SmallVec<[usize; S]>) -> Ordering {
     debug_assert!(is_well_formed(left));
     debug_assert!(is_well_formed(right));
 
@@ -457,6 +457,41 @@ pub(crate) enum UnequalOrdering {
     Greater,
 }
 
+#[inline]
+pub(crate) fn subtracting_cmp_ne_single<const S: usize>(left: &mut SmallVec<[usize; S]>, right: usize) -> UnequalOrdering {
+    debug_assert!(is_well_formed(left));
+    debug_assert_ne!(right, 0);
+    debug_assert!(left.len() > 1 || left[0] != right);
+
+    if left.len() > 1 {
+        // result won't be negative
+        let mut carry = carrying_sub_mut(&mut left[0], right, false);
+
+        let mut i = 1;
+        while carry {
+            carry = carrying_sub_mut(&mut left[i], 0, true);
+            i += 1;
+        }
+
+        while let Some(0) = left.last() {
+            left.pop();
+        }
+
+        UnequalOrdering::Greater
+    } else {
+        // result might be negative
+        if left[0] < right {
+            left[0] = right - left[0];
+            UnequalOrdering::Less
+        } else {
+            // left[0] > right
+            left[0] -= right;
+            UnequalOrdering::Greater
+        }
+    }
+}
+
+#[inline]
 pub(crate) fn subtracting_cmp_ne<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &SmallVec<[usize; S]>) -> UnequalOrdering {
     debug_assert!(is_well_formed(left));
     debug_assert!(is_well_formed(right));
@@ -487,11 +522,12 @@ pub(crate) fn subtracting_cmp_ne<const S: usize>(left: &mut SmallVec<[usize; S]>
     }
 }
 
+#[inline]
 pub fn add_assign_single<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
     rhs: usize,
 ) {
-    let mut carry = carrying_add_mut(&mut values[0], rhs as usize, false);
+    let mut carry = carrying_add_mut(&mut values[0], rhs, false);
     let mut i = 1;
     while carry && i < values.len() {
         carry = carrying_add_mut(&mut values[i], 0, true);
@@ -502,6 +538,7 @@ pub fn add_assign_single<const S: usize>(
     }
 }
 
+#[inline]
 pub fn add_assign<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
     rhs: &SmallVec<[usize; S]>,
@@ -536,6 +573,7 @@ pub fn add_assign<const S: usize>(
     }
 }
 
+#[inline]
 fn sub<const S: usize>(
     values: &SmallVec<[usize; S]>,
     rhs: &SmallVec<[usize; S]>,
@@ -564,6 +602,7 @@ fn sub<const S: usize>(
     result
 }
 
+#[inline]
 fn sub_single_result_positive<const S: usize>(
     values: &SmallVec<[usize; S]>,
     rhs: usize,
@@ -587,6 +626,7 @@ fn sub_single_result_positive<const S: usize>(
     result
 }
 
+#[inline]
 fn sub_assign_result_positive<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
     rhs: &SmallVec<[usize; S]>,
@@ -614,6 +654,7 @@ fn sub_assign_result_positive<const S: usize>(
     debug_assert!(is_well_formed(values));
 }
 
+#[inline]
 pub fn cmp_single<const S: usize>(large: &SmallVec<[usize; S]>, small: usize) -> Ordering {
     debug_assert!(!large.is_empty());
 
@@ -624,6 +665,7 @@ pub fn cmp_single<const S: usize>(large: &SmallVec<[usize; S]>, small: usize) ->
     }
 }
 
+#[inline]
 fn sub_assign_single_result_positive<const S: usize>(
     values: &mut SmallVec<[usize; S]>, rhs: usize,
 ) {
@@ -648,6 +690,7 @@ fn sub_assign_single_result_positive<const S: usize>(
     debug_assert!(is_well_formed(values));
 }
 
+#[inline]
 pub fn mul_assign_single<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
     rhs: usize,
@@ -664,6 +707,7 @@ pub fn mul_assign_single<const S: usize>(
     }
 }
 
+#[inline]
 pub fn mul<const S: usize>(
     values: &SmallVec<[usize; S]>,
     rhs: &SmallVec<[usize; S]>,
@@ -704,12 +748,14 @@ pub fn mul<const S: usize>(
 }
 
 impl<const S: usize> Ord for Big<S> {
+    #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         self.partial_cmp(other).unwrap()
     }
 }
 
 impl<const S: usize> PartialOrd for Big<S> {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         let by_sign = self.sign.partial_cmp(&other.sign);
 
@@ -739,6 +785,7 @@ impl<const S: usize> PartialOrd for Big<S> {
 impl<const S: usize> Neg for Big<S> {
     type Output = Self;
 
+    #[inline]
     fn neg(mut self) -> Self::Output {
         self.sign = !self.sign;
         self
@@ -748,6 +795,7 @@ impl<const S: usize> Neg for Big<S> {
 impl<const S: usize> Neg for &Big<S> {
     type Output = Big<S>;
 
+    #[inline]
     fn neg(self) -> Self::Output {
         Self::Output {
             sign: !self.sign,
@@ -757,6 +805,7 @@ impl<const S: usize> Neg for &Big<S> {
     }
 }
 
+#[inline]
 fn is_well_formed<const S: usize>(values: &SmallVec<[usize; S]>) -> bool {
     match values.last() {
         None => true,
@@ -768,108 +817,110 @@ fn is_well_formed<const S: usize>(values: &SmallVec<[usize; S]>) -> bool {
 mod test {
     use smallvec::{smallvec, SmallVec};
 
-    use crate::rational::big::Big8;
     use crate::rational::big::ops::{add_assign, is_well_formed, mul, mul_assign_single, sub_assign_result_positive};
+    use crate::RB;
 
     pub type SV = SmallVec<[usize; 8]>;
 
     #[test]
     fn test_mul_assign() {
-        let mut x = Big8::new(1, 2);
-        let y = Big8::new(1, 2);
+        let mut x = RB!(1, 2);
+        let y = RB!(1, 2);
         x *= y;
-        assert_eq!(x, Big8::new(1, 4));
+        assert_eq!(x, RB!(1, 4));
 
-        let mut x = Big8::new(1, 2);
-        let y = Big8::new(1, 3);
+        let mut x = RB!(1, 2);
+        let y = RB!(1, 3);
         x *= y;
-        assert_eq!(x, Big8::new(1, 6));
+        assert_eq!(x, RB!(1, 6));
 
-        let mut x = Big8::new(1, 2);
-        let y = Big8::new(0, 1);
+        let mut x = RB!(1, 2);
+        let y = RB!(0, 1);
         x *= y;
-        assert_eq!(x, Big8::new(0, 1));
+        assert_eq!(x, RB!(0, 1));
 
-        let mut x = Big8::new(-1, 2);
-        let y = Big8::new(0, 1);
+        let mut x = RB!(-1, 2);
+        let y = RB!(0, 1);
         x *= y;
-        assert_eq!(x, Big8::new(0, 1));
+        assert_eq!(x, RB!(0, 1));
 
-        let mut x = Big8::new(-1, 2);
-        let y = Big8::new(-1, 1);
+        let mut x = RB!(-1, 2);
+        let y = RB!(-1, 1);
         x *= y;
-        assert_eq!(x, Big8::new(1, 2));
+        assert_eq!(x, RB!(1, 2));
 
-        let mut x = Big8::new(1, 2);
-        let y = Big8::new(-1, 3);
+        let mut x = RB!(1, 2);
+        let y = RB!(-1, 3);
         x *= y;
-        assert_eq!(x, Big8::new(-1, 6));
+        assert_eq!(x, RB!(-1, 6));
+
+        assert_eq!(RB!(1) + RB!(-2), RB!(-1));
     }
 
     #[test]
     fn test_add_assign() {
-        let mut x = Big8::new(1, 2);
-        let y = Big8::new(1, 2);
+        let mut x = RB!(1, 2);
+        let y = RB!(1, 2);
         x += &y;
-        assert_eq!(x, Big8::new(1, 1));
+        assert_eq!(x, RB!(1, 1));
 
-        let mut x = Big8::new(1, 2);
-        let y = Big8::new(1, 3);
+        let mut x = RB!(1, 2);
+        let y = RB!(1, 3);
         x += &y;
-        assert_eq!(x, Big8::new(5, 6));
+        assert_eq!(x, RB!(5, 6));
 
-        let mut x = Big8::new(1, 2);
-        let y = Big8::new(0, 1);
+        let mut x = RB!(1, 2);
+        let y = RB!(0, 1);
         x += &y;
-        assert_eq!(x, Big8::new(1, 2));
+        assert_eq!(x, RB!(1, 2));
 
-        let mut x = Big8::new(-1, 2);
-        let y = Big8::new(0, 1);
+        let mut x = RB!(-1, 2);
+        let y = RB!(0, 1);
         x += &y;
-        assert_eq!(x, Big8::new(-1, 2));
+        assert_eq!(x, RB!(-1, 2));
 
-        let mut x = Big8::new(-1, 2);
-        let y = Big8::new(-1, 1);
+        let mut x = RB!(-1, 2);
+        let y = RB!(-1, 1);
         x += &y;
-        assert_eq!(x, Big8::new(-3, 2));
+        assert_eq!(x, RB!(-3, 2));
 
-        let mut x = Big8::new(1, 2);
-        let y = Big8::new(-1, 3);
+        let mut x = RB!(1, 2);
+        let y = RB!(-1, 3);
         x += &y;
-        assert_eq!(x, Big8::new(1, 6));
+        assert_eq!(x, RB!(1, 6));
     }
 
     #[test]
     fn test_sub_assign() {
-        let mut x = Big8::new(1, 2);
-        let y = Big8::new(1, 2);
+        let mut x = RB!(1, 2);
+        let y = RB!(1, 2);
         x -= &y;
-        assert_eq!(x, Big8::new(0, 1));
+        assert_eq!(x, RB!(0, 1));
 
-        let mut x = Big8::new(1, 2);
-        let y = Big8::new(1, 3);
+        let mut x = RB!(1, 2);
+        let y = RB!(1, 3);
         x -= &y;
-        assert_eq!(x, Big8::new(1, 6));
+        assert_eq!(x, RB!(1, 6));
 
-        let mut x = Big8::new(1, 2);
-        let y = Big8::new(0, 1);
+        let mut x = RB!(1, 2);
+        let y = RB!(0, 1);
         x -= &y;
-        assert_eq!(x, Big8::new(1, 2));
+        assert_eq!(x, RB!(1, 2));
 
-        let mut x = Big8::new(-1, 2);
-        let y = Big8::new(0, 1);
+        let mut x = RB!(-1, 2);
+        let y = RB!(0, 1);
         x -= &y;
-        assert_eq!(x, Big8::new(-1, 2));
+        assert_eq!(x, RB!(-1, 2));
 
-        let mut x = Big8::new(-1, 2);
-        let y = Big8::new(-1, 1);
+        let mut x = RB!(-1, 2);
+        let y = RB!(-1, 1);
         x -= &y;
-        assert_eq!(x, Big8::new(1, 2));
+        assert_eq!(x, RB!(1, 2));
 
-        let mut x = Big8::new(1, 2);
-        let y = Big8::new(-1, 3);
+        let mut x = RB!(1, 2);
+        let y = RB!(-1, 3);
         x -= &y;
-        assert_eq!(x, Big8::new(5, 6));
+        assert_eq!(x, RB!(5, 6));
     }
 
     #[test]

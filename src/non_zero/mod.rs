@@ -1,8 +1,8 @@
 //! # NonZero values
 //!
 //! Relp often works with sparse structures where many values are zero.
-use std::num::{NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8};
-use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8};
+use std::num::{NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize};
+use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
 
 pub use sign::NonZeroSign as NonZeroSign;
 pub use sign::NonZeroSigned as NonZeroSigned;
@@ -68,8 +68,10 @@ can_not_be_zero!(NonZeroI16);
 can_not_be_zero!(NonZeroI32);
 can_not_be_zero!(NonZeroI64);
 can_not_be_zero!(NonZeroI128);
+can_not_be_zero!(NonZeroIsize);
 can_not_be_zero!(NonZeroU8);
 can_not_be_zero!(NonZeroU16);
 can_not_be_zero!(NonZeroU32);
 can_not_be_zero!(NonZeroU64);
 can_not_be_zero!(NonZeroU128);
+can_not_be_zero!(NonZeroUsize);

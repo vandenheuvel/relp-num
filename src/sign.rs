@@ -139,3 +139,49 @@ impl fmt::Display for Sign {
         })
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{Sign, Signed, NonZeroSign};
+
+    #[test]
+    fn test_integer() {
+        assert_eq!(Signed::signum(&0_i32), Sign::Zero);
+        assert_eq!(Signed::signum(&-1), Sign::Negative);
+        assert_eq!(Signed::signum(&1_i128), Sign::Positive);
+        assert_eq!(Signed::signum(&0_u32), Sign::Zero);
+        assert_eq!(Signed::signum(&1_u64), Sign::Positive);
+    }
+
+    #[test]
+    fn test_sign() {
+        assert_eq!(!Sign::Zero, Sign::Zero);
+        assert_eq!(!Sign::Positive, Sign::Negative);
+        assert_eq!(!Sign::Negative, Sign::Positive);
+        assert_eq!(Sign::Positive, -Sign::Negative);
+        assert_eq!(Sign::Positive * Sign::Positive, Sign::Positive);
+        assert_eq!(Sign::Negative * Sign::Negative, Sign::Positive);
+        assert_eq!(Sign::Negative * Sign::Zero, -Sign::Zero);
+    }
+
+    #[test]
+    fn test_sign_ord() {
+        assert_eq!(Sign::Zero < Sign::Positive, true);
+        assert_eq!(Sign::Positive < Sign::Positive, false);
+        assert_eq!(Sign::Positive == Sign::Positive, true);
+        assert_eq!(Sign::Zero == Sign::Zero, true);
+        assert_eq!(Sign::Negative < Sign::Positive, true);
+        assert_eq!(Sign::Negative < Sign::Zero, true);
+    }
+
+    #[test]
+    fn test_sign_conversion() {
+        assert_eq!(Sign::Positive, NonZeroSign::Positive.into());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_sign_conversion_reverse() {
+        let _: NonZeroSign = Sign::Zero.into();
+    }
+}

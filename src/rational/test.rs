@@ -3,7 +3,7 @@ macro_rules! test_rational {
         #[allow(unused_imports)]
         mod $test_module_name {
             use crate::rational::{Rational8, Rational16, Rational32, Rational64, Rational128, RationalBig};
-
+            use crate::non_zero::NonZero;
             use num_traits;
 
             use crate::{R8, R16, R32, R64, R128, RB};
@@ -19,6 +19,11 @@ macro_rules! test_rational {
                 for i in 1..10 {
                     assert_eq!($t!(i, i.unsigned_abs()), <$in_t as num_traits::One>::one());
                 }
+            }
+
+            #[test]
+            fn not_zero() {
+                assert!(NonZero::is_not_zero(&<$in_t as num_traits::One>::one()));
             }
 
             #[test]

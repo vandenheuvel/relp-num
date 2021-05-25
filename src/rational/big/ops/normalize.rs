@@ -58,7 +58,7 @@ pub fn lcm_single<const S: usize>(left: &SmallVec<[usize; S]>, mut right: usize)
 }
 
 #[inline]
-fn prepare_gcd_single<const S: usize>(
+pub fn prepare_gcd_single<const S: usize>(
     left: &SmallVec<[usize; S]>, mut right: usize,
 ) -> (SmallVec<[usize; S]>, usize, u32) {
     let left_zero_bits = left[0].trailing_zeros();
@@ -72,7 +72,7 @@ fn prepare_gcd_single<const S: usize>(
 }
 
 #[inline]
-fn prepare_gcd_single_mut<const S: usize>(
+pub fn prepare_gcd_single_mut<const S: usize>(
     left: &mut SmallVec<[usize; S]>, mut right: usize,
 ) -> (usize, u32, u32, u32) {
     let left_zero_bits = left[0].trailing_zeros();
@@ -86,7 +86,7 @@ fn prepare_gcd_single_mut<const S: usize>(
 }
 
 #[inline]
-fn gcd_single<const S: usize>(
+pub fn gcd_single<const S: usize>(
     mut large: SmallVec<[usize; S]>, small: usize, bits: u32,
 ) -> usize {
     debug_assert_eq!(small % 2, 1);
@@ -121,8 +121,8 @@ fn gcd_single<const S: usize>(
 
 #[inline]
 pub fn gcd_scalar(mut left: usize, mut right: usize) -> usize {
-    debug_assert_ne!(left, 1);
-    debug_assert_ne!(right, 1);
+    debug_assert_ne!(left, 0);
+    debug_assert_ne!(right, 0);
     debug_assert_ne!(left, right);
 
     let left_zeros = left.trailing_zeros();
@@ -157,14 +157,18 @@ pub fn simplify_fraction_gcd_single<const S: usize>(left: &mut SmallVec<[usize; 
 
     let (mut right, left_to_shift, right_to_shift, zero_bits) = prepare_gcd_single_mut(left, right);
     let right_shifted = right >> right_to_shift;
-    let other = shr(left, 0, left_to_shift);
-    // TODO(PERFORMANCE): If no left_to_shift, do the first allocation after subtraction?
 
-    let gcd = gcd_single(other, right_shifted, zero_bits);
+    if right > 1 {
+        let other = shr(left, 0, left_to_shift);
+        // TODO(PERFORMANCE): If no left_to_shift, do the first allocation after subtraction?
+        if other[0] != 1 || other.len() > 1 {
+            let gcd = gcd_single(other, right_shifted, zero_bits);
 
-    if gcd > 1 {
-        right /= gcd;
-        div_assign_one_word(left, gcd);
+            if gcd > 1 {
+                right /= gcd;
+                div_assign_one_word(left, gcd);
+            }
+        }
     }
 
     right
@@ -405,7 +409,7 @@ fn shift_difference(words_shifted: usize, bits_shifted: u32, words_total: usize,
 mod test {
     use smallvec::smallvec;
 
-    use crate::rational::big::ops::normalize::{binary_gcd, trailing_zeros};
+    use crate::rational::big::ops::normalize::{binary_gcd, trailing_zeros, gcd_scalar, simplify_fraction_gcd_single, gcd_single};
     use crate::rational::big::ops::test::SV;
 
     #[test]
@@ -452,5 +456,46 @@ mod test {
 
         let x: SV = smallvec![0, 0, 0, 14, 6];
         assert_eq!(unsafe { trailing_zeros(&x) }, (3, 1));
+    }
+
+    #[test]
+    fn test_simplify_fraction_gcd_single() {
+        let mut x: SV = smallvec![990];
+        assert_eq!(simplify_fraction_gcd_single(&mut x, 141), 47);
+        let expected: SV = smallvec![330];
+        assert_eq!(x, expected);
+    }
+
+    #[test]
+    fn test_gcd() {
+        assert_eq!(gcd_scalar(2, 3), 1);
+        assert_eq!(gcd_scalar(990, 141), 3);
+        assert_eq!(gcd_scalar(4, 2), 2);
+        assert_eq!(gcd_scalar(7, 11), 1);
+        assert_eq!(gcd_scalar(9889, 11), 11);
+        assert_eq!(gcd_scalar(3 * 129, 98540), 1);
+        assert_eq!(gcd_scalar(3 * 127, 3 * 98987), 3);
+        assert_eq!(gcd_scalar(789 * 987, 789 * 6188988), 2367);
+    }
+
+    #[test]
+    fn test_gcd_single() {
+        assert_eq!(gcd_single::<2>(smallvec![1, 1], 3, 0), 1);
+        assert_eq!(gcd_single::<2>(smallvec![1, 2], 3, 0), 3);
+        assert_eq!(gcd_single::<2>(smallvec![13835058055282163747, 1 << 3], (1 << 62) + 1, 0), (1 << 62) + 1);
+        assert_eq!(gcd_single::<2>(
+                smallvec![4611686018427388777, (1 << 7) + (1 << 6) + (1 << 4) + (1 << 3) + (1 << 1)],
+                (1 << 62) + 1,
+                0,
+            ),
+            (1 << 62) + 1,
+        );
+        assert_eq!(gcd_single::<2>(
+                smallvec![4611686018427388777, (1 << 7) + (1 << 6) + (1 << 4) + (1 << 3) + (1 << 1)],
+                873,
+                0,
+            ),
+            873,
+        );
     }
 }

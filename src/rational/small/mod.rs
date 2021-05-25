@@ -5,7 +5,6 @@ use std::fmt::Display;
 use std::iter::Sum;
 use std::mem;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
-use std::option::Option::Some;
 
 use num_traits;
 
@@ -91,7 +90,7 @@ macro_rules! rational {
             fn from_u64(n: u64) -> Option<Self> {
                 if n <= <$uty>::MAX as u64 {
                     Some(Self {
-                        sign: Sign::Positive,
+                        sign: Signed::signum(&n),
                         numerator: n as $uty,
                         denominator: 1,
                     })
@@ -422,6 +421,7 @@ macro_rules! rational {
                     if self.denominator == 1 {
                         self.numerator *= rhs.denominator;
                         self.sub_direction(&rhs.numerator);
+                        self.denominator = rhs.denominator;
                     } else if rhs.denominator == 1 {
                         self.sub_direction(&(rhs.numerator * self.denominator));
                     } else {
@@ -735,8 +735,12 @@ macro_rules! rational {
                 }
 
                 write!(f, "{}", self.numerator)?;
-                write!(f, "/")?;
-                write!(f, "{}", self.denominator)
+                if self.denominator != 1 {
+                    write!(f, "/")?;
+                    write!(f, "{}", self.denominator)?;
+                }
+
+                fmt::Result::Ok(())
             }
         }
     }
@@ -750,7 +754,11 @@ rational!(Rational128, i128, u128, gcd128, simplify128);
 
 #[cfg(test)]
 mod test {
+    use num_traits::{FromPrimitive, Zero, ToPrimitive, One};
+
     use crate::rational::{Ratio, Rational16, Rational32, Rational64, Rational8, Sign};
+    use crate::{Rational128, NonZero, NonZeroSign, NonZeroSigned};
+    use crate::{R8, R32, R64};
 
     #[test]
     fn test_new() {
@@ -765,5 +773,137 @@ mod test {
 
         let a = Rational64::new(-6, 2);
         assert_eq!(a, Ratio { sign: Sign::Negative, numerator: 3, denominator: 1 });
+    }
+
+    #[test]
+    fn test_from() {
+        assert_eq!(FromPrimitive::from_u64(16), Some(Rational8::new(16, 1)));
+        assert_eq!(FromPrimitive::from_u16(0), Some(Rational8::zero()));
+        assert_eq!(<Rational16 as FromPrimitive>::from_u32(u32::MAX), None);
+        assert_eq!(FromPrimitive::from_i32(i32::MAX), Some(Rational32::new(i32::MAX, 1)));
+        assert_eq!(<Rational64 as FromPrimitive>::from_i128(i128::MAX), None);
+        assert_eq!(FromPrimitive::from_i16(-1), Some(Rational8::new(-2, 2)));
+
+        assert_eq!(<Rational128 as FromPrimitive>::from_f64(f64::NAN), None);
+        assert_eq!(<Rational64 as FromPrimitive>::from_f64(f64::INFINITY), None);
+        assert_eq!(<Rational32 as FromPrimitive>::from_f64(f64::NEG_INFINITY), None);
+        assert_eq!(FromPrimitive::from_f64(-0_f64), Some(Rational8::zero()));
+        // u128::MAX gets rounded upwards in f64 conversion
+        assert!(<Rational128 as FromPrimitive>::from_f64(u128::MAX as f64).is_none());
+
+        assert_eq!(<Rational32 as FromPrimitive>::from_i64(i64::MAX), None);
+    }
+
+    #[test]
+    fn test_to() {
+        assert_eq!(Rational8::new(1, 1).to_i32(), Some(1));
+        assert_eq!(R8!(-10).to_i32(), Some(-10));
+        assert_eq!(R8!(-11).to_u16(), None);
+        assert_eq!(R32!(-156, 99).to_f64(), Some(-156_f64 / 99_f64));
+        assert_eq!(R64!(2_u64.pow(63) + 2_u64.pow(20)).to_i64(), None);
+        assert_eq!(R8!(0).to_i64(), Some(0));
+        assert_eq!(R8!(0).to_u64(), Some(0));
+        assert_eq!(R8!(1, 2).to_u64(), None);
+        assert_eq!(R8!(8).to_u64(), Some(8));
+        assert_eq!(R8!(0).to_f64(), Some(0_f64));
+    }
+
+    #[test]
+    fn test_nonzero() {
+        assert!(!Rational8::zero().is_not_zero());
+        assert_eq!(Rational16::zero().is_zero(), !Rational16::zero().is_not_zero());
+
+        assert_eq!(R8!(1).signum(), NonZeroSign::Positive);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_sign_panic() {
+        R8!(0).signum();
+    }
+
+    #[test]
+    fn test_one() {
+        assert!(Rational64::zero() < Rational64::one());
+        assert!(Rational64::one().is_one());
+        let mut x = Rational32::zero();
+        x.set_one();
+        assert_eq!(x, Rational32::one());
+    }
+
+    #[test]
+    fn test_cmp() {
+        assert!(R8!(12) < R8!(13));
+        assert!(R8!(1, 2) > R8!(1, 3));
+        assert_eq!(R8!(7, 11), R8!(7, 11));
+        assert!(R8!(3, 4) < R8!(5, 6));
+    }
+
+    #[test]
+    fn test_add() {
+        assert_eq!(Rational64::one() + Rational64::one(), R64!(2));
+        assert_eq!(R64!(3, 2) + R64!(3, 2), R64!(3));
+        assert_eq!(R64!(-3, 2) + R64!(3, 2), Rational64::zero());
+        assert_eq!(R64!(948, 64) + Rational64::zero(), R64!(948, 64));
+        assert_eq!(-Rational64::one() + Rational64::one(), Rational64::zero());
+        assert_eq!(Rational128::zero() + Rational128::one(), Rational128::one());
+        assert_eq!(Rational128::zero() + -Rational128::one(), -Rational128::one());
+
+        assert_eq!(&R32!(3, 9) + &R32!(-1, 3), R32!(0));
+        assert_eq!(R8!(4, 5) + R8!(1, 5), R8!(1));
+        assert_eq!(R8!(5, 1) + R8!(3, 2), R8!(13, 2));
+        assert_eq!(R8!(3, 4) + R8!(3), R8!(15, 4));
+        assert_eq!(R8!(3, 4) + R8!(17, 5), R8!(83, 20));
+    }
+
+    #[test]
+    fn test_sub() {
+        assert_eq!(Rational64::one() - Rational64::one(), R64!(0));
+        assert_eq!(R64!(3, 2) - R64!(3, 2), R64!(0));
+        assert_eq!(R64!(-3, 2) - R64!(3, 2), -R64!(3));
+        assert_eq!(R64!(948, 64) - Rational64::zero(), R64!(948, 64));
+        assert_eq!(-Rational64::one() - Rational64::one(), -R64!(2));
+        assert_eq!(Rational64::one() - Rational64::one(), -R64!(0));
+        assert_eq!(Rational128::zero() - Rational128::one(), -Rational128::one());
+        assert_eq!(Rational128::zero() - -Rational128::one(), Rational128::one());
+
+        assert_eq!(&R32!(3, 9) - &R32!(1, 3), R32!(0));
+        assert_eq!(R8!(4, 5) - R8!(1, 5), R8!(3, 5));
+        assert_eq!(R8!(5, 1) - R8!(3, 2), R8!(7, 2));
+        assert_eq!(R8!(3, 4) - R8!(3), R8!(-9, 4));
+        assert_eq!(R8!(3, 4) - R8!(17, 5), R8!(15 - 4 * 17, 20));
+        assert_eq!(R8!(17, 5) - R8!(3, 4), R8!(4 * 17 - 15, 20))
+    }
+
+    #[test]
+    fn test_mul() {
+        assert_eq!(Rational64::one() * Rational64::one(), R64!(1));
+        assert_eq!(R64!(3, 2) * R64!(3, 2), R64!(9, 4));
+        assert_eq!(R64!(-3, 2) * R64!(3, 2), -R64!(9, 4));
+        assert_eq!(R64!(948, 64) * Rational64::zero(), R64!(0));
+        assert_eq!(-Rational64::one() * Rational64::one(), -R64!(1));
+        assert_eq!(Rational64::one() * Rational64::one(), R64!(1));
+        assert_eq!(Rational128::zero() * Rational128::one(), -Rational128::zero());
+        assert_eq!(Rational128::zero() * -Rational128::one(), Rational128::zero());
+
+        assert_eq!(R8!(3, 2) * R8!(4, 9), R8!(2, 3));
+    }
+
+    #[test]
+    fn test_div() {
+        assert_eq!(Rational64::one() / Rational64::one(), R64!(1));
+        assert_eq!(R64!(3, 2) / R64!(3, 2), R64!(1));
+        assert_eq!(R64!(-3, 2) / R64!(3, 2), -R64!(1));
+        assert_eq!(-Rational64::one() / Rational64::one(), -R64!(1));
+        assert_eq!(Rational128::zero() / Rational128::one(), -Rational128::zero());
+        assert_eq!(Rational128::zero() / -Rational128::one(), Rational128::zero());
+    }
+
+    #[test]
+    fn test_display() {
+        assert_eq!(Rational64::one().to_string(), "1");
+        assert_eq!(Rational64::zero().to_string(), "0");
+        assert_eq!(R64!(1, 2).to_string(), "1/2");
+        assert_eq!(R64!(-1, 2).to_string(), "-1/2");
     }
 }

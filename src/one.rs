@@ -1,6 +1,5 @@
 //! # One
 use std::fmt;
-use std::fmt::Display;
 use std::ops::{Add, AddAssign, Div, };
 use std::ops::Mul;
 
@@ -10,7 +9,7 @@ use std::ops::Mul;
 /// certain network problems, where the cost of a path might always equal `1`.
 ///
 /// This type is zero-sized.
-#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Debug)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Clone)]
 pub struct One;
 
 impl num_traits::One for One {
@@ -27,7 +26,13 @@ impl Mul<One> for One {
     }
 }
 
-impl Display for One {
+impl fmt::Debug for One {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self, f)
+    }
+}
+
+impl fmt::Display for One {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("1")
     }
@@ -69,6 +74,14 @@ macro_rules! define_ops {
             }
         }
 
+        impl Mul<One> for $primitive {
+            type Output = Self;
+
+            fn mul(self, _: One) -> Self::Output {
+                self
+            }
+        }
+
         impl Mul<&One> for $primitive {
             type Output = Self;
 
@@ -85,6 +98,14 @@ macro_rules! define_ops {
             }
         }
 
+        impl Div<One> for $primitive {
+            type Output = Self;
+
+            fn div(self, _: One) -> Self::Output {
+                self
+            }
+        }
+
         impl Div<&One> for $primitive {
             type Output = Self;
 
@@ -95,9 +116,29 @@ macro_rules! define_ops {
     }
 }
 
+define_ops!(i8);
+define_ops!(i16);
 define_ops!(i32);
 define_ops!(i64);
 define_ops!(i128);
+define_ops!(u8);
+define_ops!(u16);
 define_ops!(u32);
 define_ops!(u64);
 define_ops!(u128);
+
+#[cfg(test)]
+mod test {
+    use crate::One;
+
+    #[test]
+    fn test_integer() {
+        assert_eq!(1 + One, 2);
+        assert_eq!(-1 + One, 0);
+        assert_eq!(33 / One, 33);
+        assert_eq!(-33 / &One, -33);
+        assert_eq!(894 * One, 894);
+        assert_eq!(-894 * &One, -894);
+        assert_eq!(0_u8 * &One, 0);
+    }
+}

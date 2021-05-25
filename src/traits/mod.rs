@@ -12,10 +12,11 @@ use crate::non_zero::NonZeroSigned;
 
 pub mod factorization;
 
-/// The simplex algorithm is defined over the ordered fields. All methods containing algorithmic
-/// logic should be defined to work an ordered field (or a field, if they don't need the ordering).
-/// All methods representing a matrix should be defined over a field, because they don't need the
-/// additional ordering.
+/// The simplex algorithm is defined over the ordered fields.
+///
+/// All methods containing algorithmic logic should be defined to work an ordered field (or a field,
+/// if they don't need the ordering). All methods representing a matrix should be defined over a
+/// field, because they don't need the additional ordering.
 pub trait OrderedField =
     Ord +
     NonZeroSigned +
