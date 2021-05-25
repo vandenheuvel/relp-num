@@ -101,7 +101,7 @@ impl_from_ratio!(i64, NonZeroU64, u64);
 impl_from_ratio!(i128, NonZeroU128, u128);
 impl_from_ratio!(isize, NonZeroUsize, usize);
 
-const ONES: usize = 1 << 12 - 1;
+const ONES: usize = (1 << 11) - 1;
 
 impl<const S: usize> num_traits::FromPrimitive for Big<S> {
     fn from_i64(n: i64) -> Option<Self> {
@@ -111,7 +111,7 @@ impl<const S: usize> num_traits::FromPrimitive for Big<S> {
     fn from_u64(n: u64) -> Option<Self> {
         Some(Self {
             sign: Signed::signum(&n),
-            numerator: smallvec![n as usize],
+            numerator: if n > 0 { smallvec![n as usize] } else { smallvec![] },
             denominator: smallvec![1],
         })
     }
@@ -122,20 +122,11 @@ impl<const S: usize> num_traits::FromPrimitive for Big<S> {
         let exponent = (n & 0b01111111_11110000_00000000_00000000_00000000_00000000_00000000_00000000) >> (64 - 1 - 11);
         let fraction =  n & 0b00000000_00001111_11111111_11111111_11111111_11111111_11111111_11111111;
 
-        match exponent {
-            0 => if fraction == 0 {
-                Some(<Self as num_traits::Zero>::zero())
-            } else {
-                // subnormals
-                Some(Self::from_float(sign, 1 - 1023 - 52, fraction))
-            },
-            ONES => if fraction == 0 {
-                // infinity
-                None
-            } else {
-                // NaN
-                None
-            },
+        match (exponent, fraction) {
+            (0, 0) => Some(<Self as num_traits::Zero>::zero()),
+            (0, _) => Some(Self::from_float(sign, 1 - 1023 - 52, fraction)), // subnormals
+            (ONES, 0) => None, // infinity
+            (ONES, _) => None, // NaN
             _ => Some(Self::from_float(sign, exponent as isize - 1023 - 52, fraction + (1 << 52))),
         }
     }
@@ -161,9 +152,7 @@ impl<const S: usize> Big<S> {
 
                 (smallvec![fraction >> numerator_shift], denominator)
             }
-            Ordering::Equal => {
-                (smallvec![fraction], smallvec![1])
-            }
+            Ordering::Equal => (smallvec![fraction], smallvec![1]),
             Ordering::Greater => {
                 let shift = power.unsigned_abs() as usize;
                 let words_shift = shift / BITS_PER_WORD;
@@ -251,7 +240,15 @@ impl<const S: usize> Big<S> {
 
         match sign {
             Sign::Positive => debug_assert_ne!(numerator, 0),
-            Sign::Zero => debug_assert_eq!(numerator, 0),
+            Sign::Zero => {
+                debug_assert_eq!(numerator, 0);
+
+                return Self {
+                    sign: Sign::Zero,
+                    numerator: smallvec![],
+                    denominator: smallvec![1],
+                };
+            },
             Sign::Negative => {}
         }
 
@@ -262,5 +259,101 @@ impl<const S: usize> Big<S> {
             numerator: smallvec![numerator as usize],
             denominator: smallvec![denominator as usize],
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{Rational64, Sign, Abs, RationalBig};
+    use crate::rational::big::{Big8, Big};
+    use num_traits::{One};
+    use crate::rational::big::ops::BITS_PER_WORD;
+    use smallvec::smallvec;
+    use crate::RB;
+
+    #[test]
+    fn from() {
+        let x = Rational64::new(4, 3);
+        let y = Big8::from(x);
+        let z = Big8::new(4, 3);
+        assert_eq!(y, z);
+
+        let x = <Big8 as num_traits::FromPrimitive>::from_f64(0_f64).unwrap();
+        assert_eq!(x, Big8::new(0, 1));
+
+        let x = <Big8 as num_traits::FromPrimitive>::from_f64(1_f64).unwrap();
+        assert_eq!(x, Big8::new(1, 1));
+
+        let x = <Big8 as num_traits::FromPrimitive>::from_f64(0.5).unwrap();
+        assert_eq!(x, Big8::new(1, 2));
+
+        let x = <Big8 as num_traits::FromPrimitive>::from_f64(2_f64).unwrap();
+        assert_eq!(x, Big8::new(2, 1));
+
+        let x = <Big8 as num_traits::FromPrimitive>::from_f64(1.5_f64).unwrap();
+        assert_eq!(x, Big8::new(3, 2));
+
+        let x = <Big8 as num_traits::FromPrimitive>::from_f64(f64::MIN_POSITIVE).unwrap();
+        let (words, bits) = (1022 / BITS_PER_WORD, 1022 % BITS_PER_WORD);
+        let mut denominator = smallvec![0; words];
+        denominator.push(1 << bits);
+        let expected = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![1],
+            denominator,
+        };
+        assert_eq!(x, expected);
+
+        let x = <Big8 as num_traits::FromPrimitive>::from_f64(f64::MAX).unwrap();
+        let total_shift = (1 << (11 - 1)) - 1 - 52;
+        let (words, bits) = (total_shift / BITS_PER_WORD, total_shift % BITS_PER_WORD);
+        let mut numerator= smallvec![0; words];
+        numerator.push(((1 << (52 + 1)) - 1) << bits); // Doesn't overflow, fits exactly in this last word
+        let expected = Big8 {
+            sign: Sign::Positive,
+            numerator,
+            denominator: smallvec![1],
+        };
+        assert_eq!(x, expected);
+
+        let y = <Big8 as num_traits::FromPrimitive>::from_f64(4f64 / 3f64).unwrap();
+        let z = Big8::new(4, 3);
+        assert!((y - z).abs() < Big8::new(1, 2 << 10));
+
+        // 2 ** 543
+        assert_eq!(
+            RB!(28793048285076456849987446449190283896766061557132266451844835664715760516297522370041860391064901485759493828054533728788532902755163518009654497157537048672862208_f64),
+            RationalBig {
+                sign: Sign::Positive,
+                numerator: smallvec![0, 0, 0, 0, 0, 0, 0, 0, 1 << 31],
+                denominator: smallvec![1],
+            }
+        );
+
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_i64(0), Some(RB!(0)));
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_i64(1), Some(RB!(1)));
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_i64(-1), Some(-RB!(1)));
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_u64(0), Some(RB!(0)));
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_u64(1), Some(RB!(1)));
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_f64(f64::NAN), None);
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_f64(f64::INFINITY), None);
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_f64(f64::NEG_INFINITY), None);
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_f64(2_i64.pow(52) as f64), Some(RB!(2_i64.pow(52), 1)));
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_f64(2_i64.pow(53) as f64), Some(RB!(2_i64.pow(53), 1)));
+    }
+
+    #[test]
+    fn test_one() {
+        let mut x = RB!(132);
+        x.set_one();
+        assert_eq!(x, RB!(1));
+        assert_eq!(RB!(1), Big::one());
+    }
+
+    #[test]
+    fn test_signed() {
+        assert_eq!(Big::new_signed(Sign::Positive, 1, 2), RB!(1, 2));
+        assert_eq!(Big::new_signed(Sign::Zero, 0, 1), RB!(0));
+        assert_eq!(Big::new_signed(Sign::Negative, 1, 3), RB!(-1, 3));
     }
 }

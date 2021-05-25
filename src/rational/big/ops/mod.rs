@@ -8,8 +8,8 @@ use smallvec::SmallVec;
 
 use crate::rational::big::Big;
 use crate::rational::big::ops::building_blocks::{addmul_1, carrying_add_mut, carrying_sub, carrying_sub_mut, mul_1, sub_assign_slice, sub_n, to_twos_complement};
-use crate::rational::big::ops::div::div as div_by_odd_or_even;
-use crate::rational::big::ops::normalize::{lcm, simplify_fraction_gcd, simplify_fraction_without_info};
+use crate::rational::big::ops::div::{div as div_by_odd_or_even, div_assign_by_odd};
+use crate::rational::big::ops::normalize::{gcd, simplify_fraction_gcd, simplify_fraction_without_info, remove_shared_two_factors_mut};
 use crate::sign::Sign;
 
 pub mod building_blocks;
@@ -177,16 +177,24 @@ impl<const S: usize> Big<S> {
                 add_assign(&mut self.numerator, &numerator);
             } else {
                 // Neither denominator is 1
+                let mut gcd = gcd(&self.denominator, &rhs.denominator);
 
-                let lcm = lcm(&self.denominator, &rhs.denominator);
+                if gcd[0] != 1 || gcd.len() > 1 {
+                    let left = div_by_odd_or_even(&rhs.denominator, &gcd);
+                    self.numerator = mul(&self.numerator, &left);
 
-                let left_numerator = div_by_odd_or_even(&lcm, &self.denominator);
-                self.numerator = mul(&self.numerator, &left_numerator);
-                let right_numerator = div_by_odd_or_even(&lcm, &rhs.denominator);
-                let right_numerator = mul(&right_numerator, &rhs.numerator);
+                    remove_shared_two_factors_mut(&mut self.denominator, &mut gcd);
+                    div_assign_by_odd(&mut self.denominator, &gcd);
+                    let right = mul(&rhs.numerator, &self.denominator);
+                    add_assign(&mut self.numerator, &right);
 
-                add_assign(&mut self.numerator, &right_numerator);
-                self.denominator = lcm;
+                    self.denominator = mul(&rhs.denominator, &self.denominator);
+                } else {
+                    self.numerator = mul(&self.numerator, &rhs.denominator);
+                    let right = mul(&rhs.numerator, &self.denominator);
+                    add_assign(&mut self.numerator, &right);
+                    self.denominator = mul(&self.denominator, &rhs.denominator);
+                }
             }
         }
     }
@@ -219,18 +227,30 @@ impl<const S: usize> Big<S> {
                 }
             } else {
                 // Neither denominator is 1
+                let mut gcd = gcd(&self.denominator, &rhs.denominator);
 
-                let lcm = lcm(&self.denominator, &rhs.denominator);
+                if gcd[0] != 1 || gcd.len() > 1 {
+                    let left = div_by_odd_or_even(&rhs.denominator, &gcd);
+                    self.numerator = mul(&self.numerator, &left);
 
-                let left_numerator = div_by_odd_or_even(&lcm, &self.denominator);
-                self.numerator = mul(&self.numerator, &left_numerator);
-                let right_numerator = div_by_odd_or_even(&lcm, &rhs.denominator);
-                let right_numerator = mul(&right_numerator, &rhs.numerator);
+                    remove_shared_two_factors_mut(&mut self.denominator, &mut gcd);
+                    div_assign_by_odd(&mut self.denominator, &gcd);
+                    let right = mul(&rhs.numerator, &self.denominator);
+                    match subtracting_cmp_ne(&mut self.numerator, &right) {
+                        UnequalOrdering::Less => self.sign = !self.sign,
+                        UnequalOrdering::Greater => {}
+                    }
 
-                if subtracting_cmp_ne(&mut self.numerator, &right_numerator) == UnequalOrdering::Less {
-                    self.sign = !self.sign;
+                    self.denominator = mul(&rhs.denominator, &self.denominator);
+                } else {
+                    self.numerator = mul(&self.numerator, &rhs.denominator);
+                    let right = mul(&rhs.numerator, &self.denominator);
+                    match subtracting_cmp_ne(&mut self.numerator, &right) {
+                        UnequalOrdering::Less => self.sign = !self.sign,
+                        UnequalOrdering::Greater => {}
+                    }
+                    self.denominator = mul(&self.denominator, &rhs.denominator);
                 }
-                self.denominator = lcm;
             }
         }
     }
@@ -598,30 +618,6 @@ fn sub<const S: usize>(
 
         result.extend_from_slice(&values[result.len()..]);
     }
-
-    result
-}
-
-#[inline]
-fn sub_single_result_positive<const S: usize>(
-    values: &SmallVec<[usize; S]>,
-    rhs: usize,
-) -> SmallVec<[usize; S]> {
-    debug_assert!(!values.is_empty() && (values.len() > 1 || values[0] > rhs));
-
-    let mut result = SmallVec::with_capacity(values.len());
-    let (value, mut carry) = carrying_sub(values[0], rhs as usize, false);
-    result.push(value);
-
-    let mut i = 1;
-    while carry {
-        let (value, new_carry) = carrying_sub(values[i], 0, true);
-        result.push(value);
-        carry = new_carry;
-        i += 1;
-    }
-
-    debug_assert!(!carry);
 
     result
 }

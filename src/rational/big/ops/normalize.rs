@@ -4,57 +4,26 @@ use std::mem;
 
 use smallvec::{smallvec, SmallVec};
 
-use crate::rational::big::ops::{BITS_PER_WORD, cmp, is_well_formed, mul, mul_assign_single, sub, sub_assign_result_positive, sub_assign_single_result_positive};
+use crate::rational::big::ops::{BITS_PER_WORD, cmp, is_well_formed, sub, sub_assign_result_positive, sub_assign_single_result_positive};
 use crate::rational::big::ops::building_blocks::{shr, shr_mut};
-use crate::rational::big::ops::div::{div_assign_by_odd, div_assign_double, div_assign_one_word};
+use crate::rational::big::ops::div::{div_assign_double, div_assign_one_word};
 
 #[inline]
-pub fn lcm<const S: usize>(left: &SmallVec<[usize; S]>, right: &SmallVec<[usize; S]>) -> SmallVec<[usize; S]> {
+pub fn gcd<const S: usize>(left: &SmallVec<[usize; S]>, right: &SmallVec<[usize; S]>) -> SmallVec<[usize; S]> {
     debug_assert!(is_well_formed(left));
     debug_assert!(is_well_formed(right));
     debug_assert!(!left.is_empty());
     debug_assert!(!right.is_empty());
+    debug_assert!(left[0] != 1 || left.len() > 1);
+    debug_assert!(right[0] != 1 || right.len() > 1);
     debug_assert_ne!(left, right);
-
-    let mut product = mul(left, right);
 
     let (left_zero_words, left_zero_bits) = unsafe { trailing_zeros(left) };
     let (right_zero_words, right_zero_bits) = unsafe { trailing_zeros(right) };
     let left = shr(left, left_zero_words, left_zero_bits);
     let right = shr(right, right_zero_words, right_zero_bits);
 
-    let gcd = binary_gcd(left, right);
-
-    if gcd.len() > 1 || gcd[0] != 1 {
-        // gcd != 1
-        div_assign_by_odd(&mut product, &gcd);
-    }
-
-    product
-}
-
-#[inline]
-pub fn lcm_single<const S: usize>(left: &SmallVec<[usize; S]>, mut right: usize) -> SmallVec<[usize; S]> {
-    debug_assert!(is_well_formed(left));
-    debug_assert_ne!(right, 0);
-    debug_assert_ne!(right, 1);
-
-    if left.len() == 1 {
-        let gcd = gcd_scalar(left[0], right);
-
-        right /= gcd;
-
-        smallvec![left[0] * right]
-    } else {
-        let mut result = left.clone();
-        mul_assign_single(&mut result, right);
-
-        let (large, small, zeroed_bits) = prepare_gcd_single(left, right);
-        let gcd = gcd_single(large, small, zeroed_bits);
-        div_assign_one_word(&mut result, gcd);
-
-        result
-    }
+    binary_gcd(left, right)
 }
 
 #[inline]
@@ -228,7 +197,7 @@ pub fn simplify_fraction_gcd<const S: usize>(left: &mut SmallVec<[usize; S]>, ri
 }
 
 #[inline]
-fn remove_shared_two_factors_mut<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &mut SmallVec<[usize; S]>) -> (WhichOdd, (usize, u32)) {
+pub fn remove_shared_two_factors_mut<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &mut SmallVec<[usize; S]>) -> (WhichOdd, (usize, u32)) {
     let (left_zero_words, left_zero_bits) = unsafe { trailing_zeros(left) };
     let (right_zero_words, right_zero_bits) = unsafe { trailing_zeros(right) };
 
@@ -257,7 +226,7 @@ fn remove_shared_two_factors_mut<const S: usize>(left: &mut SmallVec<[usize; S]>
     }, (zero_words, zero_bits))
 }
 
-enum WhichOdd {
+pub enum WhichOdd {
     Left(usize, u32),
     Right(usize, u32),
     Both,
