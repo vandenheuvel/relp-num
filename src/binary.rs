@@ -3,6 +3,7 @@
 //! A number type that is either zero or one.
 use std::fmt;
 use std::ops::{Add, Mul};
+use crate::NonZero;
 
 /// # Binary
 ///
@@ -16,6 +17,15 @@ use std::ops::{Add, Mul};
 pub enum Binary {
     Zero,
     One,
+}
+
+impl NonZero for Binary {
+    fn is_not_zero(&self) -> bool {
+        match self {
+            Binary::Zero => false,
+            Binary::One => true,
+        }
+    }
 }
 
 impl num_traits::Zero for Binary {

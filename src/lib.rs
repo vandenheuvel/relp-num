@@ -43,3 +43,5 @@ pub use traits::Field;
 pub use traits::FieldRef;
 pub use traits::OrderedField;
 pub use traits::OrderedFieldRef;
+
+pub use num_traits::FromPrimitive;
