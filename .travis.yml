@@ -1,0 +1,22 @@
+language: rust
+rust:
+  - nightly
+
+addons:
+    apt:
+        packages:
+            - libssl-dev
+
+before_script:
+  - cargo install cargo-tarpaulin
+  - set -e
+
+script:
+  - cargo clean
+  - cargo build
+  - cargo test
+
+after_success:
+  - cargo tarpaulin --ignore-tests --out Xml
+  - bash <(curl -s https://codecov.io/bash)
+
