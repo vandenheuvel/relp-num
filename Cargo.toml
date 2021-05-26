@@ -1,10 +1,14 @@
 [package]
 name = "relp-num"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["Bram van den Heuvel <bram@vandenheuvel.online>"]
 edition = "2018"
 description = "Number types for the relp crate"
+repository = "https://github.com/vandenheuvel/relp-num"
 license = "MIT"
+
+keywords = ["relp", "exact", "precision", "number", "rational"]
+categories = ["algorithms", "science"]
 
 [dependencies]
 num-traits = "0.2.14"
@@ -13,3 +17,4 @@ smallvec = { version = "1.6.1", features = ["const_generics", "specialization"] 
 
 [build-dependencies]
 cc = "1.0.67"
+
