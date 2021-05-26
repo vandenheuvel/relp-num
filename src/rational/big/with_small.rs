@@ -13,7 +13,6 @@ use crate::sign::Sign;
 
 use super::Big;
 use std::cmp::Ordering;
-use num_traits::One;
 
 impl<const S: usize> Big<S> {
     #[inline]
@@ -60,11 +59,7 @@ impl<const S: usize> Big<S> {
                 mul_assign_single(&mut self.denominator, rhs_denominator);
 
                 if self.numerator[0] != 1 || self.numerator.len() > 1 {
-                    if self.numerator == self.denominator {
-                        self.set_one();
-                    } else {
-                        simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
-                    }
+                    simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                 }
             }
         }

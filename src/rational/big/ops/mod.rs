@@ -3,7 +3,7 @@ use std::iter::Sum;
 use std::mem;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-use num_traits::Zero;
+use num_traits::{Zero, One};
 use smallvec::SmallVec;
 
 use crate::rational::big::Big;
@@ -165,7 +165,12 @@ impl<const S: usize> Big<S> {
                 self.denominator[0] = 1;
                 self.denominator.truncate(1);
             } else if self.denominator[0] != 1 || self.denominator.len() > 1 {
-                simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
+                match cmp(&self.numerator, &self.denominator) {
+                    Ordering::Equal => self.set_one(),
+                    Ordering::Less | Ordering::Greater => {
+                        simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
+                    }
+                }
             }
         } else {
             if self.denominator[0] == 1 && self.denominator.len() == 1 { // denominator == 1
@@ -450,22 +455,34 @@ impl<const S: usize> DivAssign<&Big<S>> for Big<S> {
 impl<const S: usize> Big<S> {
     fn mul(&mut self, mut rhs_numerator: SmallVec<[usize; S]>, mut rhs_denominator: SmallVec<[usize; S]>) {
         if (rhs_denominator[0] != 1 || rhs_denominator.len() > 1) && (self.numerator.len() != 1 || self.numerator[0] != 1) {
-            if cmp(&rhs_denominator, &self.numerator) == Ordering::Equal {
-                self.numerator = rhs_numerator;
-                simplify_fraction_without_info(&mut self.numerator, &mut self.denominator);
-                return;
-            } else {
-                simplify_fraction_gcd(&mut self.numerator, &mut rhs_denominator);
+            // TODO(PERFORMANCE): Check for equality here as a special case, or not?
+
+            match cmp(&rhs_denominator, &self.numerator) {
+                Ordering::Equal => {
+                    self.numerator = rhs_numerator;
+                    simplify_fraction_without_info(&mut self.numerator, &mut self.denominator);
+                    return;
+                }
+                Ordering::Less | Ordering::Greater => {
+                    simplify_fraction_gcd(&mut self.numerator, &mut rhs_denominator);
+                }
             }
         }
+
         if (self.denominator[0] != 1 || self.denominator.len() > 1) && (rhs_numerator.len() != 1 || rhs_numerator[0] != 1) {
-            if cmp(&rhs_numerator, &self.denominator) == Ordering::Equal {
-                self.denominator = rhs_denominator;
-                simplify_fraction_without_info(&mut self.numerator, &mut self.denominator);
-                return;
+            // TODO(PERFORMANCE): Check for equality here as a special case, or not?
+            match cmp(&rhs_numerator, &self.denominator) {
+                Ordering::Equal => {
+                    self.denominator = rhs_denominator;
+                    simplify_fraction_without_info(&mut self.numerator, &mut self.denominator);
+                    return;
+                }
+                Ordering::Less | Ordering::Greater => {
+                    simplify_fraction_gcd(&mut rhs_numerator, &mut self.denominator);
+                }
             }
-            simplify_fraction_gcd(&mut rhs_numerator, &mut self.denominator);
         }
+
         self.numerator = mul(&self.numerator, &rhs_numerator);
         self.denominator = mul(&self.denominator, &rhs_denominator);
     }

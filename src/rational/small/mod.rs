@@ -51,12 +51,15 @@ macro_rules! rational {
             }
             pub fn new_signed<T: Into<Sign>>(sign: T, numerator: $uty, denominator: $uty) -> Self {
                 debug_assert_ne!(denominator, 0);
-
                 let sign = sign.into();
+                debug_assert!((numerator == 0) == (sign == Sign::Zero));
 
                 match sign {
                     Sign::Positive => debug_assert_ne!(numerator, 0),
-                    Sign::Zero => debug_assert_eq!(numerator, 0),
+                    Sign::Zero => {
+                        debug_assert_eq!(numerator, 0);
+                        return <Self as num_traits::Zero>::zero();
+                    },
                     Sign::Negative => {}
                 }
 
@@ -531,6 +534,7 @@ macro_rules! rational {
             fn mul_assign(&mut self, rhs: &Self) {
                 match (self.sign, rhs.sign) {
                     (Sign::Positive | Sign::Negative, Sign::Positive | Sign::Negative) => {
+                        self.sign *= rhs.sign;
                         self.mul(rhs.numerator, rhs.denominator);
                     }
                     (Sign::Zero, _) => {}
@@ -897,6 +901,25 @@ mod test {
         assert_eq!(-Rational64::one() / Rational64::one(), -R64!(1));
         assert_eq!(Rational128::zero() / Rational128::one(), -Rational128::zero());
         assert_eq!(Rational128::zero() / -Rational128::one(), Rational128::zero());
+    }
+
+    #[test]
+    fn test_new_signed() {
+        assert_eq!(Rational64::new_signed(Sign::Positive, 6, 18), R64!(1, 3));
+        assert_eq!(Rational64::new_signed(Sign::Zero, 0, 6), R64!(0));
+        assert_eq!(Rational64::new_signed(Sign::Negative, 9, 18), -R64!(1, 2));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_new_signed_panic_1() {
+        Rational64::new_signed(Sign::Zero, 1, 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_new_signed_panic_2() {
+        Rational64::new_signed(Sign::Positive, 0, 1);
     }
 
     #[test]

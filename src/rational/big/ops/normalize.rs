@@ -154,11 +154,12 @@ pub fn simplify_fraction_without_info<const S: usize>(numerator: &mut SmallVec<[
         return;
     }
 
-    if cmp(numerator, denominator) == Ordering::Equal {
-        numerator.truncate(1); numerator[0] = 1;
-        denominator.truncate(1); denominator[0] = 1;
-    } else {
-        simplify_fraction_gcd(numerator, denominator);
+    match cmp(numerator, denominator) {
+        Ordering::Equal => {
+            numerator.truncate(1); numerator[0] = 1;
+            denominator.truncate(1); denominator[0] = 1;
+        }
+        Ordering::Less | Ordering::Greater => simplify_fraction_gcd(numerator, denominator),
     }
 }
 
@@ -170,6 +171,9 @@ pub fn simplify_fraction_gcd<const S: usize>(left: &mut SmallVec<[usize; S]>, ri
     debug_assert!(!right.is_empty());
     debug_assert!(left[0] != 1 || left.len() > 1);
     debug_assert!(right[0] != 1 || right.len() > 1);
+    // This restriction could be relaxed, but it might cost an allocation if this is not checked
+    // beforehand. So we leave it to the caller to ensure that they are not equal before entering
+    // the method.
     debug_assert_ne!(right, left);
 
     let (which_odd, (zeroed_words, zeroed_bits)) = remove_shared_two_factors_mut(left, right);
@@ -279,8 +283,6 @@ fn prepare_side<const S: usize>(
 fn binary_gcd<const S: usize>(mut left: SmallVec<[usize; S]>, mut right: SmallVec<[usize; S]>) -> SmallVec<[usize; S]> {
     debug_assert!(!left.is_empty() && is_well_formed(&left));
     debug_assert!(!right.is_empty() && is_well_formed(&right));
-
-    debug_assert_ne!(left, right);
 
     loop {
         debug_assert_eq!(left[0] % 2, 1);
@@ -406,6 +408,11 @@ mod test {
         let x: SV = smallvec![1, 1];
         let y: SV = smallvec![3, 0, 1];
         let expected: SV = smallvec![1];
+        assert_eq!(binary_gcd(x, y), expected);
+
+        let x: SV = smallvec![1, 1];
+        let y: SV = smallvec![1, 1];
+        let expected: SV = smallvec![1, 1];
         assert_eq!(binary_gcd(x, y), expected);
     }
 
