@@ -28,7 +28,8 @@ impl<const S: usize> Big<S> {
             if self.numerator[0] == self.denominator[0] && self.numerator.len() == 1 {
                 self.set_one();
             } else {
-                if (self.numerator[0] != 1 || self.numerator.len() > 1) && (self.denominator[0] != 1) {
+                if self.denominator[0] != 1 {
+                    // numerator can't be 1 because two positive things were added
                     self.denominator[0] = simplify_fraction_gcd_single(&mut self.numerator, self.denominator[0]);
                 }
             }
@@ -536,7 +537,7 @@ define_interations!(Rational64, rational64);
 #[cfg(test)]
 mod test {
 
-    use crate::{RB, R64, R32, R16, R8, RationalBig, Sign, Abs};
+    use crate::{RB, R64, R32, R16, R8, RationalBig, Sign};
     use smallvec::smallvec;
 
     #[test]

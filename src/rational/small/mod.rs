@@ -400,8 +400,10 @@ macro_rules! rational {
                     // Numerator can't be zero
 
                     if self.numerator == self.denominator {
-                        <Self as num_traits::One>::set_one(self);
+                        self.numerator = 1;
+                        self.denominator = 1;
                     } else if self.denominator != 1 {
+                        // numerator can't be 1 because two positive things were added
                         let gcd = $gcd_name(self.numerator, self.denominator);
                         self.numerator /= gcd;
                         self.denominator /= gcd;
@@ -415,25 +417,29 @@ macro_rules! rational {
                         self.numerator += rhs.numerator * self.denominator;
                     } else {
                         // Neither denominator is 1
-                        let gcd = $gcd_name(self.numerator, self.denominator);
-                        let lcm = self.denominator * (rhs.denominator / gcd);
+                        let gcd = $gcd_name(self.denominator, rhs.denominator);
 
-                        self.numerator *= lcm / self.denominator;
-                        let rhs_numerator = rhs.numerator * (lcm / rhs.denominator);
+                        self.numerator *= rhs.denominator / gcd;
+                        self.denominator /= gcd;
 
-                        self.numerator += rhs_numerator;
-                        self.denominator = lcm;
+                        self.numerator += rhs.numerator * self.denominator;
+                        self.denominator *= rhs.denominator;
+
+                        let (n, d) = $simplify_name(self.numerator, self.denominator);
+                        self.numerator = n;
+                        self.denominator = d;
                     }
                 }
             }
             #[inline]
             fn sub(&mut self, rhs: &Self) {
                 if self.denominator == rhs.denominator {
-                    self.sub_direction(&rhs.numerator);
+                    self.sub_direction(rhs.numerator);
 
                     if self.numerator == self.denominator {
-                        <Self as num_traits::One>::set_one(self);
-                    } else if self.denominator != 1 {
+                        self.numerator = 1;
+                        self.denominator = 1;
+                    } else if self.denominator != 1 && self.numerator != 1 {
                         let gcd = $gcd_name(self.numerator, self.denominator);
                         self.numerator /= gcd;
                         self.denominator /= gcd;
@@ -441,26 +447,36 @@ macro_rules! rational {
                 } else {
                     if self.denominator == 1 {
                         self.numerator *= rhs.denominator;
-                        self.sub_direction(&rhs.numerator);
+                        self.sub_direction(rhs.numerator);
                         self.denominator = rhs.denominator;
                     } else if rhs.denominator == 1 {
-                        self.sub_direction(&(rhs.numerator * self.denominator));
+                        self.sub_direction(rhs.numerator * self.denominator);
                     } else {
                         // Neither denominator is 1
-                        let gcd = $gcd_name(self.numerator, self.denominator);
-                        let lcm = self.denominator * (rhs.denominator / gcd);
+                        let gcd = $gcd_name(self.denominator, rhs.denominator);
 
-                        self.numerator *= lcm / self.denominator;
-                        let rhs_numerator = rhs.numerator * (lcm / rhs.denominator);
+                        self.numerator *= rhs.denominator / gcd;
+                        self.denominator /= gcd;
 
-                        self.sub_direction(&rhs_numerator);
-                        self.denominator = lcm;
+                        let rhs_numerator = rhs.numerator * self.denominator;
+                        if self.numerator < rhs_numerator {
+                            self.sign = !self.sign;
+                            self.numerator = rhs_numerator - self.numerator;
+                        } else {
+                            // larger than, not zero
+                            self.numerator -= rhs_numerator;
+                        }
+                        self.denominator *= rhs.denominator;
+
+                        let (n, d) = $simplify_name(self.numerator, self.denominator);
+                        self.numerator = n;
+                        self.denominator = d;
                     }
                 }
             }
             #[inline]
-            fn sub_direction(&mut self, rhs_numerator: &$uty) {
-                match self.numerator.cmp(rhs_numerator) {
+            fn sub_direction(&mut self, rhs_numerator: $uty) {
+                match self.numerator.cmp(&rhs_numerator) {
                     Ordering::Less => {
                         self.sign = !self.sign;
                         self.numerator = rhs_numerator - self.numerator;
@@ -991,6 +1007,20 @@ mod test {
         assert_eq!(R8!(5, 1) + R8!(3, 2), R8!(13, 2));
         assert_eq!(R8!(3, 4) + R8!(3), R8!(15, 4));
         assert_eq!(R8!(3, 4) + R8!(17, 5), R8!(83, 20));
+        assert_eq!(R32!(3, 4) + R32!(3, 32), R32!(27, 32));
+        assert_eq!(R32!(-10) + R32!(9), R32!(-1));
+
+        let limit = 10;
+        for a in -limit..limit {
+            for b in 1..limit {
+                for c in -limit..limit {
+                    for d in 1..limit {
+                        println!("{} / {} + {} / {}", a, b, c, d);
+                        assert_eq!(R32!(a, b as u32) + R32!(c, d as u32), R32!(a * d + c * b, b as u32 * d as u32), "{} / {} + {} / {}", a, b, c, d);
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -1009,7 +1039,18 @@ mod test {
         assert_eq!(R8!(5, 1) - R8!(3, 2), R8!(7, 2));
         assert_eq!(R8!(3, 4) - R8!(3), R8!(-9, 4));
         assert_eq!(R8!(3, 4) - R8!(17, 5), R8!(15 - 4 * 17, 20));
-        assert_eq!(R8!(17, 5) - R8!(3, 4), R8!(4 * 17 - 15, 20))
+        assert_eq!(R8!(17, 5) - R8!(3, 4), R8!(4 * 17 - 15, 20));
+
+        let limit = 10;
+        for a in -limit..limit {
+            for b in 1..limit {
+                for c in -limit..limit {
+                    for d in 1..limit {
+                        assert_eq!(R32!(a, b as u32) - R32!(c, d as u32), R32!(a * d - c * b, b as u32 * d as u32), "{} / {} - {} / {}", a, b, c, d);
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -1024,6 +1065,18 @@ mod test {
         assert_eq!(Rational128::zero() * -Rational128::one(), Rational128::zero());
 
         assert_eq!(R8!(3, 2) * R8!(4, 9), R8!(2, 3));
+        assert_eq!(R32!(27, 32) * R32!(2), R32!(27, 16));
+
+        let limit = 10;
+        for a in -limit..limit {
+            for b in 1..limit {
+                for c in -limit..limit {
+                    for d in 1..limit {
+                        assert_eq!(R32!(a, b as u32) * R32!(c, d as u32), R32!(a * c, b as u32 * d as u32), "{} / {} * {} / {}", a, b, c, d);
+                    }
+                }
+            }
+        }
     }
 
     #[test]
