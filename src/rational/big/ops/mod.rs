@@ -17,7 +17,7 @@ pub mod div;
 pub mod normalize;
 
 // TODO(PERFORMANCE): Save the constant as usize or as u32?
-pub const BITS_PER_WORD: usize = mem::size_of::<usize>() * 8;
+pub const BITS_PER_WORD: u32 = (mem::size_of::<usize>() * 8) as u32;
 
 impl<const S: usize> Add<Big<S>> for Big<S> {
     type Output = Self;
@@ -189,11 +189,18 @@ impl<const S: usize> Big<S> {
                     self.numerator = mul(&self.numerator, &left);
 
                     remove_shared_two_factors_mut(&mut self.denominator, &mut gcd);
-                    div_assign_by_odd(&mut self.denominator, &gcd);
-                    let right = mul(&rhs.numerator, &self.denominator);
-                    add_assign(&mut self.numerator, &right);
-
-                    self.denominator = mul(&rhs.denominator, &self.denominator);
+                    if cmp(&self.denominator, &gcd) == Ordering::Equal {
+                        self.denominator.truncate(1);
+                        self.denominator[0] = 1;
+                        add_assign(&mut self.numerator, &rhs.numerator);
+                        self.denominator = rhs.denominator.clone();
+                    } else {
+                        div_assign_by_odd(&mut self.denominator, &gcd);
+                        let right = mul(&rhs.numerator, &self.denominator);
+                        add_assign(&mut self.numerator, &right);
+                        self.denominator = mul(&rhs.denominator, &self.denominator);
+                    }
+                    simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                 } else {
                     self.numerator = mul(&self.numerator, &rhs.denominator);
                     let right = mul(&rhs.numerator, &self.denominator);
@@ -239,14 +246,24 @@ impl<const S: usize> Big<S> {
                     self.numerator = mul(&self.numerator, &left);
 
                     remove_shared_two_factors_mut(&mut self.denominator, &mut gcd);
-                    div_assign_by_odd(&mut self.denominator, &gcd);
-                    let right = mul(&rhs.numerator, &self.denominator);
-                    match subtracting_cmp_ne(&mut self.numerator, &right) {
-                        UnequalOrdering::Less => self.sign = !self.sign,
-                        UnequalOrdering::Greater => {}
+                    if cmp(&self.denominator, &gcd) == Ordering::Equal {
+                        self.denominator.truncate(1);
+                        self.denominator[0] = 1;
+                        match subtracting_cmp_ne(&mut self.numerator, &rhs.numerator) {
+                            UnequalOrdering::Less => self.sign = !self.sign,
+                            UnequalOrdering::Greater => {}
+                        }
+                        self.denominator = rhs.denominator.clone();
+                    } else {
+                        div_assign_by_odd(&mut self.denominator, &gcd);
+                        let right = mul(&rhs.numerator, &self.denominator);
+                        match subtracting_cmp_ne(&mut self.numerator, &right) {
+                            UnequalOrdering::Less => self.sign = !self.sign,
+                            UnequalOrdering::Greater => {}
+                        };
+                        self.denominator = mul(&rhs.denominator, &self.denominator);
                     }
-
-                    self.denominator = mul(&rhs.denominator, &self.denominator);
+                    simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                 } else {
                     self.numerator = mul(&self.numerator, &rhs.denominator);
                     let right = mul(&rhs.numerator, &self.denominator);
@@ -609,7 +626,7 @@ pub fn add_assign<const S: usize>(
         values.push(1)
     }
 }
-
+use std::iter::repeat;
 #[inline]
 fn sub<const S: usize>(
     values: &SmallVec<[usize; S]>,
@@ -620,6 +637,8 @@ fn sub<const S: usize>(
     debug_assert_eq!(cmp(values, rhs), Ordering::Greater);
 
     let mut result = SmallVec::with_capacity(values.len());
+    // Will be overwritten in the unsafe block, but this is safe and extends the length
+    result.extend(repeat(0).take(rhs.len()));
 
     unsafe {
         let mut carry = {
@@ -633,7 +652,13 @@ fn sub<const S: usize>(
             result.push(value);
         }
 
-        result.extend_from_slice(&values[result.len()..]);
+        if result.len() < values.len() {
+            result.extend_from_slice(&values[result.len()..]);
+        } else {
+            while let Some(0) = result.last() {
+                result.pop();
+            }
+        }
     }
 
     result
@@ -830,7 +855,7 @@ fn is_well_formed<const S: usize>(values: &SmallVec<[usize; S]>) -> bool {
 mod test {
     use smallvec::{smallvec, SmallVec};
 
-    use crate::rational::big::ops::{add_assign, is_well_formed, mul, mul_assign_single, sub_assign_result_positive};
+    use crate::rational::big::ops::{add_assign, is_well_formed, mul, mul_assign_single, sub_assign_result_positive, sub};
     use crate::RB;
 
     pub type SV = SmallVec<[usize; 8]>;
@@ -934,6 +959,9 @@ mod test {
         let y = RB!(-1, 3);
         x -= &y;
         assert_eq!(x, RB!(5, 6));
+
+        assert_eq!(RB!(3, 1) / RB!(6, 1), RB!(1, 2));
+        assert_eq!(RB!(1, 6) - RB!(5, 12), RB!(-1, 4));
     }
 
     #[test]
@@ -1017,6 +1045,21 @@ mod test {
         sub_assign_result_positive(&mut x, &y);
         let expected: SV = smallvec![1];
         assert_eq!(x, expected);
+    }
+
+    #[test]
+    fn test_sub() {
+        let x: SV = smallvec![11];
+        let y: SV = smallvec![5];
+        let result = sub(&x, &y);
+        let expected: SV = smallvec![6];
+        assert_eq!(result, expected);
+
+        let x: SV = smallvec![1, 1];
+        let y: SV = smallvec![2];
+        let result = sub(&x, &y);
+        let expected: SV = smallvec![usize::MAX];
+        assert_eq!(result, expected);
     }
 
     #[test]

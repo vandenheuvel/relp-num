@@ -27,7 +27,7 @@ pub trait NonZero {
 }
 
 macro_rules! could_be_zero {
-    ($t: ident) => {
+    ($t:ty) => {
         impl NonZero for $t {
             #[must_use]
             #[inline]
@@ -50,9 +50,41 @@ could_be_zero!(i128);
 could_be_zero!(u128);
 could_be_zero!(isize);
 could_be_zero!(usize);
+could_be_zero!(f32);
+could_be_zero!(f64);
+
+/// Consider the tuple a ratio (hence the debug assert).
+macro_rules! could_be_zero_tuple {
+    ($t:ty) => {
+        impl NonZero for ($t, $t) {
+            #[must_use]
+            #[inline]
+            fn is_not_zero(&self) -> bool {
+                debug_assert!(self.1.is_not_zero());
+
+                self.0.is_not_zero()
+            }
+        }
+    }
+}
+
+could_be_zero_tuple!(i8);
+could_be_zero_tuple!(u8);
+could_be_zero_tuple!(i16);
+could_be_zero_tuple!(u16);
+could_be_zero_tuple!(i32);
+could_be_zero_tuple!(u32);
+could_be_zero_tuple!(i64);
+could_be_zero_tuple!(u64);
+could_be_zero_tuple!(i128);
+could_be_zero_tuple!(u128);
+could_be_zero_tuple!(isize);
+could_be_zero_tuple!(usize);
+could_be_zero_tuple!(f32);
+could_be_zero_tuple!(f64);
 
 macro_rules! can_not_be_zero {
-    ($t: ident) => {
+    ($t:ty) => {
         impl NonZero for $t {
             #[must_use]
             #[inline]

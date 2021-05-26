@@ -45,9 +45,51 @@ impl<const S: usize> Big<S> {
     }
 }
 
-macro_rules! impl_from {
+macro_rules! from_integer_unsigned {
+    ($ty:ty) => {
+        impl<const S: usize> From<$ty> for Big<S> {
+            fn from(value: $ty) -> Self {
+                Self {
+                    sign: Signed::signum(&value),
+                    numerator: smallvec![value as usize],
+                    denominator: smallvec![1],
+                }
+            }
+        }
+    }
+}
+
+from_integer_unsigned!(u8);
+from_integer_unsigned!(u16);
+from_integer_unsigned!(u32);
+from_integer_unsigned!(u64);
+from_integer_unsigned!(usize);
+
+macro_rules! from_integer_signed {
+    ($ty:ty) => {
+        impl<const S: usize> From<$ty> for Big<S> {
+            fn from(value: $ty) -> Self {
+                Self {
+                    sign: Signed::signum(&value),
+                    numerator: smallvec![value.unsigned_abs() as usize],
+                    denominator: smallvec![1],
+                }
+            }
+        }
+    }
+}
+
+from_integer_signed!(i8);
+from_integer_signed!(i16);
+from_integer_signed!(i32);
+from_integer_signed!(i64);
+from_integer_signed!(isize);
+
+macro_rules! impl_from_iu {
     ($numerator:ty, $denominator:ty) => {
         impl<const S: usize> From<($numerator, $denominator)> for Big<S> {
+            #[must_use]
+            #[inline]
             fn from((numerator, denominator): ($numerator, $denominator)) -> Self {
                 if mem::size_of::<$numerator>() > mem::size_of::<usize>() {
                     debug_assert!(numerator.abs() <= usize::MAX as $numerator);
@@ -66,12 +108,45 @@ macro_rules! impl_from {
     }
 }
 
-impl_from!(i8, u8);
-impl_from!(i16, u16);
-impl_from!(i32, u32);
-impl_from!(i64, u64);
-impl_from!(i128, u128);
-impl_from!(isize, usize);
+impl_from_iu!(i8, u8);
+impl_from_iu!(i16, u16);
+impl_from_iu!(i32, u32);
+impl_from_iu!(i64, u64);
+impl_from_iu!(i128, u128);
+impl_from_iu!(isize, usize);
+
+macro_rules! impl_from_ii {
+    ($ty:ty) => {
+        impl<const S: usize> From<($ty, $ty)> for Big<S> {
+            #[must_use]
+            #[inline]
+            fn from((numerator, denominator): ($ty, $ty)) -> Self {
+                if mem::size_of::<$ty>() > mem::size_of::<usize>() {
+                    debug_assert!(numerator.abs() <= usize::MAX as $ty);
+                }
+                if mem::size_of::<$ty>() > mem::size_of::<usize>() {
+                    debug_assert!(denominator <= usize::MAX as $ty);
+                }
+
+                let sign = <$ty as Signed>::signum(&numerator) * <$ty as Signed>::signum(&numerator);
+                debug_assert_eq!(sign == Sign::Zero, numerator == 0);
+
+                Self {
+                    sign,
+                    numerator: smallvec![numerator.unsigned_abs() as usize],
+                    denominator: smallvec![denominator.unsigned_abs() as usize],
+                }
+            }
+        }
+    }
+}
+
+impl_from_ii!(i8);
+impl_from_ii!(i16);
+impl_from_ii!(i32);
+impl_from_ii!(i64);
+impl_from_ii!(i128);
+impl_from_ii!(isize);
 
 macro_rules! impl_from_ratio {
     ($numerator:ty, $denominator:ty, $denominator_inner:ty) => {
@@ -101,7 +176,8 @@ impl_from_ratio!(i64, NonZeroU64, u64);
 impl_from_ratio!(i128, NonZeroU128, u128);
 impl_from_ratio!(isize, NonZeroUsize, usize);
 
-const ONES: usize = (1 << 11) - 1;
+const ONES_32: u32 = (1 << 8) - 1;
+const ONES_64: u64 = (1 << 11) - 1;
 
 impl<const S: usize> num_traits::FromPrimitive for Big<S> {
     fn from_i64(n: i64) -> Option<Self> {
@@ -116,28 +192,45 @@ impl<const S: usize> num_traits::FromPrimitive for Big<S> {
         })
     }
 
+    fn from_f32(n: f32) -> Option<Self> {
+        let n = n.to_bits();
+        let sign     = (n & 0b10000000_00000000_00000000_00000000) >> (32 - 1);
+        let exponent = (n & 0b01111111_10000000_00000000_00000000) >> (32 - 1 - 8);
+        let fraction =  n & 0b00000000_01111111_11111111_11111111;
+
+        match (exponent, fraction) {
+            (0, 0) => Some(<Self as num_traits::Zero>::zero()),
+            (0, _) => Some(Self::from_float(sign as u64, 1 - 127 - 23, fraction as u64)), // subnormals
+            (ONES_32, 0) => None, // infinity
+            (ONES_32, _) => None, // NaN
+            _ => Some(Self::from_float(sign as u64, exponent as i32 - 127 - 23, (fraction + (1 << 23))  as u64)),
+        }
+    }
+
     fn from_f64(n: f64) -> Option<Self> {
-        let n = n.to_bits() as usize;
+        let n = n.to_bits();
         let sign     = (n & 0b10000000_00000000_00000000_00000000_00000000_00000000_00000000_00000000) >> (64 - 1);
         let exponent = (n & 0b01111111_11110000_00000000_00000000_00000000_00000000_00000000_00000000) >> (64 - 1 - 11);
         let fraction =  n & 0b00000000_00001111_11111111_11111111_11111111_11111111_11111111_11111111;
 
+        assert_eq!(mem::size_of::<usize>(), mem::size_of::<u64>());
+
         match (exponent, fraction) {
             (0, 0) => Some(<Self as num_traits::Zero>::zero()),
             (0, _) => Some(Self::from_float(sign, 1 - 1023 - 52, fraction)), // subnormals
-            (ONES, 0) => None, // infinity
-            (ONES, _) => None, // NaN
-            _ => Some(Self::from_float(sign, exponent as isize - 1023 - 52, fraction + (1 << 52))),
+            (ONES_64, 0) => None, // infinity
+            (ONES_64, _) => None, // NaN
+            _ => Some(Self::from_float(sign, exponent as i32 - 1023 - 52, fraction + (1 << 52))),
         }
     }
 }
 
 impl<const S: usize> Big<S> {
-    fn from_float(sign: usize, power: isize, fraction: usize) -> Self {
+    fn from_float(sign: u64, power: i32, fraction: u64) -> Self {
         let (numerator, denominator) = match power.cmp(&0) {
             Ordering::Less => {
-                let numerator_zeros = fraction.trailing_zeros() as usize;
-                let shift = power.unsigned_abs() as usize;
+                let numerator_zeros = fraction.trailing_zeros();
+                let shift = power.unsigned_abs();
 
                 let numerator_shift = min(numerator_zeros, shift);
                 let denominator_shift = shift - numerator_shift;
@@ -145,29 +238,28 @@ impl<const S: usize> Big<S> {
                 let words_shift = denominator_shift / BITS_PER_WORD;
                 let bits_shift = denominator_shift % BITS_PER_WORD;
                 let size = words_shift + 1;
-                let mut denominator = SmallVec::with_capacity(size);
+                let mut denominator = SmallVec::with_capacity(size as usize);
 
-                denominator.extend(repeat(0).take(words_shift));
+                denominator.extend(repeat(0).take(words_shift as usize));
                 denominator.push(1 << bits_shift);
 
-                (smallvec![fraction >> numerator_shift], denominator)
+                (smallvec![fraction as usize >> numerator_shift], denominator)
             }
-            Ordering::Equal => (smallvec![fraction], smallvec![1]),
+            Ordering::Equal => (smallvec![fraction as usize], smallvec![1]),
             Ordering::Greater => {
-                let shift = power.unsigned_abs() as usize;
+                let shift = power.unsigned_abs();
                 let words_shift = shift / BITS_PER_WORD;
                 let bits_shift = shift % BITS_PER_WORD;
 
-                let overflows = (fraction.leading_zeros() as usize) < bits_shift;
+                let overflows = fraction.leading_zeros() < bits_shift;
                 let size = 1 + words_shift + if overflows { 1 } else { 0 };
-                let mut numerator = SmallVec::with_capacity(size);
+                let mut numerator = SmallVec::with_capacity(size as usize);
 
-                numerator.extend(repeat(0).take(words_shift));
+                numerator.extend(repeat(0).take(words_shift as usize));
 
-                let fraction = fraction;
-                numerator.push(fraction << bits_shift);
+                numerator.push((fraction as usize) << bits_shift);
                 if overflows {
-                    numerator.push(fraction >> (BITS_PER_WORD - bits_shift));
+                    numerator.push(fraction as usize >> (BITS_PER_WORD - bits_shift));
                 }
 
                 (numerator, smallvec![1])
@@ -278,6 +370,20 @@ mod test {
         let z = Big8::new(4, 3);
         assert_eq!(y, z);
 
+        let x = <Big8 as num_traits::FromPrimitive>::from_f32(0_f32).unwrap();
+        assert_eq!(x, Big8::new(0, 1));
+
+        let x = <Big8 as num_traits::FromPrimitive>::from_f32(1_f32).unwrap();
+        assert_eq!(x, Big8::new(1, 1));
+
+        let x = <Big8 as num_traits::FromPrimitive>::from_f32(0.5).unwrap();
+        assert_eq!(x, Big8::new(1, 2));
+
+        let x = <Big8 as num_traits::FromPrimitive>::from_f32(2_f32).unwrap();
+        assert_eq!(x, Big8::new(2, 1));
+
+        let x = <Big8 as num_traits::FromPrimitive>::from_f32(1.5_f32).unwrap();
+        assert_eq!(x, Big8::new(3, 2));
         let x = <Big8 as num_traits::FromPrimitive>::from_f64(0_f64).unwrap();
         assert_eq!(x, Big8::new(0, 1));
 
@@ -295,7 +401,7 @@ mod test {
 
         let x = <Big8 as num_traits::FromPrimitive>::from_f64(f64::MIN_POSITIVE).unwrap();
         let (words, bits) = (1022 / BITS_PER_WORD, 1022 % BITS_PER_WORD);
-        let mut denominator = smallvec![0; words];
+        let mut denominator = smallvec![0; words as usize];
         denominator.push(1 << bits);
         let expected = Big8 {
             sign: Sign::Positive,
@@ -307,7 +413,7 @@ mod test {
         let x = <Big8 as num_traits::FromPrimitive>::from_f64(f64::MAX).unwrap();
         let total_shift = (1 << (11 - 1)) - 1 - 52;
         let (words, bits) = (total_shift / BITS_PER_WORD, total_shift % BITS_PER_WORD);
-        let mut numerator= smallvec![0; words];
+        let mut numerator= smallvec![0; words as usize];
         numerator.push(((1 << (52 + 1)) - 1) << bits); // Doesn't overflow, fits exactly in this last word
         let expected = Big8 {
             sign: Sign::Positive,
@@ -335,6 +441,11 @@ mod test {
         assert_eq!(<Big8 as num_traits::FromPrimitive>::from_i64(-1), Some(-RB!(1)));
         assert_eq!(<Big8 as num_traits::FromPrimitive>::from_u64(0), Some(RB!(0)));
         assert_eq!(<Big8 as num_traits::FromPrimitive>::from_u64(1), Some(RB!(1)));
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_f32(f32::NAN), None);
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_f32(f32::INFINITY), None);
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_f32(f32::NEG_INFINITY), None);
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_f32(2_i64.pow(22) as f32), Some(RB!(2_i64.pow(22), 1)));
+        assert_eq!(<Big8 as num_traits::FromPrimitive>::from_f32(2_i64.pow(23) as f32), Some(RB!(2_i64.pow(23), 1)));
         assert_eq!(<Big8 as num_traits::FromPrimitive>::from_f64(f64::NAN), None);
         assert_eq!(<Big8 as num_traits::FromPrimitive>::from_f64(f64::INFINITY), None);
         assert_eq!(<Big8 as num_traits::FromPrimitive>::from_f64(f64::NEG_INFINITY), None);

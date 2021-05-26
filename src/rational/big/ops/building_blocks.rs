@@ -3,6 +3,7 @@ use std::num::NonZeroUsize;
 use smallvec::SmallVec;
 
 use crate::rational::big::ops::{BITS_PER_WORD, is_well_formed};
+use std::iter::repeat;
 
 #[inline]
 pub fn shr_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words_to_remove: usize, bits: u32) {
@@ -54,7 +55,33 @@ pub fn shr<const S: usize>(values: &SmallVec<[usize; S]>, words_to_remove: usize
 }
 
 #[inline]
-pub unsafe fn shl_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, bits: usize) -> Option<NonZeroUsize> {
+pub fn shl_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, bits: u32) {
+    debug_assert!(is_well_formed(values));
+
+    let original_length = values.len();
+
+    let overflows = bits > values.last().unwrap().leading_zeros();
+    if overflows {
+        values.extend(repeat(0).take(words + 1));
+        *values.last_mut().unwrap() = values[original_length - 1] >> (BITS_PER_WORD - bits);
+    } else {
+        values.extend(repeat(0).take(words));
+    }
+
+    for i in (1..original_length).rev() {
+        values[words + i] = values[i] << bits | values[i - 1] >> (BITS_PER_WORD - bits);
+    }
+    values[words] = values[words] << bits;
+
+    for i in 0..words {
+        values[i] = 0;
+    }
+
+    debug_assert!(is_well_formed(values) && !values.is_empty());
+}
+
+#[inline]
+pub unsafe fn shl_mut_overflowing<const S: usize>(values: &mut SmallVec<[usize; S]>, bits: u32) -> Option<NonZeroUsize> {
     // TODO(PERFORMANCE): Bits in usize or u32?
     debug_assert_ne!(bits, 0);
     debug_assert!(bits < BITS_PER_WORD);
@@ -63,7 +90,7 @@ pub unsafe fn shl_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, bits: u
     let original_number_words = values.len();
 
     let value_highest = values.last().unwrap();
-    let leading_zeros = value_highest.leading_zeros() as usize;
+    let leading_zeros = value_highest.leading_zeros();
     let carry = if bits > leading_zeros {
         Some(NonZeroUsize::new(value_highest >> (BITS_PER_WORD - bits)).unwrap())
     } else {
@@ -320,8 +347,9 @@ mod test {
 
     use smallvec::smallvec;
 
-    use crate::rational::big::ops::building_blocks::{add_2, carrying_add_mut, mul, shl_mut, shr, shr_mut, to_twos_complement};
+    use crate::rational::big::ops::building_blocks::{add_2, carrying_add_mut, mul, shl_mut_overflowing, shr, shr_mut, to_twos_complement, shl_mut, sub_n};
     use crate::rational::big::ops::test::SV;
+    use crate::rational::big::ops::BITS_PER_WORD;
 
     #[test]
     fn test_shr() {
@@ -375,30 +403,53 @@ mod test {
     }
 
     #[test]
-    fn test_shl_mut() {
+    fn test_shl_mut_overflowing() {
         let mut x: SV = smallvec![0, 1];
-        let carry = unsafe { shl_mut(&mut x, 1) };
+        let carry = unsafe { shl_mut_overflowing(&mut x, 1) };
         let expected: SV = smallvec![0, 2];
         assert_eq!(x, expected);
         assert_eq!(carry, None);
 
         let mut x: SV = smallvec![0, 0, 0, 1];
-        let carry = unsafe { shl_mut(&mut x, 1) };
+        let carry = unsafe { shl_mut_overflowing(&mut x, 1) };
         let expected: SV = smallvec![0, 0, 0, 2];
         assert_eq!(x, expected);
         assert_eq!(carry, None);
 
         let mut x: SV = smallvec![0, 0, 2_usize.pow((mem::size_of::<usize>() * 8 - 2) as u32)];
-        let carry = unsafe { shl_mut(&mut x, 1) };
+        let carry = unsafe { shl_mut_overflowing(&mut x, 1) };
         let expected: SV = smallvec![0, 0, 2_usize.pow((mem::size_of::<usize>() * 8 - 1) as u32)];
         assert_eq!(x, expected);
         assert_eq!(carry, None);
 
         let mut x: SV = smallvec![0, 0, 2_usize.pow((mem::size_of::<usize>() * 8 - 1) as u32)];
-        let carry = unsafe { shl_mut(&mut x, 1) };
+        let carry = unsafe { shl_mut_overflowing(&mut x, 1) };
         let expected: SV = smallvec![0, 0, 0];
         assert_eq!(x, expected);
         assert_eq!(carry, Some(NonZeroUsize::new(1).unwrap()));
+    }
+
+    #[test]
+    fn test_shl_mut() {
+        let mut x: SV = smallvec![0, 1];
+        shl_mut(&mut x, 0, 1);
+        let expected: SV = smallvec![0, 2];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 0, 0, 1];
+        shl_mut(&mut x, 2, 1);
+        let expected: SV = smallvec![0, 0, 0, 0, 0, 2];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 0, 2_usize.pow((BITS_PER_WORD - 2) as u32)];
+        shl_mut(&mut x, 1,1);
+        let expected: SV = smallvec![0, 0, 0, 2_usize.pow((BITS_PER_WORD - 1) as u32)];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 0, 2_usize.pow((BITS_PER_WORD - 1) as u32)];
+        shl_mut(&mut x, 2,1);
+        let expected: SV = smallvec![0, 0, 0, 0, 0, 1];
+        assert_eq!(x, expected);
     }
 
     #[test]
@@ -413,6 +464,36 @@ mod test {
     fn test_add_2() {
         assert_eq!(add_2(0, 0, 0, 0), (0, 0));
         assert_eq!(add_2(1, 2, 3, 4), (4, 6));
+    }
+
+    #[test]
+    fn test_sub_n() {
+        let mut x: SV = smallvec![0, 0];
+        let carry = unsafe { sub_n(&mut x, &[2, 3], &[1, 1], 2) };
+        assert_eq!(carry, 0);
+        let expected: SV = smallvec![1, 2];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 0];
+        let carry = unsafe { sub_n(&mut x, &[2, 3], &[4, 1], 2) };
+        assert_eq!(carry, 0);
+        let expected: SV = smallvec![usize::MAX - 1, 1];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 0];
+        let carry = unsafe { sub_n(&mut x, &[4, 1], &[4, 1], 2) };
+        assert_eq!(carry, 0);
+        let expected: SV = smallvec![0, 0];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0];
+        let carry = unsafe { sub_n(&mut x, &[0], &[1], 1) };
+        assert_eq!(carry, 1);
+        let expected: SV = smallvec![usize::MAX];
+        assert_eq!(x, expected);
+        to_twos_complement(&mut x);
+        let expected: SV = smallvec![1];
+        assert_eq!(x, expected);
     }
 
     #[test]

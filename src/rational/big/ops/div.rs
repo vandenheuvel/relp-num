@@ -4,7 +4,7 @@ use std::ptr::copy;
 use smallvec::{smallvec, SmallVec};
 
 use crate::rational::big::ops::{BITS_PER_WORD, cmp, is_well_formed};
-use crate::rational::big::ops::building_blocks::{add_2, add_assign_slice, mul, shl, shl_mut, shr, sub_2, sub_assign_slice, submul_slice};
+use crate::rational::big::ops::building_blocks::{add_2, add_assign_slice, mul, shl, shl_mut_overflowing, shr, sub_2, sub_assign_slice, submul_slice};
 use crate::rational::big::ops::normalize::trailing_zeros;
 
 #[inline]
@@ -60,17 +60,17 @@ pub fn div_assign_n_words_double<const S: usize>(
     if leading_zeros > 0 {
         unsafe {
             // TODO(PERFORMANCE): Avoid this allocation before `values` gets smaller
-            let carry = shl_mut(values_one, leading_zeros as usize);
+            let carry = shl_mut_overflowing(values_one, leading_zeros);
             if let Some(carry) = carry {
                 values_one.push(carry.get())
             }
-            let carry = shl_mut(values_two, leading_zeros as usize);
+            let carry = shl_mut_overflowing(values_two, leading_zeros);
             if let Some(carry) = carry {
                 values_two.push(carry.get())
             }
         }
 
-        unsafe { shl_mut(&mut rhs, leading_zeros as usize); }
+        unsafe { shl_mut_overflowing(&mut rhs, leading_zeros); }
     }
     debug_assert!(values_one.len() > rhs.len());
     debug_assert!(values_two.len() > rhs.len());
@@ -256,7 +256,7 @@ pub fn div_assign_two_words<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
     mut divisor_high: usize, mut divisor_low: usize,
 ) {
-    let zero_count = divisor_high.leading_zeros() as usize;
+    let zero_count = divisor_high.leading_zeros();
     match zero_count {
         0 => {
             // divisor_high > usize::MAX / 2
@@ -276,7 +276,7 @@ pub fn div_assign_two_words<const S: usize>(
             divisor_low <<= zero_count;
 
             let carry = unsafe {
-                let carry = shl_mut(values, zero_count);
+                let carry = shl_mut_overflowing(values, zero_count);
                 if let Some(carry) = carry {
                     values.push(carry.get());
                 }
@@ -347,7 +347,7 @@ pub fn div_assign_n_words<const S: usize>(
 
     let divisor = if leading_zeros > 0 {
         unsafe {
-            let carry = shl_mut(values, leading_zeros as usize);
+            let carry = shl_mut_overflowing(values, leading_zeros);
             if let Some(carry) = carry {
                 // TODO(PERFORMANCE): Avoid this allocation before `values` gets smaller
                 values.push(carry.get())

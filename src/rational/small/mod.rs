@@ -9,7 +9,7 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssi
 use num_traits;
 
 use crate::non_zero::{NonZero, NonZeroSign, NonZeroSigned};
-use crate::rational::big::Big8;
+use crate::rational::big::Big;
 use crate::rational::big::ops::normalize::gcd_scalar;
 use crate::rational::Ratio;
 use crate::sign::{Sign, Signed};
@@ -104,24 +104,34 @@ macro_rules! rational {
 
             #[must_use]
             #[inline]
+            fn from_f32(n: f32) -> Option<Self> {
+                Big::<8>::from_f32(n).map(Self::from_big_if_it_fits).flatten()
+            }
+
+            #[must_use]
+            #[inline]
             fn from_f64(n: f64) -> Option<Self> {
-                Big8::from_f64(n).map(|big| {
-                    if num_traits::Zero::is_zero(&big) {
-                        return Some(<Self as num_traits::Zero>::zero());
-                    }
+                Big::<16>::from_f64(n).map(Self::from_big_if_it_fits).flatten()
+            }
+        }
 
-                    if big.numerator.len() == 1 && big.denominator.len() == 1 {
-                        if big.numerator[0] <= <$uty>::MAX as usize && big.denominator[0] <= <$uty>::MAX as usize {
-                            return Some(Self {
-                                sign: big.sign,
-                                numerator: big.numerator[0] as $uty,
-                                denominator: big.denominator[0] as $uty,
-                            })
-                        }
-                    }
+        impl $name {
+            fn from_big_if_it_fits<const S: usize>(big: Big<S>) -> Option<Self> {
+                if num_traits::Zero::is_zero(&big) {
+                    return Some(<Self as num_traits::Zero>::zero());
+                }
 
-                    None
-                }).flatten()
+                if big.numerator.len() == 1 && big.denominator.len() == 1 {
+                    if big.numerator[0] <= <$uty>::MAX as usize && big.denominator[0] <= <$uty>::MAX as usize {
+                        return Some(Self {
+                            sign: big.sign,
+                            numerator: big.numerator[0] as $uty,
+                            denominator: big.denominator[0] as $uty,
+                        })
+                    }
+                }
+
+                None
             }
         }
 
@@ -158,6 +168,14 @@ macro_rules! rational {
                     Sign::Zero => 0_f64,
                     Sign::Negative => -(self.numerator as f64 / self.denominator as f64),
                 })
+            }
+        }
+
+        impl From<&$name> for $name {
+            #[must_use]
+            #[inline]
+            fn from(other: &$name) -> Self {
+                *other
             }
         }
 
@@ -756,6 +774,118 @@ rational!(Rational32, i32, u32, gcd32, simplify32);
 rational!(Rational64, i64, u64, gcd64, simplify64);
 rational!(Rational128, i128, u128, gcd128, simplify128);
 
+macro_rules! size_depedent_unsigned {
+    ($name:ty, $uty:ty, $other:ty) => {
+        impl From<$other> for $name {
+            #[must_use]
+            #[inline]
+            fn from(other: $other) -> Self {
+                Self {
+                    sign: Signed::signum(&other),
+                    numerator: other as $uty,
+                    denominator: 1,
+                }
+            }
+        }
+        impl From<&$other> for $name {
+            #[must_use]
+            #[inline]
+            fn from(other: &$other) -> Self {
+                Self {
+                    sign: Signed::signum(other),
+                    numerator: *other as $uty,
+                    denominator: 1,
+                }
+            }
+        }
+        impl From<($other, $other)> for $name {
+            #[must_use]
+            #[inline]
+            fn from(other: ($other, $other)) -> Self {
+                debug_assert_ne!(other.1, 0);
+
+                Self {
+                    sign: Signed::signum(&other.0) * Signed::signum(&other.1),
+                    numerator: other.0 as $uty,
+                    denominator: other.1 as $uty,
+                }
+            }
+        }
+    }
+}
+
+size_depedent_unsigned!(Rational8, u8, u8);
+size_depedent_unsigned!(Rational16, u16, u8);
+size_depedent_unsigned!(Rational16, u16, u16);
+size_depedent_unsigned!(Rational32, u32, u8);
+size_depedent_unsigned!(Rational32, u32, u16);
+size_depedent_unsigned!(Rational32, u32, u32);
+size_depedent_unsigned!(Rational64, u64, u8);
+size_depedent_unsigned!(Rational64, u64, u16);
+size_depedent_unsigned!(Rational64, u64, u32);
+size_depedent_unsigned!(Rational64, u64, u64);
+size_depedent_unsigned!(Rational128, u128, u8);
+size_depedent_unsigned!(Rational128, u128, u16);
+size_depedent_unsigned!(Rational128, u128, u32);
+size_depedent_unsigned!(Rational128, u128, u64);
+size_depedent_unsigned!(Rational128, u128, u128);
+
+macro_rules! size_depedent_signed {
+    ($name:ty, $uty:ty, $other_signed:ty) => {
+        impl From<$other_signed> for $name {
+            #[must_use]
+            #[inline]
+            fn from(other: $other_signed) -> Self {
+                Self {
+                    sign: Signed::signum(&other),
+                    numerator: other.unsigned_abs() as $uty,
+                    denominator: 1,
+                }
+            }
+        }
+        impl From<&$other_signed> for $name {
+            #[must_use]
+            #[inline]
+            fn from(other: &$other_signed) -> Self {
+                Self {
+                    sign: Signed::signum(other),
+                    numerator: other.unsigned_abs() as $uty,
+                    denominator: 1,
+                }
+            }
+        }
+        impl From<($other_signed, $other_signed)> for $name {
+            #[must_use]
+            #[inline]
+            fn from(other: ($other_signed, $other_signed)) -> Self {
+                debug_assert_ne!(other.1, 0);
+
+                Self {
+                    sign: Signed::signum(&other.0) * Signed::signum(&other.1),
+                    numerator: other.0.unsigned_abs() as $uty,
+                    denominator: other.1.unsigned_abs() as $uty,
+                }
+            }
+        }
+    }
+}
+
+size_depedent_signed!(Rational8, u8, i8);
+size_depedent_signed!(Rational16, u16, i8);
+size_depedent_signed!(Rational16, u16, i16);
+size_depedent_signed!(Rational32, u32, i8);
+size_depedent_signed!(Rational32, u32, i16);
+size_depedent_signed!(Rational32, u32, i32);
+size_depedent_signed!(Rational64, u64, i8);
+size_depedent_signed!(Rational64, u64, i16);
+size_depedent_signed!(Rational64, u64, i32);
+size_depedent_signed!(Rational64, u64, i64);
+size_depedent_signed!(Rational128, u128, i8);
+size_depedent_signed!(Rational128, u128, i16);
+size_depedent_signed!(Rational128, u128, i32);
+size_depedent_signed!(Rational128, u128, i64);
+size_depedent_signed!(Rational128, u128, i128);
+
 #[cfg(test)]
 mod test {
     use num_traits::{FromPrimitive, Zero, ToPrimitive, One};
@@ -781,6 +911,9 @@ mod test {
 
     #[test]
     fn test_from() {
+        assert_eq!(<Rational8 as From<_>>::from(1_u8), Rational8::one());
+        assert_eq!(<Rational32 as From<_>>::from(1), Rational32::one());
+
         assert_eq!(FromPrimitive::from_u64(16), Some(Rational8::new(16, 1)));
         assert_eq!(FromPrimitive::from_u16(0), Some(Rational8::zero()));
         assert_eq!(<Rational16 as FromPrimitive>::from_u32(u32::MAX), None);

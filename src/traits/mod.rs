@@ -121,7 +121,7 @@ impl<T: Neg<Output=Self> + Ord + num_traits::Zero> Abs for T {
 macro_rules! F {
     ($value:expr) => {
         {
-            F::from_f64($value as f64).unwrap()
+            <F as $crate::FromPrimitive>::from_f64($value as f64).unwrap()
         }
     };
 }
