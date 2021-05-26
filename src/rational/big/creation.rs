@@ -10,7 +10,7 @@ use crate::rational::big::Big;
 use crate::rational::big::ops::BITS_PER_WORD;
 use crate::rational::big::ops::normalize::gcd_scalar;
 use crate::rational::Ratio;
-use crate::rational::small::simplify64;
+use crate::rational::small::{simplify64, simplify32, simplify16, simplify8, simplify128};
 use crate::sign::Sign;
 use crate::sign::Signed;
 
@@ -51,7 +51,7 @@ macro_rules! from_integer_unsigned {
             fn from(value: $ty) -> Self {
                 Self {
                     sign: Signed::signum(&value),
-                    numerator: smallvec![value as usize],
+                    numerator: if value > 0 { smallvec![value as usize] } else { smallvec![] },
                     denominator: smallvec![1],
                 }
             }
@@ -71,7 +71,7 @@ macro_rules! from_integer_signed {
             fn from(value: $ty) -> Self {
                 Self {
                     sign: Signed::signum(&value),
-                    numerator: smallvec![value.unsigned_abs() as usize],
+                    numerator: if value != 0 { smallvec![value.unsigned_abs() as usize] } else { smallvec![] },
                     denominator: smallvec![1],
                 }
             }
@@ -86,7 +86,7 @@ from_integer_signed!(i64);
 from_integer_signed!(isize);
 
 macro_rules! impl_from_iu {
-    ($numerator:ty, $denominator:ty) => {
+    ($numerator:ty, $denominator:ty, $simplify:ident) => {
         impl<const S: usize> From<($numerator, $denominator)> for Big<S> {
             #[must_use]
             #[inline]
@@ -98,22 +98,28 @@ macro_rules! impl_from_iu {
                     debug_assert!(denominator <= usize::MAX as $denominator);
                 }
 
-                Self {
-                    sign: <$numerator as Signed>::signum(&numerator),
-                    numerator: smallvec![numerator.unsigned_abs() as usize],
-                    denominator: smallvec![denominator as usize],
+                if numerator == 0 {
+                    <Self as num_traits::Zero>::zero()
+                } else {
+                    let sign = <$numerator as Signed>::signum(&numerator);
+                    let (numerator, denominator) = $simplify(numerator.unsigned_abs(), denominator);
+
+                    Self {
+                        sign,
+                        numerator: smallvec![numerator as usize],
+                        denominator: smallvec![denominator as usize],
+                    }
                 }
             }
         }
     }
 }
 
-impl_from_iu!(i8, u8);
-impl_from_iu!(i16, u16);
-impl_from_iu!(i32, u32);
-impl_from_iu!(i64, u64);
-impl_from_iu!(i128, u128);
-impl_from_iu!(isize, usize);
+impl_from_iu!(i8, u8, simplify8);
+impl_from_iu!(i16, u16, simplify16);
+impl_from_iu!(i32, u32, simplify32);
+impl_from_iu!(i64, u64, simplify64);
+impl_from_iu!(i128, u128, simplify128);
 
 macro_rules! impl_from_ii {
     ($ty:ty) => {
@@ -128,7 +134,7 @@ macro_rules! impl_from_ii {
                     debug_assert!(denominator <= usize::MAX as $ty);
                 }
 
-                let sign = <$ty as Signed>::signum(&numerator) * <$ty as Signed>::signum(&numerator);
+                let sign = <$ty as Signed>::signum(&numerator) * <$ty as Signed>::signum(&denominator);
                 debug_assert_eq!(sign == Sign::Zero, numerator == 0);
 
                 Self {
@@ -159,10 +165,14 @@ macro_rules! impl_from_ratio {
                     debug_assert!(ratio.denominator.get() <= usize::MAX as $denominator_inner);
                 }
 
-                Self {
-                    sign: <$numerator as Signed>::signum(&ratio.numerator),
-                    numerator: smallvec![ratio.numerator.abs() as usize],
-                    denominator: smallvec![ratio.denominator.get() as usize],
+                if ratio.sign == Sign::Zero {
+                    <Self as num_traits::Zero>::zero()
+                } else {
+                    Self {
+                        sign: ratio.sign,
+                        numerator: smallvec![ratio.numerator.unsigned_abs() as usize],
+                        denominator: smallvec![ratio.denominator.get() as usize],
+                    }
                 }
             }
         }
@@ -471,5 +481,24 @@ mod test {
     #[test]
     fn test_new() {
         assert_eq!(RB!(3, 3), RB!(1));
+    }
+
+    #[test]
+    fn from_int() {
+        assert_eq!(Big::from(0_i32), RB!(0));
+        assert_eq!(Big::from(0_u32), RB!(0));
+        assert_eq!(Big::from(1_i64), RB!(1));
+        assert_eq!(Big::from(19_u8), RB!(19));
+        assert_eq!(Big::from(-1_i16), RB!(-1));
+    }
+
+    #[test]
+    fn from_tuple() {
+        assert_eq!(Big::from((0_i32, 1_u32)), RB!(0));
+        assert_eq!(Big::from((0_i32, 5_u32)), RB!(0));
+        assert_eq!(Big::from((1_i64, 2_u64)), RB!(1, 2));
+        assert_eq!(Big::from((22_i8, 2_u8)), RB!(11));
+        assert_eq!(Big::from((-1_i16, 2_u16)), RB!(-1, 2));
+        assert_eq!(Big::from((-1_i32, 1_i32)), RB!(-1));
     }
 }

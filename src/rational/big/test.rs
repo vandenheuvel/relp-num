@@ -137,3 +137,16 @@ fn test_display() {
     assert_eq!(RB!(1, 2).to_string(), "1/2");
     assert_eq!(RB!(-1, 2).to_string(), "-1/2");
 }
+
+#[test]
+fn test_sum() {
+    assert_eq!((0..50001).map(Big8::from).sum::<Big8>(), RB!(1250025000));
+    assert_eq!(
+        (0..1).map(|i| Big8::new(i, (i + 1) as u64)).sum::<Big8>(),
+        RB!(0),
+    );
+    assert_eq!(
+        (0..43).map(|i| Big8::new(i, (i + 1) as u64)).sum::<Big8>(),
+        RB!(4728144095208782983, 122332313750680800),
+    );
+}

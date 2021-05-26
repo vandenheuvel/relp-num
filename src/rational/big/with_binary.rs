@@ -30,7 +30,7 @@ impl<const S: usize> Add<&Binary> for Big<S> {
     fn add(self, rhs: &Binary) -> Self::Output {
         match rhs {
             Binary::Zero => self,
-            Binary::One => self + <Self as num_traits::One>::one(),
+            Binary::One => self + One,
         }
     }
 }

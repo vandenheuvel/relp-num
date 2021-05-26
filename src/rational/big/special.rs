@@ -96,12 +96,25 @@ mod field {
         impl<const S: usize> AddAssign<&One> for Big<S> {
             #[inline]
             fn add_assign(&mut self, _: &One) {
-                if self.sign == Sign::Negative && self.numerator.len() == 1 && self.numerator[0] == 1 {
-                    self.set_zero();
-                } else {
-                    add_assign(&mut self.numerator, &self.denominator);
-                    // No need to normalize; can't be zero and numerator and denominator are
-                    // already coprime
+                match self.sign {
+                    Sign::Positive => add_assign(&mut self.numerator, &self.denominator),
+                    Sign::Zero => {
+                        self.sign = Sign::Positive;
+                        debug_assert!(self.numerator.is_empty());
+                        self.numerator.push(1);
+                        debug_assert_eq!(self.denominator[0], 1);
+                        debug_assert_eq!(self.denominator.len(), 1);
+                    }
+                    Sign::Negative => {
+                        if self.numerator[0] == 1 && self.denominator[0] == 1 && self.numerator.len() == 1 && self.denominator.len() == 1 {
+                            self.set_zero();
+                        } else {
+                            match subtracting_cmp_ne(&mut self.numerator, &self.denominator) {
+                                UnequalOrdering::Less => self.sign = !self.sign,
+                                UnequalOrdering::Greater => {}
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -127,15 +140,25 @@ mod field {
         impl<const S: usize> SubAssign<One> for Big<S> {
             #[inline]
             fn sub_assign(&mut self, _: One) {
-                if self.sign == Sign::Positive && self.numerator.len() == 1 && self.numerator[0] == 1 {
-                    self.set_zero();
-                } else {
-                    match subtracting_cmp_ne(&mut self.numerator, &self.denominator) {
-                        UnequalOrdering::Less => self.sign = !self.sign,
-                        UnequalOrdering::Greater => {}
+                match self.sign {
+                    Sign::Positive => {
+                        if self.numerator[0] == 1 && self.denominator[0] == 1 && self.numerator.len() == 1 && self.denominator.len() == 1 {
+                            self.set_zero();
+                        } else {
+                            match subtracting_cmp_ne(&mut self.numerator, &self.denominator) {
+                                UnequalOrdering::Less => self.sign = !self.sign,
+                                UnequalOrdering::Greater => {}
+                            }
+                        }
                     }
-                    // No need to normalize; can't be zero and numerator and denominator are
-                    // already coprime
+                    Sign::Zero => {
+                        self.sign = Sign::Positive;
+                        debug_assert!(self.numerator.is_empty());
+                        self.numerator.push(1);
+                        debug_assert_eq!(self.denominator[0], 1);
+                        debug_assert_eq!(self.denominator.len(), 1);
+                    }
+                    Sign::Negative => add_assign(&mut self.numerator, &self.denominator),
                 }
             }
         }
@@ -222,5 +245,22 @@ mod field {
                 self
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::One;
+    use crate::RB;
+
+    #[test]
+    fn test_one() {
+        assert_eq!(RB!(0) + One, RB!(1));
+        assert_eq!(RB!(1) + One, RB!(2));
+        assert_eq!(RB!(-1) + One, RB!(0));
+        assert_eq!(RB!(-1) - One, RB!(-2));
+        assert_eq!(RB!(1) - One, RB!(0));
+        assert_eq!(RB!(1, 2) - One, RB!(-1, 2));
+        assert_eq!(RB!(1, 2) + One, RB!(3, 2));
     }
 }

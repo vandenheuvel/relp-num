@@ -201,18 +201,18 @@ pub fn simplify_fraction_gcd<const S: usize>(left: &mut SmallVec<[usize; S]>, ri
             debug_assert!(!gcd.is_empty());
             debug_assert_eq!(gcd[0] % 2, 1);
 
-            match (cmp(&left, &gcd), cmp(&right, &gcd)) {
-                (Ordering::Equal, _) => {
-                    left[0] = 1; left.truncate(1);
-                    div_assign_by_odd(right, &gcd);
+            if gcd[0] != 1 || gcd.len() > 1 {
+                match (cmp(left, &gcd), cmp(right, &gcd)) {
+                    (Ordering::Equal, _) => {
+                        left[0] = 1; left.truncate(1);
+                        div_assign_by_odd(right, &gcd);
+                    }
+                    (_, Ordering::Equal) => {
+                        div_assign_by_odd(left, &gcd);
+                        right[0] = 1; right.truncate(1);
+                    }
+                    (_, _) => div_assign_double(left, right, gcd),
                 }
-                (_, Ordering::Equal) => {
-                    div_assign_by_odd(left, &gcd);
-                    right[0] = 1; right.truncate(1);
-                }
-                (_, _) => if gcd[0] != 1 || gcd.len() > 1 {
-                    div_assign_double(left, right, gcd);
-                },
             }
         }
     }

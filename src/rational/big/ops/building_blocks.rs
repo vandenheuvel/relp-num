@@ -13,7 +13,7 @@ pub fn shr_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words_to_remov
 
     for i in 0..(original_number_words - words_to_remove - 1) {
         values[i] = values[i + words_to_remove] >> bits;
-        values[i] |= values[i + words_to_remove + 1] << (BITS_PER_WORD as u32 - bits)
+        values[i] |= values[i + words_to_remove + 1].wrapping_shl(BITS_PER_WORD - bits);
     }
 
     let last_shifted = values.last().unwrap() >> bits;
@@ -43,7 +43,7 @@ pub fn shr<const S: usize>(values: &SmallVec<[usize; S]>, words_to_remove: usize
     let mut result = SmallVec::with_capacity(words_to_keep);
     for i in 0..(values.len() - words_to_remove - 1) {
         let mut result_word = values[i + words_to_remove] >> bits;
-        result_word |= values[i + words_to_remove + 1] << (BITS_PER_WORD as u32 - bits);
+        result_word |= values[i + words_to_remove + 1].wrapping_shl(BITS_PER_WORD - bits);
         result.push(result_word);
     }
 
@@ -63,13 +63,13 @@ pub fn shl_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, 
     let overflows = bits > values.last().unwrap().leading_zeros();
     if overflows {
         values.extend(repeat(0).take(words + 1));
-        *values.last_mut().unwrap() = values[original_length - 1] >> (BITS_PER_WORD - bits);
+        *values.last_mut().unwrap() = values[original_length - 1].wrapping_shr(BITS_PER_WORD - bits);
     } else {
         values.extend(repeat(0).take(words));
     }
 
     for i in (1..original_length).rev() {
-        values[words + i] = values[i] << bits | values[i - 1] >> (BITS_PER_WORD - bits);
+        values[words + i] = values[i] << bits | values[i - 1].wrapping_shr(BITS_PER_WORD - bits);
     }
     values[words] = values[words] << bits;
 
@@ -92,14 +92,14 @@ pub unsafe fn shl_mut_overflowing<const S: usize>(values: &mut SmallVec<[usize; 
     let value_highest = values.last().unwrap();
     let leading_zeros = value_highest.leading_zeros();
     let carry = if bits > leading_zeros {
-        Some(NonZeroUsize::new(value_highest >> (BITS_PER_WORD - bits)).unwrap())
+        Some(NonZeroUsize::new(value_highest.wrapping_shr(BITS_PER_WORD - bits)).unwrap())
     } else {
         None
     };
 
     for i in (1..original_number_words).rev() {
         values[i] <<= bits;
-        values[i] |= values[i - 1] >> (BITS_PER_WORD - bits);
+        values[i] |= values[i - 1].wrapping_shr(BITS_PER_WORD - bits);
     }
 
     values[0] <<= bits;
@@ -118,7 +118,7 @@ pub fn shl<const S: usize>(values: &SmallVec<[usize; S]>, bits: u32) -> SmallVec
     result.push(values[0] << bits);
     for i in 1..values.len() {
         let from_self = values[i] << bits;
-        let from_previous = values[i - 1] >> (BITS_PER_WORD as u32 - bits);
+        let from_previous = values[i - 1].wrapping_shr(BITS_PER_WORD - bits);
         result.push(from_self | from_previous);
     }
 
@@ -134,8 +134,7 @@ pub fn debug_assert_shr_constraints<const S: usize>(values: &SmallVec<[usize; S]
         words_to_remove < values.len() - 1 || bits <= values.last().unwrap().trailing_zeros(),
         "Value can't be zero after shifting",
     );
-    let word_bit_size = (BITS_PER_WORD) as u32;
-    debug_assert!(bits < word_bit_size, "Use the `words` argument to shift with entire words");
+    debug_assert!(bits < BITS_PER_WORD, "Use the `words` argument to shift with entire words");
 }
 
 #[inline]

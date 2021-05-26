@@ -83,3 +83,14 @@ impl Mul for NonZeroSign {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::NonZeroSign;
+
+    #[test]
+    fn test_cmp() {
+        assert!(NonZeroSign::Positive > NonZeroSign::Negative);
+        assert_eq!(NonZeroSign::Positive.partial_cmp(&NonZeroSign::Positive), None);
+    }
+}

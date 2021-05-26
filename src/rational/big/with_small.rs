@@ -26,7 +26,8 @@ impl<const S: usize> Big<S> {
             // numerator can't be zero
 
             if self.numerator[0] == self.denominator[0] && self.numerator.len() == 1 {
-                self.set_one();
+                self.numerator[0] = 1;
+                self.denominator[0] = 1;
             } else {
                 if self.denominator[0] != 1 {
                     // numerator can't be 1 because two positive things were added

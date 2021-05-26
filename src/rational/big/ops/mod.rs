@@ -16,7 +16,6 @@ pub mod building_blocks;
 pub mod div;
 pub mod normalize;
 
-// TODO(PERFORMANCE): Save the constant as usize or as u32?
 pub const BITS_PER_WORD: u32 = (mem::size_of::<usize>() * 8) as u32;
 
 impl<const S: usize> Add<Big<S>> for Big<S> {
@@ -872,9 +871,150 @@ mod test {
     use smallvec::{smallvec, SmallVec};
 
     use crate::rational::big::ops::{add_assign, is_well_formed, mul, mul_assign_single, sub_assign_result_positive, sub};
-    use crate::RB;
+    use crate::{RB, Sign};
+    use crate::rational::big::Big8;
 
     pub type SV = SmallVec<[usize; 8]>;
+
+    #[test]
+    fn test_ord() {
+        let x = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![2],
+            denominator: smallvec![3],
+        };
+        let y = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![2],
+            denominator: smallvec![3],
+        };
+        assert_eq!(x, y);
+
+        let neg_x = Big8 {
+            sign: Sign::Negative,
+            numerator: smallvec![2],
+            denominator: smallvec![3],
+        };
+        assert!(neg_x < x);
+        assert!(x > neg_x);
+        assert!(neg_x <= x);
+        assert!(x >= neg_x);
+
+        let x = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![1, 1],
+            denominator: smallvec![1],
+        };
+        let y = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![2],
+            denominator: smallvec![1],
+        };
+        assert!(x > y);
+
+        let x = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![1, 1],
+            denominator: smallvec![23],
+        };
+        let y = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![2],
+            denominator: smallvec![23],
+        };
+        assert!(x > y);
+
+        let x = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![1, 1],
+            denominator: smallvec![1],
+        };
+        let y = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![2, 1],
+            denominator: smallvec![1],
+        };
+        assert!(x < y);
+
+        let x = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![1, 1],
+            denominator: smallvec![19],
+        };
+        let y = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![2, 1],
+            denominator: smallvec![19],
+        };
+        assert!(x < y);
+
+        let x = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![0, 0, 1],
+            denominator: smallvec![19],
+        };
+        let y = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![2, 2],
+            denominator: smallvec![19],
+        };
+        assert!(y <= x);
+        assert!(x > y);
+
+        let x = Big8 {
+            sign: Sign::Negative,
+            numerator: smallvec![0, 0, 1],
+            denominator: smallvec![19],
+        };
+        let y = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![2, 2],
+            denominator: smallvec![19],
+        };
+        assert!(x < y);
+
+        let x = Big8 {
+            sign: Sign::Negative,
+            numerator: smallvec![0, 0, 1],
+            denominator: smallvec![19],
+        };
+        let y = Big8 {
+            sign: Sign::Negative,
+            numerator: smallvec![0, 0, 1],
+            denominator: smallvec![19],
+        };
+        assert_eq!(x, y);
+
+        let x = Big8 {
+            sign: Sign::Negative,
+            numerator: smallvec![0, 0, 1],
+            denominator: smallvec![19],
+        };
+        let y = <Big8 as num_traits::Zero>::zero();
+        assert!(x < y);
+        assert!(y >= x);
+
+        let x = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![0, 0, 1],
+            denominator: smallvec![19],
+        };
+        let y = <Big8 as num_traits::Zero>::zero();
+        assert!(x > y);
+        assert!(y <= x);
+
+        let x = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![2],
+            denominator: smallvec![3],
+        };
+        let y = Big8 {
+            sign: Sign::Positive,
+            numerator: smallvec![3],
+            denominator: smallvec![4],
+        };
+        assert!(x < y);
+    }
 
     #[test]
     fn test_mul_assign() {

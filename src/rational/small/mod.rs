@@ -362,7 +362,7 @@ macro_rules! rational {
             #[must_use]
             #[inline]
             fn sub(self, rhs: $name) -> Self::Output {
-                Sub::sub(rhs, self)
+                -Sub::sub(rhs, self)
             }
         }
 
@@ -904,11 +904,12 @@ size_depedent_signed!(Rational128, u128, i128);
 
 #[cfg(test)]
 mod test {
-    use num_traits::{FromPrimitive, Zero, ToPrimitive, One};
+    use num_traits::{FromPrimitive, One, ToPrimitive, Zero};
 
+    use crate::{NonZero, NonZeroSign, NonZeroSigned, Rational128};
+    use crate::{R16, R32, R64, R8};
     use crate::rational::{Ratio, Rational16, Rational32, Rational64, Rational8, Sign};
-    use crate::{Rational128, NonZero, NonZeroSign, NonZeroSigned};
-    use crate::{R8, R32, R64};
+    use std::cmp::Ordering;
 
     #[test]
     fn test_new() {
@@ -945,6 +946,8 @@ mod test {
         assert!(<Rational128 as FromPrimitive>::from_f64(u128::MAX as f64).is_none());
 
         assert_eq!(<Rational32 as FromPrimitive>::from_i64(i64::MAX), None);
+
+        assert_eq!(Rational64::from((-1, 2)), R64!(-1, 2));
     }
 
     #[test]
@@ -990,6 +993,13 @@ mod test {
         assert!(R8!(1, 2) > R8!(1, 3));
         assert_eq!(R8!(7, 11), R8!(7, 11));
         assert!(R8!(3, 4) < R8!(5, 6));
+        assert!(R8!(13) > R8!(12));
+        assert_eq!(R32!(0), R32!(0));
+        assert_eq!(R32!(0).partial_cmp(&R32!(0)), Some(Ordering::Equal));
+        assert_eq!(R32!(12, 5).partial_cmp(&R32!(23, 10)), Some(Ordering::Greater));
+        assert!(!(R32!(7, 11) < R32!(7, 11)));
+        assert!(R64!(-3, 11) < R64!(3, 11));
+        assert_ne!(R64!(-9, 4), R64!(9, 4));
     }
 
     #[test]
@@ -1024,6 +1034,19 @@ mod test {
     }
 
     #[test]
+    fn test_sum() {
+        assert_eq!((0..10).map(Rational32::from).sum::<Rational32>(), R32!(45));
+        assert_eq!((0_i16..10).map(|i| Rational16::new(i, 2)).sum::<Rational16>(), R16!(45, 2));
+        let vs = vec![
+            (R32!(23, 31), R32!(-699, 65)),
+            (R32!(29, 31), R32!(-30736, 1885)),
+        ];
+        let product = vs.into_iter().map(|(a, b)| &a * &b).sum::<Rational32>();
+        let constant = R32!(-2826, 155);
+        assert_eq!(constant - product, R32!(5));
+    }
+
+    #[test]
     fn test_sub() {
         assert_eq!(Rational64::one() - Rational64::one(), R64!(0));
         assert_eq!(R64!(3, 2) - R64!(3, 2), R64!(0));
@@ -1040,6 +1063,9 @@ mod test {
         assert_eq!(R8!(3, 4) - R8!(3), R8!(-9, 4));
         assert_eq!(R8!(3, 4) - R8!(17, 5), R8!(15 - 4 * 17, 20));
         assert_eq!(R8!(17, 5) - R8!(3, 4), R8!(4 * 17 - 15, 20));
+
+        assert_eq!(R32!(3601, 155) - R32!(2826, 155), R32!(5));
+        assert_eq!(R32!(-2826, 155) - R32!(-3601, 155), R32!(5));
 
         let limit = 10;
         for a in -limit..limit {
