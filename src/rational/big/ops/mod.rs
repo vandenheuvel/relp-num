@@ -159,15 +159,10 @@ impl<const S: usize> Big<S> {
 
             // Numerator can't be zero
 
-            if self.numerator == self.denominator {
-                self.numerator[0] = 1;
-                self.numerator.truncate(1);
-                self.denominator[0] = 1;
-                self.denominator.truncate(1);
-            } else if self.denominator[0] != 1 || self.denominator.len() > 1 {
-                match cmp(&self.numerator, &self.denominator) {
-                    Ordering::Equal => self.set_one(),
-                    Ordering::Less | Ordering::Greater => {
+            match cmp(&self.numerator, &self.denominator) {
+                Ordering::Equal => self.set_one(),
+                Ordering::Less | Ordering::Greater => {
+                    if (self.numerator[0] != 1 || self.numerator.len() > 1) && (self.denominator[0] != 1 || self.denominator.len() > 1) {
                         simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                     }
                 }
@@ -185,8 +180,12 @@ impl<const S: usize> Big<S> {
                 let mut gcd = gcd(&self.denominator, &rhs.denominator);
 
                 if gcd[0] != 1 || gcd.len() > 1 {
-                    let left = div_by_odd_or_even(&rhs.denominator, &gcd);
-                    self.numerator = mul(&self.numerator, &left);
+                    if cmp(&rhs.denominator, &gcd) == Ordering::Equal {
+                        // No need to modify numerator
+                    } else {
+                        let left = div_by_odd_or_even(&rhs.denominator, &gcd);
+                        self.numerator = mul(&self.numerator, &left);
+                    }
 
                     remove_shared_two_factors_mut(&mut self.denominator, &mut gcd);
                     if cmp(&self.denominator, &gcd) == Ordering::Equal {
@@ -195,7 +194,9 @@ impl<const S: usize> Big<S> {
                         add_assign(&mut self.numerator, &rhs.numerator);
                         self.denominator = rhs.denominator.clone();
                     } else {
-                        div_assign_by_odd(&mut self.denominator, &gcd);
+                        if gcd[0] != 1 || gcd.len() > 1 {
+                            div_assign_by_odd(&mut self.denominator, &gcd);
+                        }
                         let right = mul(&rhs.numerator, &self.denominator);
                         add_assign(&mut self.numerator, &right);
                         self.denominator = mul(&rhs.denominator, &self.denominator);
@@ -213,15 +214,22 @@ impl<const S: usize> Big<S> {
     fn sub(&mut self, rhs: &Self) {
         if self.denominator == rhs.denominator {
             match subtracting_cmp(&mut self.numerator, &rhs.numerator) {
-                Ordering::Less => {
-                    self.sign = !self.sign;
-                }
+                Ordering::Less => self.sign = !self.sign,
                 Ordering::Equal => {
                     self.sign = Sign::Zero;
                     self.denominator[0] = 1;
                     self.denominator.truncate(1);
+                    return;
                 }
                 Ordering::Greater => {}
+            }
+            match cmp(&self.numerator, &self.denominator) {
+                Ordering::Equal => self.set_one(),
+                Ordering::Less | Ordering::Greater => {
+                    if (self.numerator[0] != 1 || self.numerator.len() > 1) && (self.denominator[0] != 1 || self.denominator.len() > 1) {
+                        simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
+                    }
+                }
             }
         } else {
             if self.denominator[0] == 1 && self.denominator.len() == 1 { // denominator == 1
@@ -242,8 +250,12 @@ impl<const S: usize> Big<S> {
                 let mut gcd = gcd(&self.denominator, &rhs.denominator);
 
                 if gcd[0] != 1 || gcd.len() > 1 {
-                    let left = div_by_odd_or_even(&rhs.denominator, &gcd);
-                    self.numerator = mul(&self.numerator, &left);
+                    if cmp(&rhs.denominator, &gcd) == Ordering::Equal {
+
+                    } else {
+                        let left = div_by_odd_or_even(&rhs.denominator, &gcd);
+                        self.numerator = mul(&self.numerator, &left);
+                    }
 
                     remove_shared_two_factors_mut(&mut self.denominator, &mut gcd);
                     if cmp(&self.denominator, &gcd) == Ordering::Equal {
@@ -255,7 +267,9 @@ impl<const S: usize> Big<S> {
                         }
                         self.denominator = rhs.denominator.clone();
                     } else {
-                        div_assign_by_odd(&mut self.denominator, &gcd);
+                        if gcd[0] != 1 || gcd.len() > 1 {
+                            div_assign_by_odd(&mut self.denominator, &gcd);
+                        }
                         let right = mul(&rhs.numerator, &self.denominator);
                         match subtracting_cmp_ne(&mut self.numerator, &right) {
                             UnequalOrdering::Less => self.sign = !self.sign,
@@ -263,7 +277,9 @@ impl<const S: usize> Big<S> {
                         };
                         self.denominator = mul(&rhs.denominator, &self.denominator);
                     }
-                    simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
+                    if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                        simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
+                    }
                 } else {
                     self.numerator = mul(&self.numerator, &rhs.denominator);
                     let right = mul(&rhs.numerator, &self.denominator);
@@ -328,7 +344,7 @@ pub fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &
                     Ordering::Equal
                 }
                 Some(index) => {
-                    left.truncate(index);
+                    left.truncate(1 + index);
                     Ordering::Greater
                 }
             }
@@ -892,7 +908,18 @@ mod test {
         x *= y;
         assert_eq!(x, RB!(-1, 6));
 
-        assert_eq!(RB!(1) + RB!(-2), RB!(-1));
+        assert_eq!(RB!(3, 1) / RB!(6, 1), RB!(1, 2));
+
+        let limit = 5;
+        for a in -limit..limit {
+            for b in 1..limit {
+                for c in -limit..limit {
+                    for d in 1..limit {
+                        assert_eq!(RB!(a, b as u64) * RB!(c, d as u64), RB!(a * c, (b * d) as u64), "{} / {} * {} / {}", a, b, c, d);
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -926,6 +953,31 @@ mod test {
         let y = RB!(-1, 3);
         x += &y;
         assert_eq!(x, RB!(1, 6));
+
+        assert_eq!(RB!(1) + RB!(-2), RB!(-1));
+        assert_eq!(RB!(6, 5) + RB!(1, 5), RB!(7, 5));
+        assert_eq!(RB!(7, 5) + RB!(3, 5), RB!(2));
+        assert_eq!(RB!(8, 5) + RB!(3, 5), RB!(11, 5));
+        assert_eq!(RB!(8) + RB!(1, 4), RB!(33, 4));
+        assert_eq!(RB!(4, 7) + RB!(5, 6), RB!(4 * 6 + 7 * 5, 7 * 6));
+        assert_eq!(RB!(4, 8) + RB!(5, 6), RB!(4 * 6 + 8 * 5, 8 * 6));
+        assert_eq!(RB!(8, 15) + RB!(11, 18), RB!(8 * 18 + 11 * 15, 15 * 18));
+
+        assert_eq!(RB!(-5, 3) + RB!(-4, 3), RB!(-3));
+        assert_eq!(RB!(-5) + RB!(-5), RB!(-10));
+        assert_eq!(RB!(-5, 4) + RB!(-5, 2), RB!(-15, 4));
+        assert_eq!(RB!(-5, 4) + RB!(1, 2), RB!(-3, 4));
+
+        let limit = 10;
+        for a in -limit..limit {
+            for b in 1..limit {
+                for c in -limit..limit {
+                    for d in 1..limit {
+                        assert_eq!(RB!(a, b as u64) + RB!(c, d as u64), RB!(a * d + c * b, b as u64 * d as u64), "{} / {} + {} / {}", a, b, c, d);
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -960,8 +1012,25 @@ mod test {
         x -= &y;
         assert_eq!(x, RB!(5, 6));
 
-        assert_eq!(RB!(3, 1) / RB!(6, 1), RB!(1, 2));
         assert_eq!(RB!(1, 6) - RB!(5, 12), RB!(-1, 4));
+        assert_eq!(RB!(4, 7) - RB!(5, 6), RB!(4 * 6 - 7 * 5, 7 * 6));
+        assert_eq!(RB!(4, 8) - RB!(5, 6), RB!(4 * 6 - 8 * 5, 8 * 6));
+        assert_eq!(RB!(8) - RB!(17, 2), RB!(-1, 2));
+        assert_eq!(RB!(6, 5) - RB!(1, 5), RB!(1));
+        assert_eq!(RB!(7, 5) - RB!(1, 5), RB!(6, 5));
+        assert_eq!(RB!(8, 5) - RB!(3, 5), RB!(1));
+        assert_eq!(RB!(8, 15) - RB!(11, 18), RB!(8 * 18 - 11 * 15, 15 * 18));
+
+        let limit = 10;
+        for a in -limit..limit {
+            for b in 1..limit {
+                for c in -limit..limit {
+                    for d in 1..limit {
+                        assert_eq!(RB!(a, b as u64) - RB!(c, d as u64), RB!(a * d - c * b, b as u64 * d as u64), "{} / {} - {} / {}", a, b, c, d);
+                    }
+                }
+            }
+        }
     }
 
     #[test]

@@ -314,7 +314,7 @@ impl<const S: usize> num_traits::One for Big<S> {
     fn set_one(&mut self) {
         self.numerator.clear();
         self.numerator.push(1);
-        // Numerator always has at least one element
+        // Denominator always has at least one element
         self.denominator[0] = 1;
         self.denominator.truncate(1);
     }
@@ -466,5 +466,10 @@ mod test {
         assert_eq!(Big::new_signed(Sign::Positive, 1, 2), RB!(1, 2));
         assert_eq!(Big::new_signed(Sign::Zero, 0, 1), RB!(0));
         assert_eq!(Big::new_signed(Sign::Negative, 1, 3), RB!(-1, 3));
+    }
+
+    #[test]
+    fn test_new() {
+        assert_eq!(RB!(3, 3), RB!(1));
     }
 }

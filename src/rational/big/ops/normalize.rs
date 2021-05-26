@@ -128,14 +128,17 @@ pub fn simplify_fraction_gcd_single<const S: usize>(left: &mut SmallVec<[usize; 
     debug_assert_ne!(right, 1);
     debug_assert!(left[0] != 1 || left.len() > 1);
 
-    let (mut right, left_to_shift, right_to_shift, zero_bits) = prepare_gcd_single_mut(left, right);
+    let (mut right, left_to_shift, right_to_shift, _) = prepare_gcd_single_mut(left, right);
     let right_shifted = right >> right_to_shift;
 
-    if right > 1 {
+    if right_shifted > 1 {
         let other = shr(left, 0, left_to_shift);
         // TODO(PERFORMANCE): If no left_to_shift, do the first allocation after subtraction?
         if other[0] != 1 || other.len() > 1 {
-            let gcd = gcd_single(other, right_shifted, zero_bits);
+            debug_assert_eq!(other[0] % 2, 1);
+            debug_assert_eq!(right_shifted % 2, 1);
+            // TODO(ARCHITECTURE): Don't pass that bit count through the function to cancel it again after
+            let gcd = gcd_single(other, right_shifted, 0);
 
             if gcd > 1 {
                 right /= gcd;
@@ -199,8 +202,14 @@ pub fn simplify_fraction_gcd<const S: usize>(left: &mut SmallVec<[usize; S]>, ri
             debug_assert_eq!(gcd[0] % 2, 1);
 
             match (cmp(&left, &gcd), cmp(&right, &gcd)) {
-                (Ordering::Equal, _) => div_assign_by_odd(right, &gcd),
-                (_, Ordering::Equal) => div_assign_by_odd(left, &gcd),
+                (Ordering::Equal, _) => {
+                    left[0] = 1; left.truncate(1);
+                    div_assign_by_odd(right, &gcd);
+                }
+                (_, Ordering::Equal) => {
+                    div_assign_by_odd(left, &gcd);
+                    right[0] = 1; right.truncate(1);
+                }
                 (_, _) => if gcd[0] != 1 || gcd.len() > 1 {
                     div_assign_double(left, right, gcd);
                 },
@@ -502,5 +511,6 @@ mod test {
             ),
             873,
         );
+        assert_eq!(gcd_single::<1>(smallvec![7], 3, 0), 1);
     }
 }

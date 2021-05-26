@@ -5,7 +5,7 @@ use smallvec::smallvec;
 
 use crate::rational::{Rational16, Rational32, Rational64, Rational8};
 use crate::rational::big::ops::{add_assign, add_assign_single, mul_assign_single, subtracting_cmp_ne, UnequalOrdering, subtracting_cmp_ne_single};
-use crate::rational::big::ops::building_blocks::{carrying_sub_mut};
+use crate::rational::big::ops::building_blocks::{carrying_sub_mut, shr_mut};
 use crate::rational::big::ops::div::{div_assign_one_word};
 use crate::rational::big::ops::normalize::{prepare_gcd_single, gcd_single, simplify_fraction_gcd};
 use crate::rational::big::ops::normalize::simplify_fraction_gcd_single;
@@ -13,6 +13,7 @@ use crate::sign::Sign;
 
 use super::Big;
 use std::cmp::Ordering;
+use num_traits::One;
 
 impl<const S: usize> Big<S> {
     #[inline]
@@ -22,17 +23,14 @@ impl<const S: usize> Big<S> {
         if rhs_denominator == self.denominator[0] && self.denominator.len() == 1 {
             add_assign_single(&mut self.numerator, rhs_numerator);
 
-            if self.denominator[0] != 1 && (self.numerator[0] != 1 || self.numerator.len() > 1) {
-                // let (mut right, left_to_shift, right_to_shift, zero_bits) = prepare_gcd_single_mut(&mut self.numerator, self.denominator[0]);
-                // let right_shifted = right >> right_to_shift;
-                // let other = shr(&self.numerator, 0, left_to_shift);
-                // let gcd = gcd_single(other, right, zero_bits);
-                //
-                // if gcd > 1 {
-                //
-                // }
+            // numerator can't be zero
 
-                self.denominator[0] = simplify_fraction_gcd_single(&mut self.numerator, self.denominator[0]);
+            if self.numerator[0] == self.denominator[0] && self.numerator.len() == 1 {
+                self.set_one();
+            } else {
+                if (self.numerator[0] != 1 || self.numerator.len() > 1) && (self.denominator[0] != 1) {
+                    self.denominator[0] = simplify_fraction_gcd_single(&mut self.numerator, self.denominator[0]);
+                }
             }
         } else {
             if rhs_denominator == 1 {
@@ -50,7 +48,11 @@ impl<const S: usize> Big<S> {
 
                 mul_assign_single(&mut self.numerator, rhs_denominator / gcd);
 
-                div_assign_one_word(&mut self.denominator, gcd);
+                shr_mut(&mut self.denominator, 0, bits);
+                if gcd >> bits != 1 {
+                    div_assign_one_word(&mut self.denominator, gcd >> bits);
+                }
+
                 let mut c_times = self.denominator.clone();
                 mul_assign_single(&mut c_times, rhs_numerator);
 
@@ -76,12 +78,21 @@ impl<const S: usize> Big<S> {
                         self.sign = !self.sign;
                         self.numerator[0] = rhs_numerator - self.numerator[0];
                     }
-                    Ordering::Equal => <Self as num_traits::Zero>::set_zero(self),
+                    Ordering::Equal => {
+                        self.sign = Sign::Zero;
+                        self.numerator.clear();
+                        self.denominator[0] = 1;
+                        return;
+                    },
                     Ordering::Greater => self.numerator[0] -= rhs_numerator,
                 }
 
-                if self.denominator[0] != 1 && self.numerator[0] != 1 {
-                    self.denominator[0] = simplify_fraction_gcd_single(&mut self.numerator, self.denominator[0]);
+                if self.numerator[0] == self.denominator[0] && self.numerator.len() == 1 {
+                    self.set_one();
+                } else {
+                    if (self.numerator[0] != 1 || self.numerator.len() > 1) && (self.denominator[0] != 1) {
+                        self.denominator[0] = simplify_fraction_gcd_single(&mut self.numerator, self.denominator[0]);
+                    }
                 }
             } else {
                 // result won't be negative
@@ -122,7 +133,10 @@ impl<const S: usize> Big<S> {
 
                 mul_assign_single(&mut self.numerator, rhs_denominator / gcd);
 
-                div_assign_one_word(&mut self.denominator, gcd);
+                shr_mut(&mut self.denominator, 0, bits);
+                if gcd >> bits > 1 {
+                    div_assign_one_word(&mut self.denominator, gcd >> bits);
+                }
                 let mut c_times = self.denominator.clone();
                 mul_assign_single(&mut c_times, rhs_numerator);
 
@@ -522,7 +536,7 @@ define_interations!(Rational64, rational64);
 #[cfg(test)]
 mod test {
 
-    use crate::{RB, R64, R32, R16, R8, RationalBig, Sign};
+    use crate::{RB, R64, R32, R16, R8, RationalBig, Sign, Abs};
     use smallvec::smallvec;
 
     #[test]
@@ -570,6 +584,22 @@ mod test {
 
         assert_eq!(RB!(0) + R8!(1, 2), RB!(1, 2));
         assert_eq!(RB!(0) - R8!(3, 4), RB!(-3, 4));
+        assert_eq!(RB!(-10, 4) + R8!(-10, 8), RB!(-15, 4));
+        assert_eq!(RB!(-10, 4) + R64!(1, 4), RB!(-9, 4));
+        assert_eq!(RB!(-10, 8) + R64!(-10, 9), RB!(-5 * 17, 3 * 3 * 2 * 2));
+        assert_eq!(RB!(-5, 4) + R64!(-5, 4), RB!(-5, 2));
+        assert_eq!(RB!(-7, 6) + R64!(-7, 6), RB!(-7, 3));
+
+        let limit = 10;
+        for a in -limit..limit {
+            for b in 1..limit {
+                for c in -limit..limit {
+                    for d in 1..limit {
+                        assert_eq!(RB!(a, b as u64) + R64!(c, d as u64), RB!(a * d + c * b, b as u64 * d as u64), "{} / {} - {} / {}", a, b, c, d);
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -581,5 +611,16 @@ mod test {
         assert_eq!(RB!(7, 11) * R16!(22, 7), RB!(2));
         assert_eq!(RB!(14, 33) * R32!(3, 2), RB!(7, 11));
         assert_eq!(RB!(4, 3) * R64!(0), RB!(0));
+
+        let limit = 10;
+        for a in -limit..limit {
+            for b in 1..limit {
+                for c in -limit..limit {
+                    for d in 1..limit {
+                        assert_eq!(RB!(a, b as u64) * R64!(c, d as u64), RB!(a * c, (b * d) as u64), "{} / {} * {} / {}", a, b, c, d);
+                    }
+                }
+            }
+        }
     }
 }
