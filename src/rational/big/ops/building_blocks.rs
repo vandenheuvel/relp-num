@@ -1,30 +1,38 @@
+use std::iter::repeat;
 use std::num::NonZeroUsize;
+use std::ptr;
 
 use smallvec::SmallVec;
 
 use crate::rational::big::ops::{BITS_PER_WORD, is_well_formed};
-use std::iter::repeat;
 
 #[inline]
-pub fn shr_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words_to_remove: usize, bits: u32) {
-    debug_assert_shr_constraints(values, words_to_remove, bits);
+pub fn shr_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, bits: u32) {
+    debug_assert_shr_constraints(values, words, bits);
 
     let original_number_words = values.len();
 
-    for i in 0..(original_number_words - words_to_remove - 1) {
-        values[i] = values[i + words_to_remove] >> bits;
-        values[i] |= values[i + words_to_remove + 1].wrapping_shl(BITS_PER_WORD - bits);
-    }
+    if bits > 0 {
+        for i in 0..(original_number_words - words - 1) {
+            values[i] = values[i + words] >> bits;
+            values[i] |= values[i + words + 1] << (BITS_PER_WORD - bits);
+        }
 
-    let last_shifted = values.last().unwrap() >> bits;
-    let words_to_keep = if last_shifted > 0 {
-        values[original_number_words - words_to_remove - 1] = last_shifted;
-        original_number_words - words_to_remove
+        let last_shifted = values.last().unwrap() >> bits;
+        let words_to_keep = if last_shifted > 0 {
+            values[original_number_words - words - 1] = last_shifted;
+            original_number_words - words
+        } else {
+            original_number_words - words - 1
+        };
+
+        values.truncate(words_to_keep);
     } else {
-        original_number_words - words_to_remove - 1
-    };
-
-    values.truncate(words_to_keep);
+        unsafe {
+            ptr::copy(values[words..].as_ptr(), values.as_mut_ptr(), words);
+            values.truncate(original_number_words - words);
+        }
+    }
 
     debug_assert!(is_well_formed(values) && !values.is_empty());
 }
@@ -346,9 +354,9 @@ mod test {
 
     use smallvec::smallvec;
 
-    use crate::rational::big::ops::building_blocks::{add_2, carrying_add_mut, mul, shl_mut_overflowing, shr, shr_mut, to_twos_complement, shl_mut, sub_n};
-    use crate::rational::big::ops::test::SV;
     use crate::rational::big::ops::BITS_PER_WORD;
+    use crate::rational::big::ops::building_blocks::{add_2, carrying_add_mut, mul, shl_mut, shl_mut_overflowing, shr, shr_mut, sub_n, to_twos_complement};
+    use crate::rational::big::ops::test::SV;
 
     #[test]
     fn test_shr() {
@@ -399,6 +407,11 @@ mod test {
         shr_mut(&mut x, 0, (mem::size_of::<usize>() * 8 - 1) as u32);
         let expected: SV = smallvec![2];
         assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 1 << (80 - 64)];
+        shr_mut(&mut x, 0, 0);
+        let expected: SV = smallvec![0, 1 << (80 - 64)];
+        assert_eq!(x, expected);
     }
 
     #[test]
@@ -448,6 +461,11 @@ mod test {
         let mut x: SV = smallvec![0, 0, 2_usize.pow((BITS_PER_WORD - 1) as u32)];
         shl_mut(&mut x, 2,1);
         let expected: SV = smallvec![0, 0, 0, 0, 0, 1];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 1 << (80 - 64)];
+        shl_mut(&mut x, 0, 0);
+        let expected: SV = smallvec![0, 1 << (80 - 64)];
         assert_eq!(x, expected);
     }
 

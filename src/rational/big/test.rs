@@ -1,7 +1,6 @@
-
+use crate::{NonZero, RB};
 use crate::rational::big::Big8;
 use crate::rational::Rational64;
-use crate::{RB, NonZero};
 use crate::RationalBig;
 
 #[test]

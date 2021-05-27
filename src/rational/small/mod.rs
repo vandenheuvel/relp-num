@@ -904,12 +904,13 @@ size_depedent_signed!(Rational128, u128, i128);
 
 #[cfg(test)]
 mod test {
+    use std::cmp::Ordering;
+
     use num_traits::{FromPrimitive, One, ToPrimitive, Zero};
 
     use crate::{NonZero, NonZeroSign, NonZeroSigned, Rational128};
     use crate::{R16, R32, R64, R8};
     use crate::rational::{Ratio, Rational16, Rational32, Rational64, Rational8, Sign};
-    use std::cmp::Ordering;
 
     #[test]
     fn test_new() {

@@ -2,15 +2,16 @@ use std::cmp::{min, Ordering};
 use std::iter::repeat;
 use std::mem;
 use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
+use std::str::FromStr;
 
 use num_traits;
 use smallvec::{smallvec, SmallVec};
 
 use crate::rational::big::Big;
-use crate::rational::big::ops::BITS_PER_WORD;
-use crate::rational::big::ops::normalize::gcd_scalar;
+use crate::rational::big::ops::{add_assign_single, BITS_PER_WORD, mul_assign_single};
+use crate::rational::big::ops::normalize::{gcd_scalar, simplify_fraction_without_info};
 use crate::rational::Ratio;
-use crate::rational::small::{simplify64, simplify32, simplify16, simplify8, simplify128};
+use crate::rational::small::{simplify128, simplify16, simplify32, simplify64, simplify8};
 use crate::sign::Sign;
 use crate::sign::Signed;
 
@@ -364,13 +365,109 @@ impl<const S: usize> Big<S> {
     }
 }
 
+impl<const S: usize> FromStr for Big<S> {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let radix = 10;
+
+        if s.contains(".") || s.contains(",") {
+            return Err("Decimal separators are not supported");
+        }
+
+        match s.len() {
+            0 => Err("Empty string"),
+            _ => {
+                let (sign, s) = match &s[..1] {
+                    "+" => (Sign::Positive, &s[1..]),
+                    "-" => (Sign::Negative, &s[1..]),
+                    _ => (Sign::Positive, &s[..]),
+                };
+
+                match s.find("/") {
+                    None => {
+                        let numerator = int_from_number(s, radix)?;
+
+                        if numerator.is_empty() {
+                            Ok(<Self as num_traits::Zero>::zero())
+                        } else {
+                            Ok(Big {
+                                sign,
+                                numerator,
+                                denominator: smallvec![1],
+                            })
+                        }
+                    }
+                    Some(index) => {
+                        // The number is a ratio between two others
+                        let (numerator_text, denominator_text) = (&s[..index], &s[(index + 1)..]);
+                        let mut numerator = int_from_number(numerator_text, radix)?;
+                        let mut denominator = int_from_number(denominator_text, radix)?;
+                        if denominator.is_empty() {
+                            return Err("Zero division");
+                        }
+
+                        if numerator.is_empty() {
+                            Ok(<Self as num_traits::Zero>::zero())
+                        } else {
+                            simplify_fraction_without_info(&mut numerator, &mut denominator);
+
+                            Ok(Big {
+                                sign,
+                                numerator,
+                                denominator,
+                            })
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn int_from_number<const S: usize>(s: &str, radix: u32) -> Result<SmallVec<[usize; S]>, &'static str> {
+    match s.len() {
+        0 => Err("Empty string"),
+        _ => {
+            let mut char_iterator = s.chars().skip_while(|&c| c == '0');
+            match char_iterator.next() {
+                None => Ok(smallvec![]),
+                Some(value) => {
+                    match value.to_digit(radix) {
+                        None => Err("Character is not a digit"),
+                        Some(value) => {
+                            let mut total = smallvec![value as usize];
+
+                            for character in char_iterator {
+                                match character.to_digit(radix) {
+                                    None => return Err("Character is not a digit"),
+                                    Some(value) => {
+                                        mul_assign_single(&mut total, radix as usize);
+                                        add_assign_single(&mut total, value as usize);
+                                    }
+                                }
+                            }
+
+                            Ok(total)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use crate::{Rational64, Sign, Abs, RationalBig};
-    use crate::rational::big::{Big8, Big};
-    use num_traits::{One};
-    use crate::rational::big::ops::BITS_PER_WORD;
+    use std::str::FromStr;
+
+    use num_traits::One;
     use smallvec::smallvec;
+
+    use crate::{Abs, Rational64, RationalBig, Sign};
+    use crate::rational::big::{Big, Big8};
+    use crate::rational::big::creation::int_from_number;
+    use crate::rational::big::ops::BITS_PER_WORD;
     use crate::RB;
 
     #[test]
@@ -500,5 +597,77 @@ mod test {
         assert_eq!(Big::from((22_i8, 2_u8)), RB!(11));
         assert_eq!(Big::from((-1_i16, 2_u16)), RB!(-1, 2));
         assert_eq!(Big::from((-1_i32, 1_i32)), RB!(-1));
+    }
+
+    #[test]
+    fn from_str() {
+        assert_eq!(Big::from_str("0"), Ok(RB!(0)));
+        assert_eq!(Big::from_str("0000000"), Ok(RB!(0)));
+        assert_eq!(Big::from_str("0/2"), Ok(RB!(0)));
+        assert_eq!(Big::from_str("-0/2"), Ok(RB!(0)));
+        assert_eq!(Big::from_str("-2"), Ok(RB!(-2)));
+        assert_eq!(Big8::from_str("-2a"), Err("Character is not a digit"));
+        assert_eq!(Big8::from_str("-2.1"), Err("Decimal separators are not supported"));
+        assert_eq!(Big8::from_str("-2.1/3"), Err("Decimal separators are not supported"));
+        assert_eq!(Big::from_str("-0"), Ok(RB!(0)));
+        assert_eq!(Big8::from_str("0/"), Err("Empty string"));
+        assert_eq!(Big8::from_str("0/0"), Err("Zero division"));
+        assert_eq!(Big8::from_str(""), Err("Empty string"));
+        assert_eq!(Big::from_str("1/2"), Ok(RB!(1, 2)));
+        assert_eq!(Big::from_str("-3/2"), Ok(RB!(-3, 2)));
+        assert_eq!(
+            Big8::from_str("27670116110564327425"),
+            Ok(Big {
+                sign: Sign::Positive,
+                numerator: smallvec![(1 << 63) + (1 << 0), 1],
+                denominator: smallvec![1],
+            }),
+        );
+        assert_eq!(
+            Big8::from_str("27670116110564327425/2"),
+            Ok(Big {
+                sign: Sign::Positive,
+                numerator: smallvec![(1 << 63) + (1 << 0), 1],
+                denominator: smallvec![2],
+            }),
+        );
+        assert_eq!(
+            Big8::from_str("27670116110564327425/27670116110564327425"),
+            Ok(Big {
+                sign: Sign::Positive,
+                numerator: smallvec![1],
+                denominator: smallvec![1],
+            }),
+        );
+        assert_eq!(
+            Big8::from_str("18446744073709551616/2"),
+            Ok(Big {
+                sign: Sign::Positive,
+                numerator: smallvec![1 << 63],
+                denominator: smallvec![1],
+            }),
+        );
+        assert_eq!(
+            Big8::from_str("-36893488147419103232"),
+            Ok(Big {
+                sign: Sign::Negative,
+                numerator: smallvec![0, 2],
+                denominator: smallvec![1],
+            }),
+        );
+
+        assert_eq!(int_from_number::<8>("36893488147419103232", 10), Ok(smallvec![0, 1 << 1]));
+        assert_eq!(int_from_number::<8>("18889465931478580854784", 10), Ok(smallvec![0, 1 << 10]));
+        assert_eq!(int_from_number::<8>("19342813113834066795298816", 10), Ok(smallvec![0, 1 << 20]));
+        assert_eq!(int_from_number::<8>("1208925819614629174706176", 10), Ok(smallvec![0, 1 << (80 - 64)]));
+
+        assert_eq!(
+            Big8::from_str("-1208925819614629174706176/10301051460877537453973547267843"),
+            Ok(Big {
+                sign: Sign::Negative,
+                numerator: smallvec![0, 1 << (80 - 64)],
+                denominator: smallvec![0x6b9676a56c7c3703, 0x82047e0eae],
+            }),
+        );
     }
 }

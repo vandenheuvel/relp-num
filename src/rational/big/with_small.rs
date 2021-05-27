@@ -1,19 +1,19 @@
 //! # Interactions with fixed size ratios
-use std::ops::{Add, AddAssign, Sub, SubAssign, Div, Mul};
+use std::cmp::Ordering;
+use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
 
+use num_traits::One;
 use smallvec::smallvec;
 
 use crate::rational::{Rational16, Rational32, Rational64, Rational8};
-use crate::rational::big::ops::{add_assign, add_assign_single, mul_assign_single, subtracting_cmp_ne, UnequalOrdering, subtracting_cmp_ne_single};
+use crate::rational::big::ops::{add_assign, add_assign_single, mul_assign_single, subtracting_cmp_ne, subtracting_cmp_ne_single, UnequalOrdering};
 use crate::rational::big::ops::building_blocks::{carrying_sub_mut, shr_mut};
-use crate::rational::big::ops::div::{div_assign_one_word};
-use crate::rational::big::ops::normalize::{prepare_gcd_single, gcd_single, simplify_fraction_gcd};
+use crate::rational::big::ops::div::div_assign_one_word;
+use crate::rational::big::ops::normalize::{gcd_single, prepare_gcd_single, simplify_fraction_gcd};
 use crate::rational::big::ops::normalize::simplify_fraction_gcd_single;
 use crate::sign::Sign;
 
 use super::Big;
-use std::cmp::Ordering;
-use num_traits::One;
 
 impl<const S: usize> Big<S> {
     #[inline]
@@ -537,9 +537,9 @@ define_interations!(Rational64, rational64);
 
 #[cfg(test)]
 mod test {
-
-    use crate::{RB, R64, R32, R16, R8, RationalBig, Sign};
     use smallvec::smallvec;
+
+    use crate::{R16, R32, R64, R8, RationalBig, RB, Sign};
 
     #[test]
     fn test_eq() {

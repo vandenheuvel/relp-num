@@ -3,6 +3,7 @@
 //! A number type that is either zero or one.
 use std::fmt;
 use std::ops::{Add, AddAssign, Mul};
+
 use crate::NonZero;
 
 /// # Binary

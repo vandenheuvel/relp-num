@@ -1,15 +1,16 @@
 use std::cmp::Ordering;
+use std::iter::repeat;
 use std::iter::Sum;
 use std::mem;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-use num_traits::{Zero, One};
+use num_traits::{One, Zero};
 use smallvec::SmallVec;
 
 use crate::rational::big::Big;
 use crate::rational::big::ops::building_blocks::{addmul_1, carrying_add_mut, carrying_sub, carrying_sub_mut, mul_1, sub_assign_slice, sub_n, to_twos_complement};
 use crate::rational::big::ops::div::{div as div_by_odd_or_even, div_assign_by_odd};
-use crate::rational::big::ops::normalize::{gcd, simplify_fraction_gcd, simplify_fraction_without_info, remove_shared_two_factors_mut};
+use crate::rational::big::ops::normalize::{gcd, remove_shared_two_factors_mut, simplify_fraction_gcd, simplify_fraction_without_info};
 use crate::sign::Sign;
 
 pub mod building_blocks;
@@ -641,7 +642,7 @@ pub fn add_assign<const S: usize>(
         values.push(1)
     }
 }
-use std::iter::repeat;
+
 #[inline]
 fn sub<const S: usize>(
     values: &SmallVec<[usize; S]>,
@@ -870,9 +871,9 @@ fn is_well_formed<const S: usize>(values: &SmallVec<[usize; S]>) -> bool {
 mod test {
     use smallvec::{smallvec, SmallVec};
 
-    use crate::rational::big::ops::{add_assign, is_well_formed, mul, mul_assign_single, sub_assign_result_positive, sub};
     use crate::{RB, Sign};
     use crate::rational::big::Big8;
+    use crate::rational::big::ops::{add_assign, is_well_formed, mul, mul_assign_single, sub, sub_assign_result_positive};
 
     pub type SV = SmallVec<[usize; 8]>;
 

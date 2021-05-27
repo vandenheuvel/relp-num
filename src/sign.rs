@@ -142,7 +142,7 @@ impl fmt::Display for Sign {
 
 #[cfg(test)]
 mod test {
-    use crate::{Sign, Signed, NonZeroSign};
+    use crate::{NonZeroSign, Sign, Signed};
 
     #[test]
     fn test_integer() {

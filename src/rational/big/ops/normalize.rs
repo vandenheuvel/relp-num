@@ -1,11 +1,11 @@
 use std::cmp::{min, Ordering};
 use std::mem;
 
-use smallvec::{SmallVec};
+use smallvec::SmallVec;
 
-use crate::rational::big::ops::{cmp, is_well_formed, sub, sub_assign_result_positive, sub_assign_single_result_positive};
-use crate::rational::big::ops::building_blocks::{shr, shr_mut, shl_mut};
-use crate::rational::big::ops::div::{div_assign_double, div_assign_one_word, div_assign_by_odd};
+use crate::rational::big::ops::{BITS_PER_WORD, cmp, is_well_formed, sub, sub_assign_result_positive, sub_assign_single_result_positive};
+use crate::rational::big::ops::building_blocks::{shl_mut, shr, shr_mut};
+use crate::rational::big::ops::div::{div_assign_by_odd, div_assign_double, div_assign_one_word};
 
 #[inline]
 pub fn gcd<const S: usize>(left: &SmallVec<[usize; S]>, right: &SmallVec<[usize; S]>) -> SmallVec<[usize; S]> {
@@ -184,35 +184,58 @@ pub fn simplify_fraction_gcd<const S: usize>(left: &mut SmallVec<[usize; S]>, ri
     debug_assert_ne!(right, left);
 
     let which_odd = remove_shared_two_factors_mut(left, right);
-    let start_values = match which_odd {
+    let (start_left, start_right) = match which_odd {
         WhichOdd::Left(words_to_shift, bits_to_shift) => {
-            prepare_side(left, right, words_to_shift, bits_to_shift)
+            match prepare_side(left, right, words_to_shift, bits_to_shift) {
+                PreparationResult::StartValues(values) => values,
+                PreparationResult::EqualAfterShift => {
+                    left.truncate(1);
+                    left[0] = 1;
+                    right.truncate(words_to_shift + 1);
+                    for i in 0..words_to_shift {
+                        right[i] = 0;
+                    }
+                    right[words_to_shift] = 1 << bits_to_shift;
+                    return;
+                }
+            }
         }
         WhichOdd::Right(words_to_shift, bits_to_shift) => {
-            prepare_side(right, left, words_to_shift, bits_to_shift)
+            match prepare_side(right, left, words_to_shift, bits_to_shift) {
+                PreparationResult::StartValues(values) => values,
+                PreparationResult::EqualAfterShift => {
+                    right.truncate(1);
+                    right[0] = 1;
+                    // TODO(PERFORMANCE): Reuse allocation?
+                    left.truncate(words_to_shift + 1);
+                    for i in 0..words_to_shift {
+                        left[i] = 0;
+                    }
+                    left[words_to_shift] = 1 << bits_to_shift;
+                    return;
+                }
+            }
         }
-        WhichOdd::Both => Some((left.clone(), right.clone())),
+        WhichOdd::Both =>(left.clone(), right.clone()),
     };
 
-    if let Some((start_left, start_right)) = start_values {
-        if !(start_left[0] == 1 && start_left.len() == 1) && !(start_right[0] == 1 && start_right.len() == 1) {
-            let gcd = binary_gcd(start_left, start_right);
-            debug_assert!(is_well_formed(&gcd));
-            debug_assert!(!gcd.is_empty());
-            debug_assert_eq!(gcd[0] % 2, 1);
+    if !(start_left[0] == 1 && start_left.len() == 1) && !(start_right[0] == 1 && start_right.len() == 1) {
+        let gcd = binary_gcd(start_left, start_right);
+        debug_assert!(is_well_formed(&gcd));
+        debug_assert!(!gcd.is_empty());
+        debug_assert_eq!(gcd[0] % 2, 1);
 
-            if gcd[0] != 1 || gcd.len() > 1 {
-                match (cmp(left, &gcd), cmp(right, &gcd)) {
-                    (Ordering::Equal, _) => {
-                        left[0] = 1; left.truncate(1);
-                        div_assign_by_odd(right, &gcd);
-                    }
-                    (_, Ordering::Equal) => {
-                        div_assign_by_odd(left, &gcd);
-                        right[0] = 1; right.truncate(1);
-                    }
-                    (_, _) => div_assign_double(left, right, gcd),
+        if gcd[0] != 1 || gcd.len() > 1 {
+            match (cmp(left, &gcd), cmp(right, &gcd)) {
+                (Ordering::Equal, _) => {
+                    left[0] = 1; left.truncate(1);
+                    div_assign_by_odd(right, &gcd);
                 }
+                (_, Ordering::Equal) => {
+                    div_assign_by_odd(left, &gcd);
+                    right[0] = 1; right.truncate(1);
+                }
+                (_, _) => div_assign_double(left, right, gcd),
             }
         }
     }
@@ -228,9 +251,26 @@ pub fn remove_shared_two_factors_mut<const S: usize>(left: &mut SmallVec<[usize;
     shr_mut(right, zero_words, zero_bits);
 
     match (left_zero_words, left_zero_bits).cmp(&(right_zero_words, right_zero_bits)) {
-        Ordering::Less => WhichOdd::Left(right_zero_words - left_zero_words, right_zero_bits - left_zero_bits),
+        Ordering::Less => {
+            let (words, bits) = shift_difference(right_zero_words, right_zero_bits, left_zero_words, left_zero_bits);
+            WhichOdd::Left(words, bits)
+        },
         Ordering::Equal => WhichOdd::Both,
-        Ordering::Greater => WhichOdd::Right(left_zero_words - right_zero_words, left_zero_bits - right_zero_bits),
+        Ordering::Greater => {
+            let (words, bits) = shift_difference(left_zero_words, left_zero_bits, right_zero_words, right_zero_bits);
+            WhichOdd::Right(words, bits)
+        },
+    }
+}
+
+fn shift_difference(left_words: usize, left_bits: u32, right_words: usize, right_bits: u32) -> (usize, u32) {
+    debug_assert!(left_words >= right_words);
+
+    if left_bits >= right_bits {
+        (left_words - right_words, left_bits - right_bits)
+    } else {
+        debug_assert!(left_words > right_words);
+        (left_words - right_words - 1, BITS_PER_WORD + left_bits - right_bits)
     }
 }
 
@@ -243,9 +283,9 @@ pub enum WhichOdd {
 
 #[inline]
 fn prepare_side<const S: usize>(
-    already_odd: &mut SmallVec<[usize; S]>,
-    even: &mut SmallVec<[usize; S]>, words_to_shift: usize, bits_to_shift: u32,
-) -> Option<(SmallVec<[usize; S]>, SmallVec<[usize; S]>)> {
+    already_odd: &SmallVec<[usize; S]>,
+    even: &SmallVec<[usize; S]>, words_to_shift: usize, bits_to_shift: u32,
+) -> PreparationResult<S> {
     let oddified = shr(even, words_to_shift, bits_to_shift);
     let mut other = match cmp(already_odd, &oddified) {
         Ordering::Less => {
@@ -256,16 +296,7 @@ fn prepare_side<const S: usize>(
         }
         Ordering::Equal => {
             // even = already_odd * 2 ** k with k = words_to_shift * BITS_PER_WORD + bits_to_shift
-            already_odd.truncate(1);
-            already_odd[0] = 1;
-            // TODO(PERFORMANCE): Reuse allocation?
-            even.truncate(words_to_shift + 1);
-            for i in 0..words_to_shift {
-                even[i] = 0;
-            }
-            even[words_to_shift] = 1 << bits_to_shift;
-
-            return None;
+            return PreparationResult::EqualAfterShift;
         }
         Ordering::Greater => {
             // even_right is smallest, subtract it from left
@@ -280,7 +311,12 @@ fn prepare_side<const S: usize>(
     shr_mut(&mut other, zero_words, zero_bits);
 
     // now both `other` and `oddified` are odd, it is unknown which one is larger
-    Some((other, oddified))
+    PreparationResult::StartValues((other, oddified))
+}
+
+enum PreparationResult<const S: usize> {
+    StartValues((SmallVec<[usize; S]>, SmallVec<[usize; S]>)),
+    EqualAfterShift,
 }
 
 #[inline]
@@ -372,7 +408,9 @@ pub unsafe fn trailing_zeros<const S: usize>(values: &SmallVec<[usize; S]>) -> (
 mod test {
     use smallvec::smallvec;
 
-    use crate::rational::big::ops::normalize::{binary_gcd, trailing_zeros, gcd_scalar, simplify_fraction_gcd_single, gcd_single, simplify_fraction_gcd, remove_shared_two_factors_mut, WhichOdd};
+    use crate::rational::big::creation::int_from_number;
+    use crate::rational::big::ops::gcd;
+    use crate::rational::big::ops::normalize::{binary_gcd, gcd_scalar, gcd_single, remove_shared_two_factors_mut, simplify_fraction_gcd, simplify_fraction_gcd_single, simplify_fraction_without_info, trailing_zeros, WhichOdd};
     use crate::rational::big::ops::test::SV;
 
     #[test]
@@ -407,7 +445,7 @@ mod test {
         let expected: SV = smallvec![1, 1];
         assert_eq!(binary_gcd(x, y), expected);
     }
-    use crate::rational::big::ops::gcd;
+
     #[test]
     fn test_gcd() {
         let x: SV = smallvec![6];
@@ -439,6 +477,18 @@ mod test {
         assert_eq!(simplify_fraction_gcd_single(&mut x, 141), 47);
         let expected: SV = smallvec![330];
         assert_eq!(x, expected);
+    }
+
+    #[test]
+    fn test_simplify_without_info() {
+        let x = int_from_number::<8>("1208925819614629174706176", 10).unwrap();
+        let y = int_from_number::<8>("10301051460877537453973547267843", 10).unwrap();
+
+        let mut xx = x.clone();
+        let mut yy = y.clone();
+        simplify_fraction_without_info(&mut xx, &mut yy);
+        assert_eq!(xx, x);
+        assert_eq!(yy, y);
     }
 
     #[test]

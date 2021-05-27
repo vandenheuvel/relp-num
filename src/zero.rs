@@ -1,12 +1,13 @@
 //! # Zero
 //!
 //! A type that is always zero.
+use std::cmp::Ordering;
+use std::fmt;
 use std::ops::{Add, AddAssign, Mul, Neg};
 
 use num_traits;
-use std::fmt;
-use std::cmp::Ordering;
-use crate::{Signed, Sign};
+
+use crate::{Sign, Signed};
 
 /// # Zero
 ///
@@ -164,7 +165,7 @@ define_ops!(u128);
 
 #[cfg(test)]
 mod test {
-    use crate::{Zero, Abs, Signed, Sign};
+    use crate::{Abs, Sign, Signed, Zero};
 
     #[test]
     fn test() {
