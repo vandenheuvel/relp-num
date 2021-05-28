@@ -1,7 +1,8 @@
 use crate::{NonZero, RB};
-use crate::rational::big::Big8;
+use crate::rational::big::{Big8};
 use crate::rational::Rational64;
 use crate::RationalBig;
+use std::str::FromStr;
 
 #[test]
 fn eq() {
@@ -97,10 +98,91 @@ fn add() {
     let y = Rational64::new(2, 2);
     x += &y;
     assert_eq!(x, Big8::new(3, 1));
+
+    let mut x = Big8::from_str("68498984987984986896468746354684684684968/68468465468464168545346854646").unwrap();
+    let y = Big8::from_str("9876519684989849849849847").unwrap();
+    let expected = Big8::from_str("676230147000402641135208532975102322580080121519024130/68468465468464168545346854646").unwrap();
+    x += y;
+    assert_eq!(x, expected);
+
+    let x = Big8::from_str("68498984987984986896468746354684684684968/68468465468464168545346854646").unwrap();
+    let y = Big8::from_str("9876519684989849849849847").unwrap();
+    let expected = Big8::from_str("676230147000402641135208532975102322580080121519024130/68468465468464168545346854646").unwrap();
+    let z = x + y;
+    assert_eq!(z, expected);
+
+    let x = Big8::from_str("68498984987984986896468746354684684684968/68468465468464168545346854646").unwrap();
+    let y = Big8::from_str("9876519684989849849849847/3").unwrap();
+    let z = Big8::from_str("676230147000539639105184502948895260072789490888394066/205405396405392505636040563938").unwrap();
+    assert_eq!(x + y, z);
 }
 
 #[test]
-fn mul() {
+fn test_sub() {
+    // with Self
+    let x = Big8::new(1, 1);
+    let y = Big8::new(2, 2);
+    assert_eq!(x - y, Big8::new(0, 1));
+
+    let x = Big8::new(2, 1);
+    let y = Big8::new(2, 2);
+    assert_eq!(x - &y, Big8::new(1, 1));
+
+    let x = Big8::new(-1, 1);
+    let y = Big8::new(-2, 2);
+    assert_eq!(x - y, Big8::new(0, 1));
+
+    let x = Big8::new(0, 1);
+    let y = &Big8::new(-0, 2);
+    assert_eq!(x - y, Big8::new(0, 1));
+
+    // with Rational64
+    let mut x = Big8::new(1, 1);
+    let y = Big8::new(2, 2);
+    x -= y;
+    assert_eq!(x, Big8::new(0, 1));
+
+    let mut x = Big8::new(2, 1);
+    let y = Big8::new(2, 2);
+    x -= &y;
+    assert_eq!(x, Big8::new(1, 1));
+
+    let mut x = Big8::new(1, 1);
+    let y = Rational64::new(2, 2);
+    x -= y;
+    assert_eq!(x, Big8::new(0, 1));
+
+    let mut x = Big8::new(2, 1);
+    let y = Rational64::new(2, 2);
+    x -= &y;
+    assert_eq!(x, Big8::new(1, 1));
+
+    let mut x = Big8::from_str("68498984987984986896468746354684684684968/68468465468464168545346854646").unwrap();
+    let y = Big8::from_str("9876519684989849849849847").unwrap();
+    let expected = Big8::from_str("-676230147000265643165232563001309385087370752149654194/68468465468464168545346854646").unwrap();
+    x -= y;
+    assert_eq!(x, expected);
+
+    let x = Big8::from_str("68498984987984986896468746354684684684968/68468465468464168545346854646").unwrap();
+    let y = Big8::from_str("9876519684989849849849847").unwrap();
+    let expected = Big8::from_str("-676230147000265643165232563001309385087370752149654194/68468465468464168545346854646").unwrap();
+    let z = x - y;
+    assert_eq!(z, expected);
+
+    let x = Big8::from_str("68498984987984986896468746354684684684968/68468465468464168545346854646").unwrap();
+    let y = Big8::from_str("9876519684989849849849847").unwrap();
+    let expected = Big8::from_str("676230147000265643165232563001309385087370752149654194/68468465468464168545346854646").unwrap();
+    let z = y - x;
+    assert_eq!(z, expected);
+
+    let x = Big8::from_str("68498984987984986896468746354684684684968/68468465468464168545346854646").unwrap();
+    let y = Big8::from_str("9876519684989849849849847/3").unwrap();
+    let z = Big8::from_str("-676230147000128645195256593027516447594661382780284258/205405396405392505636040563938").unwrap();
+    assert_eq!(x - y, z);
+}
+
+#[test]
+fn test_mul() {
     let x = Big8::new(1, 2);
     let y = Big8::new(3, 4);
     assert_eq!(x * y, Big8::new(3, 8));

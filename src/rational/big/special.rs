@@ -252,6 +252,8 @@ mod field {
 mod test {
     use crate::One;
     use crate::RB;
+    use crate::rational::big::Big8;
+    use std::str::FromStr;
 
     #[test]
     fn test_one() {
@@ -262,5 +264,17 @@ mod test {
         assert_eq!(RB!(1) - One, RB!(0));
         assert_eq!(RB!(1, 2) - One, RB!(-1, 2));
         assert_eq!(RB!(1, 2) + One, RB!(3, 2));
+
+        let x = Big8::from_str("68498984987984986896468746354684684684968/68468465468464168545346854646").unwrap();
+        let expected = Big8::from_str("68498984988053455361937210523230031539614/68468465468464168545346854646").unwrap();
+        assert_eq!(x + One, expected);
+
+        let x = Big8::from_str("68468465468464168545346854645/68468465468464168545346854646").unwrap();
+        let expected = Big8::from_str("-1/68468465468464168545346854646").unwrap();
+        assert_eq!(x - One, expected);
+
+        let x = Big8::from_str("-6868468468468465168186546846416565994998987468465468464168545346854644/6868468468468465168186546846416565994998987468465468464168545346854645").unwrap();
+        let expected = Big8::from_str("1/6868468468468465168186546846416565994998987468465468464168545346854645").unwrap();
+        assert_eq!(x + One, expected);
     }
 }

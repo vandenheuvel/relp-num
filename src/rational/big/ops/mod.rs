@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::cmp::{Ordering, min};
 use std::iter::repeat;
 use std::iter::Sum;
 use std::mem;
@@ -172,9 +172,15 @@ impl<const S: usize> Big<S> {
                 self.numerator = mul(&self.numerator, &rhs.denominator);
                 add_assign(&mut self.numerator, &rhs.numerator);
                 self.denominator = rhs.denominator.clone();
+                if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                    simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
+                }
             } else if rhs.denominator[0] == 1 && rhs.denominator.len() == 1 { // denominator == 1
                 let numerator = mul(&rhs.numerator, &self.denominator);
                 add_assign(&mut self.numerator, &numerator);
+                if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                    simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
+                }
             } else {
                 // Neither denominator is 1
                 let mut gcd = gcd(&self.denominator, &rhs.denominator);
@@ -239,11 +245,17 @@ impl<const S: usize> Big<S> {
                     self.sign = !self.sign;
                 }
                 self.denominator = rhs.denominator.clone();
+                if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                    simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
+                }
             } else if rhs.denominator[0] == 1 && rhs.denominator.len() == 1 { // denominator == 1
                 let numerator = mul(&rhs.numerator, &self.denominator);
 
                 if subtracting_cmp_ne(&mut self.numerator, &numerator) == UnequalOrdering::Less {
                     self.sign = !self.sign;
+                }
+                if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                    simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                 }
             } else {
                 // Neither denominator is 1
@@ -616,26 +628,25 @@ pub fn add_assign<const S: usize>(
     debug_assert!(is_well_formed(values));
     debug_assert!(is_well_formed(rhs));
 
-    let mut left_index = 0;
-    let mut right_index = 0;
+    let mut i = 0;
 
     let mut carry = false;
-    while left_index < values.len() && right_index < rhs.len() {
-        carry = carrying_add_mut(&mut values[left_index], rhs[right_index], carry);
-        left_index += 1; right_index += 1;
+    while i < values.len() && i < rhs.len() {
+        carry = carrying_add_mut(&mut values[i], rhs[i], carry);
+        i += 1;
     }
 
-    while carry && right_index < rhs.len() {
-        let (new_value, new_carry) = rhs[right_index].overflowing_add(carry as usize);
+    while carry && i < rhs.len() {
+        let (new_value, new_carry) = rhs[i].overflowing_add(carry as usize);
         values.push(new_value);
         carry = new_carry;
-        right_index += 1;
+        i += 1;
     }
 
     // TODO(PERFORMANCE): Check that this separate loop is worth it
-    while right_index < rhs.len() {
-        values.push(rhs[right_index]);
-        right_index += 1;
+    while i < rhs.len() {
+        values.push(rhs[i]);
+        i += 1;
     }
 
     if carry {
@@ -680,24 +691,26 @@ fn sub<const S: usize>(
     result
 }
 
+/// Subassign from a value.
+///
+/// # Arguments
+///
+/// * `values`: is larger than `rhs` but might have the most significant word(s) already removed, if
+/// they were equal to `rhs`. It is as such not necessarily well formed and can't be easily compared
+/// to `rhs`.
+/// * `rhs`: value to subtract.
 #[inline]
-fn sub_assign_result_positive<const S: usize>(
+unsafe fn sub_assign_result_positive<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
     rhs: &SmallVec<[usize; S]>,
 ) {
-    debug_assert!(is_well_formed(values));
-    debug_assert_eq!(cmp(values, rhs), Ordering::Greater);
-
-    let mut carry = unsafe { // Value is larger and as such still valid after subtraction
-        sub_assign_slice(&mut values[..rhs.len()], rhs)
-    };
-
-    debug_assert!(is_well_formed(values));
+    let smallest = min(values.len(), rhs.len());
+    let mut carry = sub_assign_slice(&mut values[..smallest], &rhs[..smallest]);
 
     let mut index = 0;
     while carry {
         debug_assert!(values.len() > rhs.len());
-        carry = carrying_sub_mut(&mut values[rhs.len() + index], 0, carry);
+        carry = carrying_sub_mut(&mut values[rhs.len() + index], 0, true);
         index += 1;
     }
 
@@ -860,7 +873,7 @@ impl<const S: usize> Neg for &Big<S> {
 }
 
 #[inline]
-fn is_well_formed<const S: usize>(values: &SmallVec<[usize; S]>) -> bool {
+pub fn is_well_formed<const S: usize>(values: &SmallVec<[usize; S]>) -> bool {
     match values.last() {
         None => true,
         Some(&value) => value != 0,
@@ -873,7 +886,8 @@ mod test {
 
     use crate::{RB, Sign};
     use crate::rational::big::Big8;
-    use crate::rational::big::ops::{add_assign, is_well_formed, mul, mul_assign_single, sub, sub_assign_result_positive};
+    use crate::rational::big::ops::{add_assign, is_well_formed, mul, mul_assign_single, sub, sub_assign_result_positive, add_assign_single};
+    use crate::rational::big::creation::int_from_str;
 
     pub type SV = SmallVec<[usize; 8]>;
 
@@ -1217,6 +1231,30 @@ mod test {
         add_assign(&mut x, &y);
         let expected: SV = smallvec![0, 0, 0, 2];
         assert_eq!(x, expected);
+
+        let mut x = int_from_str::<3>("68498984987984986896468746354684684684968", 10).unwrap();
+        let y = int_from_str::<3>("676230147000334142150220547988205853833725436834339162", 10).unwrap();
+        add_assign(&mut x, &y);
+        let expected = int_from_str::<3>("676230147000402641135208532975102322580080121519024130", 10).unwrap();
+        assert_eq!(x, expected);
+
+        let mut x = int_from_str::<3>("68498984987984986896468746354684684684968", 10).unwrap();
+        let y = int_from_str::<3>("676230147000334142150220547988205853833725436834339162", 10).unwrap();
+        add_assign(&mut x, &y);
+        let expected = int_from_str::<3>("676230147000402641135208532975102322580080121519024130", 10).unwrap();
+        assert_eq!(x, expected);
+
+        let mut x = int_from_str::<3>("13282457576090002999724080439382126039670578699984818946692017256202044898307", 10).unwrap();
+        let y = int_from_str::<3>("52138404881359597776641425341642690746162654701917220048397413248229209595444", 10).unwrap();
+        add_assign(&mut x, &y);
+        let expected = int_from_str::<3>("65420862457449600776365505781024816785833233401902038995089430504431254493751", 10).unwrap();
+        assert_eq!(x, expected);
+
+        let mut x = int_from_str::<3>("92599469589222131768757076514696607382155504523751371565834361998764652118557", 10).unwrap();
+        let y = int_from_str::<3>("80627506337117343961599775375716501347124738605551411762759133617725727360716", 10).unwrap();
+        add_assign(&mut x, &y);
+        let expected = int_from_str::<3>("173226975926339475730356851890413108729280243129302783328593495616490379479273", 10).unwrap();
+        assert_eq!(x, expected);
     }
 
     #[test]
@@ -1224,36 +1262,60 @@ mod test {
         // Same length, no overflow
         let mut x: SV = smallvec![2];
         let y: SV = smallvec![1];
-        sub_assign_result_positive(&mut x, &y);
+        unsafe { sub_assign_result_positive(&mut x, &y); }
         let expected: SV = smallvec![1];
         assert_eq!(x, expected);
 
         // First longer, overflow
         let mut x: SV = smallvec![0, 0, 1];
         let y: SV = smallvec![1];
-        sub_assign_result_positive(&mut x, &y);
+        unsafe { sub_assign_result_positive(&mut x, &y); }
         let expected: SV = smallvec![usize::MAX, usize::MAX];
         assert_eq!(x, expected);
 
         // First longer, overflow
         let mut x: SV = smallvec![0, 1, 1];
         let y: SV = smallvec![1, 1];
-        sub_assign_result_positive(&mut x, &y);
+        unsafe { sub_assign_result_positive(&mut x, &y); }
         let expected: SV = smallvec![usize::MAX, usize::MAX];
         assert_eq!(x, expected);
 
         // First longer
         let mut x: SV = smallvec![0, 2];
         let y: SV = smallvec![1];
-        sub_assign_result_positive(&mut x, &y);
+        unsafe { sub_assign_result_positive(&mut x, &y); }
         let expected: SV = smallvec![usize::MAX, 1];
         assert_eq!(x, expected);
 
         // First longer
         let mut x: SV = smallvec![0, 1];
         let y: SV = smallvec![usize::MAX];
-        sub_assign_result_positive(&mut x, &y);
+        unsafe { sub_assign_result_positive(&mut x, &y); }
         let expected: SV = smallvec![1];
+        assert_eq!(x, expected);
+
+        let mut x = int_from_str::<3>("676230147000334142150220547988205853833725436834339162", 10).unwrap();
+        let y = int_from_str::<3>("68498984987984986896468746354684684684968", 10).unwrap();
+        unsafe { sub_assign_result_positive(&mut x, &y); }
+        let expected = int_from_str::<3>("676230147000265643165232563001309385087370752149654194", 10).unwrap();
+        assert_eq!(x, expected);
+
+        let mut x = int_from_str::<3>("676230147000334142150220547988205853833725436834339162", 10).unwrap();
+        let y = int_from_str::<3>("68498984987984986896468746354684684684968", 10).unwrap();
+        unsafe { sub_assign_result_positive(&mut x, &y); }
+        let expected = int_from_str::<3>("676230147000265643165232563001309385087370752149654194", 10).unwrap();
+        assert_eq!(x, expected);
+
+        let mut x = int_from_str::<3>("52138404881359597776641425341642690746162654701917220048397413248229209595444", 10).unwrap();
+        let y = int_from_str::<3>("13282457576090002999724080439382126039670578699984818946692017256202044898307", 10).unwrap();
+        unsafe { sub_assign_result_positive(&mut x, &y); }
+        let expected = int_from_str::<3>("38855947305269594776917344902260564706492076001932401101705395992027164697137", 10).unwrap();
+        assert_eq!(x, expected);
+
+        let mut x = int_from_str::<3>("92599469589222131768757076514696607382155504523751371565834361998764652118557", 10).unwrap();
+        let y = int_from_str::<3>("80627506337117343961599775375716501347124738605551411762759133617725727360716", 10).unwrap();
+        unsafe { sub_assign_result_positive(&mut x, &y); }
+        let expected = int_from_str::<3>("11971963252104787807157301138980106035030765918199959803075228381038924757841", 10).unwrap();
         assert_eq!(x, expected);
     }
 
@@ -1303,6 +1365,48 @@ mod test {
         let expected: SV = smallvec![1, 2, 2, 1];
         assert_eq!(z, expected);
 
+        let x: SV = smallvec![616865135358];
+        let y: SV = smallvec![318864];
+        let z = mul(&x, &y);
+        let expected: SV = smallvec![196696084520793312];
+        assert_eq!(z, expected);
+
+        let x: SV = smallvec![6168651349984645358];
+        let y: SV = smallvec![31884648664];
+        let z = mul(&x, &y);
+        let expected: SV = smallvec![2946066457054546128, 10662330449];
+        assert_eq!(z, expected);
+
+        let x: SV = int_from_str("68468468498498987982211", 10).unwrap();
+        let y: SV = int_from_str("6546845498498498766994984941", 10).unwrap();
+        let z = mul(&x, &y);
+        let expected: SV = int_from_str("448252484778484366353430902886798387597665920884551", 10).unwrap();
+        assert_eq!(z, expected);
+
+        let x: SV = int_from_str("6846846598498849754611315531318498498987982211", 10).unwrap();
+        let y: SV = int_from_str("65468454984984984989846544418766994984941", 10).unwrap();
+        let z = mul(&x, &y);
+        let expected: SV = int_from_str("448252468322919508262853593995316625918253404600786790378945516838911366717665920884551", 10).unwrap();
+        assert_eq!(z, expected);
+
+        let x: SV = int_from_str("68468465984988497546416161698149845311616811315531318498498987982211", 10).unwrap();
+        let y: SV = int_from_str("654684549849849849898465444187669985648546168541168443544984941", 10).unwrap();
+        let z = mul(&x, &y);
+        let expected: SV = int_from_str("44825246832291950826483732998274014934302316363445684381827995526563290241044825692328446158571230923548759376413518121517970884551", 10).unwrap();
+        assert_eq!(z, expected);
+
+        let x: SV = int_from_str("684684659849886161698149845311616811315531318498498987982211", 10).unwrap();
+        let y: SV = int_from_str("654684549849849865444187669985648546168541168443544984941", 10).unwrap();
+        let z = mul(&x, &y);
+        let expected: SV = int_from_str("448252468322920295517819464130433697009775835506250832016384806318621662991558571230923548759376413518121517970884551", 10).unwrap();
+        assert_eq!(z, expected);
+
+        let x: SV = int_from_str("1237940039285380274899124191", 10).unwrap();
+        let y: SV = int_from_str("2475880078570760549798248403", 10).unwrap();
+        let z = mul(&x, &y);
+        let expected: SV = int_from_str("3064991081731777716716693916889274006560267730564416973", 10).unwrap();
+        assert_eq!(z, expected);
+
         let mut x: SV = smallvec![
             0x7146b08a5e154,
             0xec91987b2f52425e,
@@ -1327,6 +1431,16 @@ mod test {
             0x13d4921,
         ];
         assert_eq!(z, expected);
+
+        let x = int_from_str::<3>("68468465468464168545346854646", 10).unwrap();
+        let y = int_from_str::<3>("9876519684989849849849847", 10).unwrap();
+        let z = int_from_str::<3>("676230147000334142150220547988205853833725436834339162", 10).unwrap();
+        assert_eq!(mul(&x, &y), z);
+
+        let x = int_from_str::<3>("9876519684989849849849847", 10).unwrap();
+        let y = int_from_str::<3>("68468465468464168545346854646", 10).unwrap();
+        let z = int_from_str::<3>("676230147000334142150220547988205853833725436834339162", 10).unwrap();
+        assert_eq!(mul(&x, &y), z);
     }
 
     #[test]
@@ -1349,6 +1463,19 @@ mod test {
         let mut x: SV = smallvec![1 << 63];
         mul_assign_single(&mut x, 1 << 63);
         let expected: SV = smallvec![0, 1 << (126 - 64)];
+        assert_eq!(x, expected);
+
+        let mut x = int_from_str::<4>("684684659849886161698149845311616811315531318498498987982211", 10).unwrap();
+        mul_assign_single(&mut x, 646846844846);
+        let expected = int_from_str::<4>("442886111938355599686725600875542300070422743926852384563217257325034506", 10).unwrap();
+        assert_eq!(x, expected);
+    }
+
+    #[test]
+    fn test_add_assign_single() {
+        let mut x = int_from_str::<4>("684684659849886161698149845311616811315531318498498987982211", 10).unwrap();
+        add_assign_single(&mut x, 646846844846);
+        let expected = int_from_str::<4>("684684659849886161698149845311616811315531318499145834827057", 10).unwrap();
         assert_eq!(x, expected);
     }
 

@@ -34,7 +34,7 @@ pub fn shr_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, 
         }
     }
 
-    debug_assert!(is_well_formed(values) && !values.is_empty());
+    debug_assert!(is_well_formed(values));
 }
 
 #[inline]
@@ -138,10 +138,6 @@ pub fn debug_assert_shr_constraints<const S: usize>(values: &SmallVec<[usize; S]
     debug_assert!(is_well_formed(values));
     debug_assert!(!values.is_empty(), "Should not be called on a zero value");
     debug_assert!(words_to_remove < values.len(), "Can't shift away all words");
-    debug_assert!(
-        words_to_remove < values.len() - 1 || bits <= values.last().unwrap().trailing_zeros(),
-        "Value can't be zero after shifting",
-    );
     debug_assert!(bits < BITS_PER_WORD, "Use the `words` argument to shift with entire words");
 }
 
@@ -386,6 +382,21 @@ mod test {
         let mut x: SV = smallvec![1];
         shr_mut(&mut x, 0, 0);
         let expected: SV = smallvec![1];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![1];
+        shr_mut(&mut x, 0, 1);
+        let expected: SV = smallvec![];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 1];
+        shr_mut(&mut x, 1, 1);
+        let expected: SV = smallvec![];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![6184, 1];
+        shr_mut(&mut x, 1, 1);
+        let expected: SV = smallvec![];
         assert_eq!(x, expected);
 
         let mut x: SV = smallvec![0, 1];

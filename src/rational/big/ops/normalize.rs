@@ -216,7 +216,7 @@ pub fn simplify_fraction_gcd<const S: usize>(left: &mut SmallVec<[usize; S]>, ri
                 }
             }
         }
-        WhichOdd::Both =>(left.clone(), right.clone()),
+        WhichOdd::Both => (left.clone(), right.clone()),
     };
 
     if !(start_left[0] == 1 && start_left.len() == 1) && !(start_right[0] == 1 && start_right.len() == 1) {
@@ -328,17 +328,19 @@ fn binary_gcd<const S: usize>(mut left: SmallVec<[usize; S]>, mut right: SmallVe
         debug_assert_eq!(left[0] % 2, 1);
         debug_assert_eq!(right[0] % 2, 1);
 
-        match cmp_and_remove(&mut left, &mut right) {
-            Ordering::Less => {
-                sub_assign_result_positive(&mut right, &left);
-                let (zero_words, zero_bits) = unsafe { trailing_zeros(&right) };
-                shr_mut(&mut right, zero_words, zero_bits);
-            }
-            Ordering::Equal => break left,
-            Ordering::Greater => {
-                sub_assign_result_positive(&mut left, &right);
-                let (zero_words, zero_bits) = unsafe { trailing_zeros(&left) };
-                shr_mut(&mut left, zero_words, zero_bits);
+        unsafe {
+            match cmp_and_remove(&mut left, &mut right) {
+                Ordering::Less => {
+                    sub_assign_result_positive(&mut right, &left);
+                    let (zero_words, zero_bits) = trailing_zeros(&right);
+                    shr_mut(&mut right, zero_words, zero_bits);
+                }
+                Ordering::Equal => break left,
+                Ordering::Greater => {
+                    sub_assign_result_positive(&mut left, &right);
+                    let (zero_words, zero_bits) = trailing_zeros(&left);
+                    shr_mut(&mut left, zero_words, zero_bits);
+                }
             }
         }
     }
@@ -359,7 +361,6 @@ fn cmp_and_remove<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &mut S
             for (left_word, right_word) in left.iter().zip(right.iter()).rev() {
                 match left_word.cmp(right_word) {
                     Ordering::Less => {
-                        left.truncate(length - nr_equal);
                         right.truncate(length - nr_equal);
                         return Ordering::Less
                     },
@@ -368,7 +369,6 @@ fn cmp_and_remove<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &mut S
                     }
                     Ordering::Greater => {
                         left.truncate(length - nr_equal);
-                        right.truncate(length - nr_equal);
                         return Ordering::Greater
                     },
                 }
@@ -408,7 +408,7 @@ pub unsafe fn trailing_zeros<const S: usize>(values: &SmallVec<[usize; S]>) -> (
 mod test {
     use smallvec::smallvec;
 
-    use crate::rational::big::creation::int_from_number;
+    use crate::rational::big::creation::int_from_str;
     use crate::rational::big::ops::gcd;
     use crate::rational::big::ops::normalize::{binary_gcd, gcd_scalar, gcd_single, remove_shared_two_factors_mut, simplify_fraction_gcd, simplify_fraction_gcd_single, simplify_fraction_without_info, trailing_zeros, WhichOdd};
     use crate::rational::big::ops::test::SV;
@@ -443,6 +443,30 @@ mod test {
         let x: SV = smallvec![1, 1];
         let y: SV = smallvec![1, 1];
         let expected: SV = smallvec![1, 1];
+        assert_eq!(binary_gcd(x, y), expected);
+
+        // [17182455669393173089, 8195493687874724080, 2236847494119194494]
+        // [17628647896610972437, 18063123016434192470, 1524534684235201587]
+        let x = int_from_str::<8>("761159759740049482819703824192566027846076086339694209633", 10).unwrap();
+        let y = int_from_str::<8>("518772270804619926440708190306636065541232071485957284629", 10).unwrap();
+        let expected: SV = smallvec![3];
+        assert_eq!(binary_gcd(x, y), expected);
+
+        let x = int_from_str::<8>("13315363230513411010491282670607898860050786975267763235425", 10).unwrap();
+        let y = int_from_str::<8>("518772270804619926440708190306636065541232071485957284629", 10).unwrap();
+        let expected: SV = smallvec![1];
+        assert_eq!(binary_gcd(x, y), expected);
+
+        // [17182455669393173089, 8195493687874724080, 2236847494119194494, 2]
+        // [15546263315196014731, 7428251573324005790, 5285916862589597670, 2]
+        let x = int_from_str::<8>("13315363230513411010491282670607898860050786975267763235425", 10).unwrap();
+        let y = int_from_str::<8>("14352907772122650863372699051221170991133251118239677804683", 10).unwrap();
+        let expected: SV = smallvec![1];
+        assert_eq!(binary_gcd(x, y), expected);
+
+        let x = int_from_str::<8>("2537510112612432421162161736760954813703561240667558277280326395321829260829", 10).unwrap();
+        let y = int_from_str::<8>("28066955534242121399724313080842652291012276578744271510348498026737179911481", 10).unwrap();
+        let expected: SV = smallvec![1];
         assert_eq!(binary_gcd(x, y), expected);
     }
 
@@ -481,8 +505,8 @@ mod test {
 
     #[test]
     fn test_simplify_without_info() {
-        let x = int_from_number::<8>("1208925819614629174706176", 10).unwrap();
-        let y = int_from_number::<8>("10301051460877537453973547267843", 10).unwrap();
+        let x = int_from_str::<8>("1208925819614629174706176", 10).unwrap();
+        let y = int_from_str::<8>("10301051460877537453973547267843", 10).unwrap();
 
         let mut xx = x.clone();
         let mut yy = y.clone();
@@ -514,6 +538,33 @@ mod test {
         simplify_fraction_gcd(&mut left, &mut right);
         let expected_left: SV = smallvec![5];
         let expected_right: SV = smallvec![22];
+        assert_eq!(left, expected_left);
+        assert_eq!(right, expected_right);
+
+        let mut left = int_from_str::<4>("92599469589222131768757076514696607382155504523751371565834361998764652118557", 10).unwrap();
+        let mut right = int_from_str::<4>("80627506337117343961599775375716501347124738605551411762759133617725727360716", 10).unwrap();
+        simplify_fraction_gcd(&mut left, &mut right);
+        let expected_left = int_from_str::<4>("92599469589222131768757076514696607382155504523751371565834361998764652118557", 10).unwrap();
+        let expected_right = int_from_str::<4>("80627506337117343961599775375716501347124738605551411762759133617725727360716", 10).unwrap();
+        assert_eq!(left, expected_left);
+        assert_eq!(right, expected_right);
+
+        let mut left = int_from_str::<4>("56133911068484242799448626161685304582024553157488543020696996053474359822962", 10).unwrap();
+        let mut right = int_from_str::<4>("38216995984691851084372960027886471545826521541414504619469803608024496954797", 10).unwrap();
+        let mut x = left.clone(); let mut y = right.clone();
+        remove_shared_two_factors_mut(&mut x, &mut y);
+        assert_eq!(x, left); assert_eq!(y, right);
+        simplify_fraction_gcd(&mut left, &mut right);
+        let expected_left = int_from_str::<4>("56133911068484242799448626161685304582024553157488543020696996053474359822962", 10).unwrap();
+        let expected_right = int_from_str::<4>("38216995984691851084372960027886471545826521541414504619469803608024496954797", 10).unwrap();
+        assert_eq!(left, expected_left);
+        assert_eq!(right, expected_right);
+
+        let mut left = int_from_str::<4>("96149135622564868513332764767713630331755573676701733681721499377985831780603", 10).unwrap();
+        let mut right = int_from_str::<4>("99939187751827453177194542570098438266282603262618044779272964070464092694778", 10).unwrap();
+        simplify_fraction_gcd(&mut left, &mut right);
+        let expected_left = int_from_str::<4>("32049711874188289504444254922571210110585191225567244560573833125995277260201", 10).unwrap();
+        let expected_right = int_from_str::<4>("33313062583942484392398180856699479422094201087539348259757654690154697564926", 10).unwrap();
         assert_eq!(left, expected_left);
         assert_eq!(right, expected_right);
     }

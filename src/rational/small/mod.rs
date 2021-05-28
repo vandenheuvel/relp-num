@@ -1026,7 +1026,6 @@ mod test {
             for b in 1..limit {
                 for c in -limit..limit {
                     for d in 1..limit {
-                        println!("{} / {} + {} / {}", a, b, c, d);
                         assert_eq!(R32!(a, b as u32) + R32!(c, d as u32), R32!(a * d + c * b, b as u32 * d as u32), "{} / {} + {} / {}", a, b, c, d);
                     }
                 }

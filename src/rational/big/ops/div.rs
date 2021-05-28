@@ -508,6 +508,7 @@ mod test {
 
     use crate::rational::big::ops::div::{div_assign_n_words, div_assign_one_word, div_assign_two_words, div_preinv, invert};
     use crate::rational::big::ops::test::SV;
+    use crate::rational::big::creation::int_from_str;
 
     #[test]
     fn test_invert() {
@@ -554,6 +555,16 @@ mod test {
         let mut x: SV = smallvec![13, 5];
         div_assign_one_word(&mut x, 3);
         let expected: SV = smallvec![0b10101010_10101010_10101010_10101010_10101010_10101010_10101010_10101111, 1];
+        assert_eq!(x, expected);
+
+        let mut x = int_from_str::<4>("96149135622564868513332764767713630331755573676701733681721499377985831780603", 10).unwrap();
+        div_assign_one_word(&mut x, 3);
+        let expected = int_from_str::<4>("32049711874188289504444254922571210110585191225567244560573833125995277260201", 10).unwrap();
+        assert_eq!(x, expected);
+
+        let mut x = int_from_str::<4>("99939187751827453177194542570098438266282603262618044779272964070464092694778", 10).unwrap();
+        div_assign_one_word(&mut x, 3);
+        let expected = int_from_str::<4>("33313062583942484392398180856699479422094201087539348259757654690154697564926", 10).unwrap();
         assert_eq!(x, expected);
     }
 

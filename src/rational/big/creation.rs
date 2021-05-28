@@ -14,6 +14,7 @@ use crate::rational::Ratio;
 use crate::rational::small::{simplify128, simplify16, simplify32, simplify64, simplify8};
 use crate::sign::Sign;
 use crate::sign::Signed;
+use crate::rational::big::ops::building_blocks::shr_mut;
 
 impl<const S: usize> Big<S> {
     pub fn new(numerator: i64, denominator: u64) -> Self {
@@ -386,7 +387,7 @@ impl<const S: usize> FromStr for Big<S> {
 
                 match s.find("/") {
                     None => {
-                        let numerator = int_from_number(s, radix)?;
+                        let numerator = int_from_str(s, radix)?;
 
                         if numerator.is_empty() {
                             Ok(<Self as num_traits::Zero>::zero())
@@ -401,8 +402,8 @@ impl<const S: usize> FromStr for Big<S> {
                     Some(index) => {
                         // The number is a ratio between two others
                         let (numerator_text, denominator_text) = (&s[..index], &s[(index + 1)..]);
-                        let mut numerator = int_from_number(numerator_text, radix)?;
-                        let mut denominator = int_from_number(denominator_text, radix)?;
+                        let mut numerator = int_from_str(numerator_text, radix)?;
+                        let mut denominator = int_from_str(denominator_text, radix)?;
                         if denominator.is_empty() {
                             return Err("Zero division");
                         }
@@ -425,7 +426,9 @@ impl<const S: usize> FromStr for Big<S> {
     }
 }
 
-pub fn int_from_number<const S: usize>(s: &str, radix: u32) -> Result<SmallVec<[usize; S]>, &'static str> {
+pub fn int_from_str<const S: usize>(s: &str, radix: u32) -> Result<SmallVec<[usize; S]>, &'static str> {
+    debug_assert!(radix <= 36);
+
     match s.len() {
         0 => Err("Empty string"),
         _ => {
@@ -457,18 +460,99 @@ pub fn int_from_number<const S: usize>(s: &str, radix: u32) -> Result<SmallVec<[
     }
 }
 
+static ASCII_LOWER: [char; 26] = [
+    'a', 'b', 'c', 'd', 'e',
+    'f', 'g', 'h', 'i', 'j',
+    'k', 'l', 'm', 'n', 'o',
+    'p', 'q', 'r', 's', 't',
+    'u', 'v', 'w', 'x', 'y',
+    'z',
+];
+use crate::rational::big::ops::is_well_formed;
+pub fn to_str<const S: usize>(value: &SmallVec<[usize; S]>, radix: u32) -> String {
+    debug_assert!(is_well_formed(value));
+    debug_assert!(radix > 1 && radix <= 36);
+
+    match value.len() {
+        0 => "0".to_string(),
+        _ => {
+            let mut digits = vec![0];
+
+            // Set highest word to the lowest index, and reverse the bits
+            let mut leading_zero_words = 0;
+            while value[leading_zero_words] == 0 {
+                // At least the last value is not allowed to be zero, so we don't have to check bounds
+                leading_zero_words += 1;
+            }
+            let leading_zero_bits = value[leading_zero_words].leading_zeros();
+
+            // Set highest word to the lowest index, and reverse the bits
+            let mut value: SmallVec<[usize; S]> = value.iter()
+                .skip(leading_zero_words)
+                .map(|word| word.reverse_bits())
+                .rev()
+                .collect();
+            shr_mut(&mut value, 0, leading_zero_bits);
+
+            let bit_count = value.len() as u32 * BITS_PER_WORD - leading_zero_bits;
+            debug_assert_eq!(value[0] % 2, 1);
+            for bit_index in 0..bit_count {
+                update_digits(&mut digits, value[0] % 2 == 1, radix);
+                shr_mut(&mut value, 0, 1);
+
+                if value.is_empty() {
+                    // Had this many bits remaining
+                    for _ in (bit_index + 1)..(leading_zero_words as u32 * BITS_PER_WORD + bit_count) {
+                        update_digits(&mut digits, false, radix);
+                    }
+                    break;
+                }
+            }
+
+            digits.into_iter()
+                .rev()
+                .map(|digit| {
+                    if digit < 10 {
+                        digit.to_string()
+                    } else {
+                        ASCII_LOWER[(digit - 10) as usize].to_string()
+                    }
+                })
+                .collect()
+        }
+    }
+}
+
+fn update_digits(digits: &mut Vec<u32>, mut carry: bool, radix: u32) {
+    for digit in digits.iter_mut() {
+        *digit *= 2; // binary, each bit multiplies by 2
+        if carry {
+            *digit += 1;
+            carry = false;
+        }
+        if *digit >= radix {
+            *digit %= radix;
+            carry = true;
+        }
+    }
+    if carry {
+        digits.push(1);
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::str::FromStr;
 
     use num_traits::One;
-    use smallvec::smallvec;
+    use smallvec::{smallvec, SmallVec};
 
     use crate::{Abs, Rational64, RationalBig, Sign};
     use crate::rational::big::{Big, Big8};
-    use crate::rational::big::creation::int_from_number;
+    use crate::rational::big::creation::{int_from_str, to_str};
     use crate::rational::big::ops::BITS_PER_WORD;
     use crate::RB;
+    use crate::rational::big::ops::normalize::simplify_fraction_without_info;
 
     #[test]
     fn from() {
@@ -656,10 +740,10 @@ mod test {
             }),
         );
 
-        assert_eq!(int_from_number::<8>("36893488147419103232", 10), Ok(smallvec![0, 1 << 1]));
-        assert_eq!(int_from_number::<8>("18889465931478580854784", 10), Ok(smallvec![0, 1 << 10]));
-        assert_eq!(int_from_number::<8>("19342813113834066795298816", 10), Ok(smallvec![0, 1 << 20]));
-        assert_eq!(int_from_number::<8>("1208925819614629174706176", 10), Ok(smallvec![0, 1 << (80 - 64)]));
+        assert_eq!(int_from_str::<8>("36893488147419103232", 10), Ok(smallvec![0, 1 << 1]));
+        assert_eq!(int_from_str::<8>("18889465931478580854784", 10), Ok(smallvec![0, 1 << 10]));
+        assert_eq!(int_from_str::<8>("19342813113834066795298816", 10), Ok(smallvec![0, 1 << 20]));
+        assert_eq!(int_from_str::<8>("1208925819614629174706176", 10), Ok(smallvec![0, 1 << (80 - 64)]));
 
         assert_eq!(
             Big8::from_str("-1208925819614629174706176/10301051460877537453973547267843"),
@@ -669,5 +753,61 @@ mod test {
                 denominator: smallvec![0x6b9676a56c7c3703, 0x82047e0eae],
             }),
         );
+
+        type SV = SmallVec<[usize; 8]>;
+
+        let mut x = int_from_str::<8>("676230147000402641135208532975102322580080121519024130", 10).unwrap();
+        let expected: SV = smallvec![7877410236203542530, 0xe30d7c46c1f853f7, 1987261794136745];
+        assert_eq!(x, expected);
+        let mut y = int_from_str::<8>("68468465468464168545346854646", 10).unwrap();
+        let expected: SV = smallvec![7062882560094707446, 3711682950];
+        assert_eq!(y, expected);
+        simplify_fraction_without_info(&mut x, &mut y);
+        let expected: SV = smallvec![13162077154956547073, 17403806869180131835, 993630897068372];
+        assert_eq!(x, expected);
+        let expected: SV = smallvec![3531441280047353723, 1855841475];
+        assert_eq!(y, expected);
+
+        let z = Big8::from_str("676230147000402641135208532975102322580080121519024130/68468465468464168545346854646");
+        assert_eq!(z, Ok(Big {
+            sign: Sign::Positive,
+            numerator: x,
+            denominator: y,
+        }));
+    }
+
+    #[test]
+    fn test_to_str() {
+        type SV = SmallVec<[usize; 8]>;
+
+        let x: SV = smallvec![];
+        assert_eq!(to_str(&x, 10), "0");
+        let x: SV = smallvec![1];
+        assert_eq!(to_str(&x, 10), "1");
+        let x: SV = smallvec![2];
+        assert_eq!(to_str(&x, 10), "2");
+        let x: SV = smallvec![3];
+        assert_eq!(to_str(&x, 10), "3");
+        let x: SV = smallvec![10];
+        assert_eq!(to_str(&x, 10), "10");
+        let x: SV = smallvec![11];
+        assert_eq!(to_str(&x, 10), "11");
+        let x: SV = smallvec![101];
+        assert_eq!(to_str(&x, 10), "101");
+        let x: SV = smallvec![123];
+        assert_eq!(to_str(&x, 10), "123");
+        let x: SV = smallvec![usize::MAX];
+        assert_eq!(to_str(&x, 10), "18446744073709551615");
+        let x: SV = smallvec![0, 1];
+        assert_eq!(to_str(&x, 10), "18446744073709551616");
+        let x: SV = smallvec![1, 1];
+        assert_eq!(to_str(&x, 10), "18446744073709551617");
+
+        assert_eq!(to_str(&int_from_str::<1>("123", 10).unwrap(), 10), "123");
+
+        for i in 1..100 {
+            let expected: SV = smallvec![i];
+            assert_eq!(int_from_str::<8>(&to_str(&expected, 10), 10), Ok(expected));
+        }
     }
 }

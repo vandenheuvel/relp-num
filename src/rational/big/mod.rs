@@ -10,6 +10,7 @@ use smallvec::SmallVec;
 use crate::non_zero::NonZero;
 use crate::rational::Ratio;
 use crate::Sign;
+use crate::rational::big::creation::to_str;
 
 mod with_small;
 mod creation;
@@ -41,19 +42,11 @@ impl<const S: usize> fmt::Display for Big<S> {
             Sign::Negative => f.write_str("-")?,
         }
 
-        if self.numerator.len() == 1 {
-            write!(f, "{}", self.numerator[0])?;
-        } else {
-            write!(f, "{:?}", self.numerator)?;
-        }
+        f.write_str(&to_str(&self.numerator, 10))?;
 
         if self.denominator.len() > 1 || self.denominator[0] != 1 {
             f.write_str("/")?;
-            if self.denominator.len() == 1 {
-                write!(f, "{}", self.denominator[0])?;
-            } else {
-                write!(f, "{:?}", self.denominator)?;
-            }
+            f.write_str(&to_str(&self.denominator, 10))?;
         }
 
         fmt::Result::Ok(())
