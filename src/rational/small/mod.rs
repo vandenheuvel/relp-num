@@ -627,7 +627,8 @@ macro_rules! rational {
                     }
                     (_, Sign::Zero) => panic!(),
                     (Sign::Zero, _) => {
-                        <$name as num_traits::Zero>::zero()
+                        <$name as num_traits::Zero>::set_zero(&mut rhs);
+                        rhs
                     }
                 }
             }

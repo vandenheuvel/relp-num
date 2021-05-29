@@ -4,7 +4,7 @@ use std::ptr::copy;
 use smallvec::{smallvec, SmallVec};
 
 use crate::rational::big::ops::{BITS_PER_WORD, cmp, is_well_formed};
-use crate::rational::big::ops::building_blocks::{add_2, add_assign_slice, mul, shl, shl_mut_overflowing, shr, sub_2, sub_assign_slice, submul_slice};
+use crate::rational::big::ops::building_blocks::{add_2, add_assign_slice, mul, shl, shl_mut_overflowing, shr, sub_2, sub_assign_slice, submul_slice, shl_mut};
 use crate::rational::big::ops::normalize::trailing_zeros;
 
 #[inline]
@@ -58,17 +58,9 @@ pub fn div_assign_n_words_double<const S: usize>(
     let leading_zeros = rhs_high.leading_zeros();
 
     if leading_zeros > 0 {
-        unsafe {
-            // TODO(PERFORMANCE): Avoid this allocation before `values` gets smaller
-            let carry = shl_mut_overflowing(values_one, leading_zeros);
-            if let Some(carry) = carry {
-                values_one.push(carry.get())
-            }
-            let carry = shl_mut_overflowing(values_two, leading_zeros);
-            if let Some(carry) = carry {
-                values_two.push(carry.get())
-            }
-        }
+        // TODO(PERFORMANCE): These calls might cause reallocation, can that be avoided?
+        shl_mut(values_one, 0, leading_zeros);
+        shl_mut(values_two, 0, leading_zeros);
 
         unsafe { shl_mut_overflowing(&mut rhs, leading_zeros); }
     }
@@ -342,28 +334,27 @@ pub fn div_assign_n_words<const S: usize>(
     debug_assert_eq!(rhs[0] % 2, 1);
     // We assume that values % rhs == 0
 
-    let rhs_high = *rhs.last().unwrap();
-    let leading_zeros = rhs_high.leading_zeros();
-
-    let divisor = if leading_zeros > 0 {
-        unsafe {
-            let carry = shl_mut_overflowing(values, leading_zeros);
-            if let Some(carry) = carry {
-                // TODO(PERFORMANCE): Avoid this allocation before `values` gets smaller
-                values.push(carry.get())
-            }
+    match rhs.last().unwrap().leading_zeros() {
+        0 => create_divisor_inverse_and_divide(values, rhs),
+        leading_zeros => {
+            shl_mut(values, 0, leading_zeros);
+            // TODO(PERFORMANCE): Are there situations where we can mutate the divisor?
+            let divisor = shl(rhs, leading_zeros);
+            create_divisor_inverse_and_divide(values, &divisor);
         }
+    }
+}
 
-        shl(rhs, leading_zeros)
-    } else {
-        rhs.clone()
-    };
-    debug_assert!(values.len() > rhs.len());
-
+#[inline]
+fn create_divisor_inverse_and_divide<const S: usize>(
+    values: &mut SmallVec<[usize; S]>,
+    divisor: &SmallVec<[usize; S]>,
+) {
     let divisor_length = divisor.len();
     let divisor_inverse = invert_pi(divisor[divisor_length - 1], divisor[divisor_length - 2]);
+
     let length_difference = values.len() - divisor.len();
-    debug_assert!(length_difference >= 1);
+    debug_assert!(length_difference > 0);
 
     div_assign_n_words_helper(values, &divisor, divisor_inverse);
 }
@@ -377,6 +368,7 @@ pub fn div_assign_n_words_helper<const S: usize>(
     debug_assert!(*divisor.last().unwrap() > usize::MAX / 2);
     debug_assert!(values.len() >= divisor.len());
     debug_assert!(divisor.len() > 2);
+    debug_assert_eq!(cmp(values, divisor), Ordering::Greater);
 
     let length_difference = values.len() - divisor.len();
     let max_word = match cmp(&values[length_difference..], divisor) {
@@ -435,11 +427,11 @@ pub fn div_assign_n_words_helper<const S: usize>(
             }
         };
 
-        values[i + 3] = q;
+        values[i + divisor.len() - 1] = q; // the lowest index that will not be read from again
     }
 
     unsafe {
-        copy(values[3..].as_ptr(), values.as_mut_ptr(), length_difference);
+        copy(values[(divisor.len() - 1)..].as_ptr(), values.as_mut_ptr(), length_difference);
     }
     values.truncate(length_difference);
 
@@ -702,5 +694,41 @@ mod test {
             0x2871,
         ];
         assert_eq!(x, expected);
+
+        let x: SV = int_from_str("2100747828964386654022762515454422286805338141171597526655", 10).unwrap();
+        let mut y: SV = int_from_str("124377463735788844355638570961811809408491806453579232883516419455719409995386620545746110707430", 10).unwrap();
+        div_assign_n_words(&mut y, &x);
+        let expected: SV = int_from_str("59206279792802955257475021319389524506", 10).unwrap();
+        assert_eq!(y, expected);
+
+        let x: SV = int_from_str("66340974319576186580673555932821260803918451439617771793405532796007979955997", 10).unwrap();
+        let mut y: SV = int_from_str("5531556390977325409108902596274363253464159901861086117212994122508796415587214298074682227873376596111793924413829607429725414276024416782319480969361066", 10).unwrap();
+        div_assign_n_words(&mut y, &x);
+        let expected: SV = int_from_str("83380692667111604543192945476909633909781675647518842166405860848280411868978", 10).unwrap();
+        assert_eq!(y, expected);
+
+        let x = int_from_str::<16>("1992347045243990842449503776502064971948536211918448267119003695060591740014400435359593740256083", 10).unwrap();
+        let mut y = int_from_str::<16>("3654499318250474693172757739649291715653635067262981937422840725088822515776175998634633525786306916583726172000458682141069104127802225878006025815303036452910827291022357044090986756049186271", 10).unwrap();
+        div_assign_n_words(&mut y, &x);
+        let expected = int_from_str::<16>("1834268445838425699471498583098436069780105278538375398579173558288199179079540034875203482666437", 10).unwrap();
+        assert_eq!(y, expected);
+
+        let x: SV = int_from_str("142268729087956461502980096562052278567181056771418896921355439878811379239371082592244702276923529066641805027456993866599187652312415401581689633076835619997349902283496866883934518180147780692572220001134905589078138942372904801461834736487227807153399879253875716622257676142963030220069542386846904083013", 10).unwrap();
+        let mut y: SV = int_from_str("7252456712823082542212585366658045326494860607776262852944310011256910113263957063330696718656414605824457239823175193650356457591331064369542847573375007257686284704853458633888565094996322221068283521171280483607120531697151774167084766416806591259535467438714921314021025665937603239468423422410620688117774930154636386606936656901663624871303617480835679579711869190375935696156571040222578860571381388759403807462491128517722779457196431083409666231495318213348827271991515601699351996944570738462943384327888574733153892507856624971047531620359262786242782133454648428176863725230945440923123104182754630675480", 10).unwrap();
+        div_assign_n_words(&mut y, &x);
+        let expected: SV = int_from_str("50977166657187970981301386474604976537069699305338641324851240518727660517573501274819146798100207436562444606589188614868795146045164658432364718026938110714567759476174190690212709288295103108635657622955244936842045087509129539879176516350950354697324349397455737947404894532171357256869229319195873691960", 10).unwrap();
+        assert_eq!(y, expected);
+
+        let x: SV = int_from_str("24706988736548547364612883218523922197159394885583212169224942104064013913210286893141360630507397731352833232219041", 10).unwrap();
+        let mut y: SV = int_from_str("45368133537041234648674954054977183524748234400138397585868892868938195954109790513190079637903300546258649431623015017480111206508314126488071014462560267771588450920340284132409380836507386083707657561702555758", 10).unwrap();
+        div_assign_n_words(&mut y, &x);
+        let expected: SV = int_from_str("1836246983426558769656208362027557556985243474218104389708000130056939216565584522486351663864238", 10).unwrap();
+        assert_eq!(y, expected);
+
+        let x: SV = int_from_str("82991827507931334051864300791578801450571102014085263148173602366636977594557", 10).unwrap();
+        let mut y: SV = int_from_str("61060309798889868014077100802497148468561512692425559954910235802350114397858493596422472723116050496081085430947562656270740618299118061128994357736218037512854403413961708", 10).unwrap();
+        div_assign_n_words(&mut y, &x);
+        let expected: SV = int_from_str("735738826730312422682248866495569766911262046946938858983516260451028363751515777406730177431644", 10).unwrap();
+        assert_eq!(y, expected);
     }
 }

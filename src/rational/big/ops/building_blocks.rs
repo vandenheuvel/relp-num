@@ -79,7 +79,7 @@ pub fn shl_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, 
     for i in (1..original_length).rev() {
         values[words + i] = values[i] << bits | values[i - 1].wrapping_shr(BITS_PER_WORD - bits);
     }
-    values[words] = values[words] << bits;
+    values[words] <<= bits;
 
     for i in 0..words {
         values[i] = 0;
