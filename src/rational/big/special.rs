@@ -152,7 +152,7 @@ mod field {
                         }
                     }
                     Sign::Zero => {
-                        self.sign = Sign::Positive;
+                        self.sign = Sign::Negative;
                         debug_assert!(self.numerator.is_empty());
                         self.numerator.push(1);
                         debug_assert_eq!(self.denominator[0], 1);
@@ -250,7 +250,7 @@ mod field {
 
 #[cfg(test)]
 mod test {
-    use crate::One;
+    use crate::{One, Binary};
     use crate::RB;
     use crate::rational::big::Big8;
     use std::str::FromStr;
@@ -258,12 +258,14 @@ mod test {
     #[test]
     fn test_one() {
         assert_eq!(RB!(0) + One, RB!(1));
+        assert_eq!(RB!(0) - One, RB!(-1));
         assert_eq!(RB!(1) + One, RB!(2));
         assert_eq!(RB!(-1) + One, RB!(0));
         assert_eq!(RB!(-1) - One, RB!(-2));
         assert_eq!(RB!(1) - One, RB!(0));
         assert_eq!(RB!(1, 2) - One, RB!(-1, 2));
         assert_eq!(RB!(1, 2) + One, RB!(3, 2));
+        assert_eq!(RB!(618, 648) / &One, RB!(618, 648));
 
         let x = Big8::from_str("68498984987984986896468746354684684684968/68468465468464168545346854646").unwrap();
         let expected = Big8::from_str("68498984988053455361937210523230031539614/68468465468464168545346854646").unwrap();
@@ -276,5 +278,14 @@ mod test {
         let x = Big8::from_str("-6868468468468465168186546846416565994998987468465468464168545346854644/6868468468468465168186546846416565994998987468465468464168545346854645").unwrap();
         let expected = Big8::from_str("1/6868468468468465168186546846416565994998987468465468464168545346854645").unwrap();
         assert_eq!(x + One, expected);
+    }
+
+    #[test]
+    fn test_binary() {
+        assert_eq!(RB!(135, 6848) * Binary::Zero, RB!(0));
+        assert_eq!(RB!(135, 6848) * Binary::One, RB!(135, 6848));
+        assert_eq!(RB!(135, 6848) + Binary::One, RB!(135 + 6848, 6848));
+        assert_eq!(RB!(135, 6848) + Binary::Zero, RB!(135, 6848));
+        assert_eq!(RB!(0) + Binary::Zero, RB!(0));
     }
 }
