@@ -250,10 +250,11 @@ mod field {
 
 #[cfg(test)]
 mod test {
-    use crate::{One, Binary};
-    use crate::RB;
-    use crate::rational::big::Big8;
     use std::str::FromStr;
+
+    use crate::{Binary, One};
+    use crate::rational::big::Big8;
+    use crate::RB;
 
     #[test]
     fn test_one() {

@@ -86,11 +86,38 @@ impl Mul for NonZeroSign {
 
 #[cfg(test)]
 mod test {
-    use crate::NonZeroSign;
+    use crate::{NonZeroSign, NonZeroSigned};
+    use crate::{R64, RB};
 
     #[test]
     fn test_cmp() {
         assert!(NonZeroSign::Positive > NonZeroSign::Negative);
         assert_eq!(NonZeroSign::Positive.partial_cmp(&NonZeroSign::Positive), None);
+    }
+
+    #[test]
+    fn test_numbers() {
+        assert_eq!(NonZeroSigned::signum(&1), NonZeroSign::Positive);
+        assert_eq!(NonZeroSigned::signum(&(-1)), NonZeroSign::Negative);
+
+        assert_eq!(RB!(1).signum(), NonZeroSign::Positive);
+        assert_eq!(RB!(-1).signum(), NonZeroSign::Negative);
+
+        assert_eq!(RB!(-1).signum() * RB!(-1).signum(), NonZeroSign::Positive);
+        assert_eq!(RB!(1).signum() * RB!(1).signum(), NonZeroSign::Positive);
+        assert_eq!(RB!(-1).signum() * RB!(1).signum(), NonZeroSign::Negative);
+
+        assert_eq!(R64!(1).signum(), NonZeroSign::Positive);
+        assert_eq!(R64!(-1).signum(), NonZeroSign::Negative);
+
+        assert_eq!(R64!(-1).signum() * R64!(-1).signum(), NonZeroSign::Positive);
+        assert_eq!(R64!(1).signum() * R64!(1).signum(), NonZeroSign::Positive);
+        assert_eq!(R64!(-1).signum() * R64!(1).signum(), NonZeroSign::Negative);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_zero() {
+        RB!(0).signum();
     }
 }

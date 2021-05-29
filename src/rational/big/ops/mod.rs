@@ -1,4 +1,4 @@
-use std::cmp::{Ordering, min};
+use std::cmp::{min, Ordering};
 use std::iter::repeat;
 use std::iter::Sum;
 use std::mem;
@@ -827,10 +827,15 @@ impl<const S: usize> PartialOrd for Big<S> {
         let by_sign = self.sign.partial_cmp(&other.sign);
 
         let by_length = by_sign.or_else(|| {
-            match (self.numerator.len() + other.denominator.len()).cmp(&(other.numerator.len() + self.denominator.len())) {
-                Ordering::Less => Some(Ordering::Less),
-                Ordering::Equal => None,
-                Ordering::Greater => Some(Ordering::Greater),
+            debug_assert_eq!(self.sign, other.sign);
+            debug_assert_ne!(self.sign, Sign::Zero);
+
+            let size_comparison = (self.numerator.len() + other.denominator.len()).cmp(&(other.numerator.len() + self.denominator.len()));
+            match (size_comparison, self.sign) {
+                (Ordering::Less, Sign::Positive) | (Ordering::Greater, Sign::Negative) => Some(Ordering::Less),
+                (Ordering::Equal, _) => None,
+                (Ordering::Greater, Sign::Positive) | (Ordering::Less, Sign::Negative) => Some(Ordering::Greater),
+                (_, Sign::Zero) => panic!(),
             }
         });
 
@@ -838,10 +843,18 @@ impl<const S: usize> PartialOrd for Big<S> {
             if self.numerator == other.numerator && self.denominator == other.denominator {
                 Ordering::Equal
             } else {
+                debug_assert_eq!(self.sign, other.sign);
+                debug_assert_ne!(self.sign, Sign::Zero);
+
                 let ad = mul(&self.numerator, &other.denominator);
                 let bc = mul(&other.numerator, &self.denominator);
 
-                cmp(&ad, &bc)
+                match (cmp(&ad, &bc), self.sign) {
+                    (Ordering::Less, Sign::Positive) | (Ordering::Greater, Sign::Negative) => Ordering::Less,
+                    (Ordering::Equal, _) => Ordering::Equal,
+                    (Ordering::Greater, Sign::Positive) | (Ordering::Less, Sign::Negative) => Ordering::Greater,
+                    (_, Sign::Zero) => panic!(),
+                }
             }
         });
 
@@ -886,8 +899,8 @@ mod test {
 
     use crate::{RB, Sign};
     use crate::rational::big::Big8;
-    use crate::rational::big::ops::{add_assign, is_well_formed, mul, mul_assign_single, sub, sub_assign_result_positive, add_assign_single};
     use crate::rational::big::creation::int_from_str;
+    use crate::rational::big::ops::{add_assign, add_assign_single, is_well_formed, mul, mul_assign_single, sub, sub_assign_result_positive};
 
     pub type SV = SmallVec<[usize; 8]>;
 

@@ -9,12 +9,13 @@ use smallvec::{smallvec, SmallVec};
 
 use crate::rational::big::Big;
 use crate::rational::big::ops::{add_assign_single, BITS_PER_WORD, mul_assign_single};
+use crate::rational::big::ops::building_blocks::shr_mut;
+use crate::rational::big::ops::is_well_formed;
 use crate::rational::big::ops::normalize::{gcd_scalar, simplify_fraction_without_info};
 use crate::rational::Ratio;
 use crate::rational::small::{simplify128, simplify16, simplify32, simplify64, simplify8};
 use crate::sign::Sign;
 use crate::sign::Signed;
-use crate::rational::big::ops::building_blocks::shr_mut;
 
 impl<const S: usize> Big<S> {
     pub fn new(numerator: i64, denominator: u64) -> Self {
@@ -468,7 +469,7 @@ static ASCII_LOWER: [char; 26] = [
     'u', 'v', 'w', 'x', 'y',
     'z',
 ];
-use crate::rational::big::ops::is_well_formed;
+
 pub fn to_str<const S: usize>(value: &SmallVec<[usize; S]>, radix: u32) -> String {
     debug_assert!(is_well_formed(value));
     debug_assert!(radix > 1 && radix <= 36);
@@ -551,8 +552,8 @@ mod test {
     use crate::rational::big::{Big, Big8};
     use crate::rational::big::creation::{int_from_str, to_str};
     use crate::rational::big::ops::BITS_PER_WORD;
-    use crate::RB;
     use crate::rational::big::ops::normalize::simplify_fraction_without_info;
+    use crate::RB;
 
     #[test]
     fn from() {

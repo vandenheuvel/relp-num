@@ -233,9 +233,18 @@ macro_rules! rational {
             #[inline]
             fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
                 self.sign.partial_cmp(&other.sign).or_else(|| {
+                    debug_assert_eq!(self.sign, other.sign);
+                    debug_assert_ne!(self.sign, Sign::Zero);
+
                     let ad = self.numerator * other.denominator;
                     let bc = self.denominator * other.numerator;
-                    Some(ad.cmp(&bc))
+
+                    Some(match (ad.cmp(&bc), self.sign) {
+                        (Ordering::Less, Sign::Positive) | (Ordering::Greater, Sign::Negative) => Ordering::Less,
+                        (Ordering::Equal, _) => Ordering::Equal,
+                        (Ordering::Greater, Sign::Positive) | (Ordering::Less, Sign::Negative) => Ordering::Greater,
+                        (_, Sign::Zero) => panic!(),
+                    })
                 })
             }
         }
@@ -763,6 +772,12 @@ macro_rules! rational {
             }
         }
 
+        impl Signed for $name {
+            fn signum(&self) -> Sign {
+                self.sign
+            }
+        }
+
         impl Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 match self.sign {
@@ -1002,6 +1017,11 @@ mod test {
         assert!(!(R32!(7, 11) < R32!(7, 11)));
         assert!(R64!(-3, 11) < R64!(3, 11));
         assert_ne!(R64!(-9, 4), R64!(9, 4));
+
+        assert!(R8!(-3) < R8!(-2));
+        assert!(R8!(-3) < R8!(0));
+        assert!(R8!(-3) < R8!(2));
+        assert!(R8!(-3) < R8!(3));
     }
 
     #[test]

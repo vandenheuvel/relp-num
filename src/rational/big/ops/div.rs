@@ -4,7 +4,7 @@ use std::ptr::copy;
 use smallvec::{smallvec, SmallVec};
 
 use crate::rational::big::ops::{BITS_PER_WORD, cmp, is_well_formed};
-use crate::rational::big::ops::building_blocks::{add_2, add_assign_slice, mul, shl, shl_mut_overflowing, shr, sub_2, sub_assign_slice, submul_slice, shl_mut};
+use crate::rational::big::ops::building_blocks::{add_2, add_assign_slice, mul, shl, shl_mut, shl_mut_overflowing, shr, sub_2, sub_assign_slice, submul_slice};
 use crate::rational::big::ops::normalize::trailing_zeros;
 
 #[inline]
@@ -498,9 +498,9 @@ pub fn divrem_3by2(
 mod test {
     use smallvec::smallvec;
 
+    use crate::rational::big::creation::int_from_str;
     use crate::rational::big::ops::div::{div_assign_n_words, div_assign_one_word, div_assign_two_words, div_preinv, invert};
     use crate::rational::big::ops::test::SV;
-    use crate::rational::big::creation::int_from_str;
 
     #[test]
     fn test_invert() {

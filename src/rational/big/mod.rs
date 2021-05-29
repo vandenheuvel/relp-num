@@ -7,10 +7,10 @@ use std::fmt;
 
 use smallvec::SmallVec;
 
+use crate::{Sign, Signed};
 use crate::non_zero::NonZero;
-use crate::rational::Ratio;
-use crate::Sign;
 use crate::rational::big::creation::to_str;
+use crate::rational::Ratio;
 
 mod with_small;
 mod creation;
@@ -50,5 +50,11 @@ impl<const S: usize> fmt::Display for Big<S> {
         }
 
         fmt::Result::Ok(())
+    }
+}
+
+impl<const S: usize> Signed for Big<S> {
+    fn signum(&self) -> Sign {
+        self.sign
     }
 }

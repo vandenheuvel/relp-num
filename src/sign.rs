@@ -142,7 +142,8 @@ impl fmt::Display for Sign {
 
 #[cfg(test)]
 mod test {
-    use crate::{NonZeroSign, Sign, Signed};
+    use crate::{Sign, Signed};
+    use crate::RB;
 
     #[test]
     fn test_integer() {
@@ -176,12 +177,27 @@ mod test {
 
     #[test]
     fn test_sign_conversion() {
-        assert_eq!(Sign::Positive, NonZeroSign::Positive.into());
+        assert_eq!(Sign::Positive, crate::NonZeroSign::Positive.into());
+    }
+
+    #[test]
+    fn test_numbers() {
+        assert_eq!(Signed::signum(&1), Sign::Positive);
+        assert_eq!(Signed::signum(&0), Sign::Zero);
+        assert_eq!(Signed::signum(&(-1)), Sign::Negative);
+
+        assert_eq!(RB!(0).signum(), Sign::Zero);
+        assert_eq!(RB!(1).signum(), Sign::Positive);
+        assert_eq!(RB!(-1).signum(), Sign::Negative);
+
+        assert_eq!(RB!(-1).signum() * RB!(-1).signum(), Sign::Positive);
+        assert_eq!(RB!(1).signum() * RB!(1).signum(), Sign::Positive);
+        assert_eq!(RB!(-1).signum() * RB!(1).signum(), Sign::Negative);
     }
 
     #[test]
     #[should_panic]
     fn test_sign_conversion_reverse() {
-        let _: NonZeroSign = Sign::Zero.into();
+        let _: crate::NonZeroSign = Sign::Zero.into();
     }
 }
