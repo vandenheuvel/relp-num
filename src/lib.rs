@@ -17,6 +17,7 @@ mod one;
 pub use one::One;
 
 mod integer;
+pub use integer::factorization::prime::Prime;
 
 mod non_zero;
 pub use non_zero::NonZero;

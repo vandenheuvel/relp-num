@@ -15,6 +15,12 @@ num-traits = "0.2.14"
 gcd = "2.0.1"
 smallvec = { version = "1.6.1", features = ["const_generics", "specialization"] }
 
+[dev-dependencies]
+criterion = "0.3"
+
 [build-dependencies]
 cc = "1.0.67"
 
+[[bench]]
+name = "bench_main"
+harness = false
