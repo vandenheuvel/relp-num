@@ -1,9 +1,11 @@
 use std::str::FromStr;
 
-use crate::{NonZero, RB};
+use crate::{NonZero, RB, Sign};
 use crate::rational::big::Big8;
 use crate::rational::Rational64;
 use crate::RationalBig;
+use smallvec::smallvec;
+use crate::rational::big::ops::normalize::simplify_fraction_gcd;
 
 #[test]
 fn eq() {
@@ -99,6 +101,45 @@ fn add() {
     let y = Rational64::new(2, 2);
     x += &y;
     assert_eq!(x, Big8::new(3, 1));
+
+    let x = Big8::from_str("3146383673420971972032023490593198871229613539715389096610302560000000/3302432073363697202172148890923583722241").unwrap();
+    let y = Big8::from_str("-19040000000/24371529219").unwrap();
+    let expected = Big8::from_str("23219911849044943287036970642552000000000/24371529219").unwrap();
+    assert_eq!(&x + y, expected);
+
+    let x = Big8::from_str("3146383673420971972032023490593198871229613539715389096610302560000000/3302432073363697202172148890923583722241").unwrap();
+    let y = Big8::from_str("-1190934288550035983230200000000/1219533185348999122218328290051").unwrap();
+    let expected = Big8::from_str("3837119303577162935033943051362177961413830001188396008105921274746403631342765081863784952360000000/4027425505827929207130173913061266698153904666032123020587815267724291").unwrap();
+    assert_eq!(&x + y, expected);
+
+    let x = Big8::from_str("3146383673420971972032023490593198871229613539715389096610302560000000/3302432073363697202172148890923583722241").unwrap();
+    let y = Big8::from_str("-23800000000/24371529219").unwrap();
+    let expected = Big8::from_str("76682181630963772103758511304607920049504288847839925168388021404881164840000000/80485319769746097976607076963162564582789311659779").unwrap();
+    assert_eq!(&x + y, expected);
+
+    let mut x = Big8 {
+        sign: Sign::Positive,
+        numerator: smallvec![13284626917187606528, 14353657804625640860, 11366567065457835548, 501247837944],
+        denominator: smallvec![10945929334190035713, 13004504757950498814, 9],
+    };
+    simplify_fraction_gcd(&mut x.numerator, &mut x.denominator);
+    let mut y = Big8 {
+        sign: Sign::Positive,
+        numerator: smallvec![12384794773201432064, 64560677146],
+        denominator: smallvec![12499693862731150083, 66111026448],
+    };
+    simplify_fraction_gcd(&mut y.numerator, &mut y.denominator);
+    let z = Big8 {
+        sign: Sign::Negative,
+        numerator: smallvec![4],
+        denominator: smallvec![5],
+    };
+    let xx = &y * z;
+    println!("{}", x);
+    println!("{}", xx);
+    x += xx;
+    let expected = Big8::from_str("23219911849044943287036970642552000000000/24371529219").unwrap();
+    assert_eq!(x, expected);
 
     let mut x = Big8::from_str("68498984987984986896468746354684684684968/68468465468464168545346854646").unwrap();
     let y = Big8::from_str("9876519684989849849849847").unwrap();
@@ -209,6 +250,23 @@ fn test_mul() {
     let y = Big8::new(2, 2);
     x *= y;
     assert_eq!(x, Big8::new(8, 4));
+
+    assert_eq!(
+        Big8::from_str("1190934288550035983230200000000/1219533185348999122218328290051").unwrap() * RB!(-4, 5),
+        Big8::from_str("-4763737154200143932920800000000/6097665926744995611091641450255").unwrap(),
+    );
+    assert_eq!(
+        (&Big8::from_str("1190934288550035983230200000000/1219533185348999122218328290051").unwrap()) * RB!(-4, 5),
+        Big8::from_str("-4763737154200143932920800000000/6097665926744995611091641450255").unwrap(),
+    );
+}
+
+#[test]
+fn test_div() {
+    assert_eq!(RB!(100) / RB!(2), RB!(50));
+    assert_eq!(RB!(200) / RB!(2), RB!(100));
+    assert_eq!((RB!(200) - RB!(0)) / RB!(2), RB!(100));
+    assert_eq!((&RB!(200) - RB!(0)) / RB!(2), RB!(100));
 }
 
 #[test]
@@ -218,6 +276,13 @@ fn test_display() {
     assert_eq!(RB!(-1).to_string(), "-1");
     assert_eq!(RB!(1, 2).to_string(), "1/2");
     assert_eq!(RB!(-1, 2).to_string(), "-1/2");
+
+    let x = Big8 {
+        sign: Sign::Positive,
+        numerator: smallvec![13284626917187606528, 14353657804625640860, 11366567065457835548, 501247837944],
+        denominator: smallvec![10945929334190035713, 13004504757950498814, 9],
+    };
+    assert_eq!(x.to_string(), "3146383673420971972032023490593198871229613539715389096610302560000000/3302432073363697202172148890923583722241");
 }
 
 #[test]
@@ -256,4 +321,15 @@ fn test_cmp() {
     assert!(RB!(5) >= RB!(0));
     assert!(RB!(-5) <= RB!(-5));
     assert!(RB!(-5) <= RB!(5));
+    assert!(RB!(200) - RB!(0) > RB!(0));
+}
+
+#[test]
+fn test_eq() {
+    assert_eq!(RB!(3), RB!(3));
+    assert_eq!(RB!(0), RB!(0));
+    assert_eq!(RB!(-1), RB!(-1));
+    assert_ne!(RB!(-1), RB!(0));
+    assert_ne!(RB!(-1), RB!(1));
+    assert_ne!(RB!(0), RB!(1));
 }

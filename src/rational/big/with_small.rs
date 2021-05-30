@@ -6,7 +6,7 @@ use num_traits::One;
 use smallvec::smallvec;
 
 use crate::rational::{Rational16, Rational32, Rational64, Rational8};
-use crate::rational::big::ops::{add_assign, add_assign_single, mul_assign_single, subtracting_cmp_ne, subtracting_cmp_ne_single, UnequalOrdering};
+use crate::rational::big::ops::{add_assign, add_assign_single, mul_assign_single, subtracting_cmp, subtracting_cmp_ne_single};
 use crate::rational::big::ops::building_blocks::{carrying_sub_mut, shr_mut};
 use crate::rational::big::ops::div::div_assign_one_word;
 use crate::rational::big::ops::normalize::{gcd_single, prepare_gcd_single, simplify_fraction_gcd};
@@ -118,15 +118,17 @@ impl<const S: usize> Big<S> {
             if rhs_denominator == 1 {
                 let mut product = self.denominator.clone();
                 mul_assign_single(&mut product, rhs_numerator);
-                match subtracting_cmp_ne(&mut self.numerator, &product) {
-                    UnequalOrdering::Less => self.sign = !self.sign,
-                    UnequalOrdering::Greater => {}
+                match subtracting_cmp(&mut self.numerator, &product) {
+                    Ordering::Less => self.sign = !self.sign,
+                    Ordering::Greater => {}
+                    Ordering::Equal => panic!(),
                 }
             } else if self.denominator[0] == 1 && self.denominator.len() == 1 {
                 mul_assign_single(&mut self.numerator, rhs_denominator);
                 match subtracting_cmp_ne_single(&mut self.numerator, rhs_numerator) {
-                    UnequalOrdering::Less => self.sign = !self.sign,
-                    UnequalOrdering::Greater => {}
+                    Ordering::Less => self.sign = !self.sign,
+                    Ordering::Greater => {}
+                    Ordering::Equal => panic!(),
                 }
                 self.denominator[0] = rhs_denominator;
             } else {
@@ -142,9 +144,10 @@ impl<const S: usize> Big<S> {
                 let mut c_times = self.denominator.clone();
                 mul_assign_single(&mut c_times, rhs_numerator);
 
-                match subtracting_cmp_ne(&mut self.numerator, &c_times) {
-                    UnequalOrdering::Less => self.sign = !self.sign,
-                    UnequalOrdering::Greater => {}
+                match subtracting_cmp(&mut self.numerator, &c_times) {
+                    Ordering::Less => self.sign = !self.sign,
+                    Ordering::Greater => {}
+                    Ordering::Equal => panic!(),
                 }
                 mul_assign_single(&mut self.denominator, rhs_denominator);
 

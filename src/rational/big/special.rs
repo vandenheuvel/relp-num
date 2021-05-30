@@ -29,10 +29,11 @@ mod field {
         use crate::binary::Binary;
         use crate::one::One;
         use crate::rational::big::Big;
-        use crate::rational::big::ops::{add_assign, subtracting_cmp_ne, UnequalOrdering};
+        use crate::rational::big::ops::{add_assign, subtracting_cmp};
         use crate::sign::Sign;
 
         use super::*;
+        use std::cmp::Ordering;
 
         impl<const S: usize> Add<Binary> for Big<S> {
             type Output = Self;
@@ -109,9 +110,10 @@ mod field {
                         if self.numerator[0] == 1 && self.denominator[0] == 1 && self.numerator.len() == 1 && self.denominator.len() == 1 {
                             self.set_zero();
                         } else {
-                            match subtracting_cmp_ne(&mut self.numerator, &self.denominator) {
-                                UnequalOrdering::Less => self.sign = !self.sign,
-                                UnequalOrdering::Greater => {}
+                            match subtracting_cmp(&mut self.numerator, &self.denominator) {
+                                Ordering::Less => self.sign = !self.sign,
+                                Ordering::Greater => {}
+                                Ordering::Equal => panic!(),
                             }
                         }
                     }
@@ -145,9 +147,10 @@ mod field {
                         if self.numerator[0] == 1 && self.denominator[0] == 1 && self.numerator.len() == 1 && self.denominator.len() == 1 {
                             self.set_zero();
                         } else {
-                            match subtracting_cmp_ne(&mut self.numerator, &self.denominator) {
-                                UnequalOrdering::Less => self.sign = !self.sign,
-                                UnequalOrdering::Greater => {}
+                            match subtracting_cmp(&mut self.numerator, &self.denominator) {
+                                Ordering::Less => self.sign = !self.sign,
+                                Ordering::Greater => {}
+                                Ordering::Equal => {}
                             }
                         }
                     }

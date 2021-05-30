@@ -258,7 +258,10 @@ impl<const S: usize> Big<S> {
 
                 (smallvec![fraction as usize >> numerator_shift], denominator)
             }
-            Ordering::Equal => (smallvec![fraction as usize], smallvec![1]),
+            Ordering::Equal => {
+                debug_assert_ne!(fraction, 0);
+                (smallvec![fraction as usize], smallvec![1])
+            },
             Ordering::Greater => {
                 let shift = power.unsigned_abs();
                 let words_shift = shift / BITS_PER_WORD;
@@ -305,7 +308,7 @@ impl<const S: usize> num_traits::Zero for Big<S> {
     fn set_zero(&mut self) {
         self.sign = Sign::Zero;
         self.numerator.clear();
-        // Numerator always has at least one element
+        debug_assert!(self.denominator.len() >= 1);
         self.denominator[0] = 1;
         self.denominator.truncate(1);
     }
@@ -327,7 +330,7 @@ impl<const S: usize> num_traits::One for Big<S> {
     fn set_one(&mut self) {
         self.numerator.clear();
         self.numerator.push(1);
-        // Denominator always has at least one element
+        debug_assert!(self.denominator.len() >= 1);
         self.denominator[0] = 1;
         self.denominator.truncate(1);
     }
@@ -485,7 +488,7 @@ pub fn to_str<const S: usize>(value: &SmallVec<[usize; S]>, radix: u32) -> Strin
                 // At least the last value is not allowed to be zero, so we don't have to check bounds
                 leading_zero_words += 1;
             }
-            let leading_zero_bits = value[leading_zero_words].leading_zeros();
+            let leading_zero_bits = value.last().unwrap().leading_zeros();
 
             // Set highest word to the lowest index, and reverse the bits
             let mut value: SmallVec<[usize; S]> = value.iter()
@@ -775,6 +778,11 @@ mod test {
             numerator: x,
             denominator: y,
         }));
+
+        assert_eq!(
+            Big8::from_str("1190934288550035983230200000000/1219533185348999122218328290051").unwrap(),
+            Big8::from_str("23800000000/24371529219").unwrap(),
+        );
     }
 
     #[test]
@@ -810,5 +818,10 @@ mod test {
             let expected: SV = smallvec![i];
             assert_eq!(int_from_str::<8>(&to_str(&expected, 10), 10), Ok(expected));
         }
+
+        let x: SV = smallvec![13284626917187606528, 14353657804625640860, 11366567065457835548, 501247837944];
+        assert_eq!(to_str(&x, 10), "3146383673420971972032023490593198871229613539715389096610302560000000");
+        let y: SV = smallvec![10945929334190035713, 13004504757950498814, 9];
+        assert_eq!(to_str(&y, 10), "3302432073363697202172148890923583722241");
     }
 }

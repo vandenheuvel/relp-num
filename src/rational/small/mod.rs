@@ -778,6 +778,22 @@ macro_rules! rational {
             }
         }
 
+        impl PartialEq for $name {
+            fn eq(&self, other: &Self) -> bool {
+                match (self.sign, other.sign) {
+                    (Sign::Positive, Sign::Negative) |
+                    (Sign::Negative, Sign::Positive) => false,
+                    (Sign::Zero, Sign::Zero) => true,
+                    (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => {
+                        self.numerator == other.numerator && self.denominator == other.denominator
+                    }
+                    (Sign::Zero, Sign::Positive | Sign::Negative) |
+                    (Sign::Positive | Sign::Negative, Sign::Zero) => false,
+                }
+            }
+        }
+        impl Eq for $name {}
+
         impl Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 match self.sign {
@@ -1022,6 +1038,16 @@ mod test {
         assert!(R8!(-3) < R8!(0));
         assert!(R8!(-3) < R8!(2));
         assert!(R8!(-3) < R8!(3));
+    }
+
+    #[test]
+    fn test_eq() {
+        assert_eq!(R8!(3), R8!(3));
+        assert_eq!(R8!(0), R8!(0));
+        assert_eq!(R8!(-1), R8!(-1));
+        assert_ne!(R8!(-1), R8!(0));
+        assert_ne!(R8!(-1), R8!(1));
+        assert_ne!(R8!(0), R8!(1));
     }
 
     #[test]

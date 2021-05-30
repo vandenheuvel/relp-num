@@ -513,6 +513,15 @@ mod test {
         simplify_fraction_without_info(&mut xx, &mut yy);
         assert_eq!(xx, x);
         assert_eq!(yy, y);
+
+
+        let mut x: SV = smallvec![12384794773201432064, 64560677146];
+        let mut y: SV = smallvec![12499693862731150083, 66111026448];
+        simplify_fraction_without_info(&mut x, &mut y);
+        let xx: SV = smallvec![23800000000];
+        let yy: SV = smallvec![24371529219];
+        assert_eq!(x, xx);
+        assert_eq!(y, yy);
     }
 
     #[test]

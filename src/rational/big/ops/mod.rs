@@ -100,7 +100,7 @@ impl<const S: usize> Sub<Big<S>> for &Big<S> {
     type Output = Big<S>;
 
     fn sub(self, rhs: Big<S>) -> Self::Output {
-        Sub::sub(rhs, self)
+        -Sub::sub(rhs, self)
     }
 }
 
@@ -241,8 +241,10 @@ impl<const S: usize> Big<S> {
             if self.denominator[0] == 1 && self.denominator.len() == 1 { // denominator == 1
                 self.numerator = mul(&self.numerator, &rhs.denominator);
 
-                if subtracting_cmp_ne(&mut self.numerator, &rhs.numerator) == UnequalOrdering::Less {
-                    self.sign = !self.sign;
+                match subtracting_cmp(&mut self.numerator, &rhs.numerator) {
+                    Ordering::Less => self.sign = !self.sign,
+                    Ordering::Greater => {},
+                    Ordering::Equal => panic!(),
                 }
                 self.denominator = rhs.denominator.clone();
                 if self.numerator[0] != 1 || self.numerator.len() > 1 {
@@ -251,8 +253,10 @@ impl<const S: usize> Big<S> {
             } else if rhs.denominator[0] == 1 && rhs.denominator.len() == 1 { // denominator == 1
                 let numerator = mul(&rhs.numerator, &self.denominator);
 
-                if subtracting_cmp_ne(&mut self.numerator, &numerator) == UnequalOrdering::Less {
-                    self.sign = !self.sign;
+                match subtracting_cmp(&mut self.numerator, &numerator) {
+                    Ordering::Less => self.sign = !self.sign,
+                    Ordering::Greater => {},
+                    Ordering::Equal => panic!(),
                 }
                 if self.numerator[0] != 1 || self.numerator.len() > 1 {
                     simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
@@ -263,7 +267,7 @@ impl<const S: usize> Big<S> {
 
                 if gcd[0] != 1 || gcd.len() > 1 {
                     if cmp(&rhs.denominator, &gcd) == Ordering::Equal {
-
+                        // No need to modify numerator
                     } else {
                         let left = div_by_odd_or_even(&rhs.denominator, &gcd);
                         self.numerator = mul(&self.numerator, &left);
@@ -273,9 +277,10 @@ impl<const S: usize> Big<S> {
                     if cmp(&self.denominator, &gcd) == Ordering::Equal {
                         self.denominator.truncate(1);
                         self.denominator[0] = 1;
-                        match subtracting_cmp_ne(&mut self.numerator, &rhs.numerator) {
-                            UnequalOrdering::Less => self.sign = !self.sign,
-                            UnequalOrdering::Greater => {}
+                        match subtracting_cmp(&mut self.numerator, &rhs.numerator) {
+                            Ordering::Less => self.sign = !self.sign,
+                            Ordering::Greater => {}
+                            Ordering::Equal => panic!(),
                         }
                         self.denominator = rhs.denominator.clone();
                     } else {
@@ -283,9 +288,10 @@ impl<const S: usize> Big<S> {
                             div_assign_by_odd(&mut self.denominator, &gcd);
                         }
                         let right = mul(&rhs.numerator, &self.denominator);
-                        match subtracting_cmp_ne(&mut self.numerator, &right) {
-                            UnequalOrdering::Less => self.sign = !self.sign,
-                            UnequalOrdering::Greater => {}
+                        match subtracting_cmp(&mut self.numerator, &right) {
+                            Ordering::Less => self.sign = !self.sign,
+                            Ordering::Greater => {}
+                            Ordering::Equal => panic!(),
                         };
                         self.denominator = mul(&rhs.denominator, &self.denominator);
                     }
@@ -295,9 +301,10 @@ impl<const S: usize> Big<S> {
                 } else {
                     self.numerator = mul(&self.numerator, &rhs.denominator);
                     let right = mul(&rhs.numerator, &self.denominator);
-                    match subtracting_cmp_ne(&mut self.numerator, &right) {
-                        UnequalOrdering::Less => self.sign = !self.sign,
-                        UnequalOrdering::Greater => {}
+                    match subtracting_cmp(&mut self.numerator, &right) {
+                        Ordering::Less => self.sign = !self.sign,
+                        Ordering::Greater => {}
+                        Ordering::Equal => panic!(),
                     }
                     self.denominator = mul(&self.denominator, &rhs.denominator);
                 }
@@ -324,43 +331,6 @@ fn cmp(left: &[usize], right: &[usize]) -> Ordering {
             Ordering::Equal
         }
         Ordering::Greater => Ordering::Greater,
-    }
-}
-
-pub fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &SmallVec<[usize; S]>) -> Ordering {
-    debug_assert!(is_well_formed(left));
-    debug_assert!(is_well_formed(right));
-
-    if left.len() > right.len() {
-        let carry = unsafe { sub_assign_slice(&mut left[..right.len()], right) };
-        debug_assert!(!carry);
-        Ordering::Greater
-    } else {
-        // left.len() <= right.len()
-        let mut last_non_zero_index = None;
-        let mut carry = false;
-        // TODO(PERFORMANCE): Is assembler faster?
-        for i in 0..left.len() {
-            carry = carrying_sub_mut(&mut left[i], right[i], carry);
-            if left[i] != 0 {
-                last_non_zero_index = Some(i);
-            }
-        }
-        if carry {
-            to_twos_complement(left);
-            Ordering::Less
-        } else {
-            match last_non_zero_index {
-                None => {
-                    left.clear();
-                    Ordering::Equal
-                }
-                Some(index) => {
-                    left.truncate(1 + index);
-                    Ordering::Greater
-                }
-            }
-        }
     }
 }
 
@@ -455,6 +425,7 @@ impl<const S: usize> Div<Big<S>> for &Big<S> {
 
     fn div(self, rhs: Big<S>) -> Self::Output {
         let mut x = self.clone();
+        // TODO(PERFORMANCE): Should cloning be avoided?
         DivAssign::div_assign(&mut x, rhs);
         x
     }
@@ -533,14 +504,8 @@ impl<const S: usize> Big<S> {
     }
 }
 
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
-pub(crate) enum UnequalOrdering {
-    Less,
-    Greater,
-}
-
 #[inline]
-pub(crate) fn subtracting_cmp_ne_single<const S: usize>(left: &mut SmallVec<[usize; S]>, right: usize) -> UnequalOrdering {
+pub(crate) fn subtracting_cmp_ne_single<const S: usize>(left: &mut SmallVec<[usize; S]>, right: usize) -> Ordering {
     debug_assert!(is_well_formed(left));
     debug_assert_ne!(right, 0);
     debug_assert!(left.len() > 1 || left[0] != right);
@@ -559,47 +524,95 @@ pub(crate) fn subtracting_cmp_ne_single<const S: usize>(left: &mut SmallVec<[usi
             left.pop();
         }
 
-        UnequalOrdering::Greater
+        Ordering::Greater
     } else {
         // result might be negative
         if left[0] < right {
             left[0] = right - left[0];
-            UnequalOrdering::Less
+            Ordering::Less
         } else {
             // left[0] > right
             left[0] -= right;
-            UnequalOrdering::Greater
+            Ordering::Greater
         }
     }
 }
 
 #[inline]
-pub(crate) fn subtracting_cmp_ne<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &SmallVec<[usize; S]>) -> UnequalOrdering {
+pub(crate) fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &SmallVec<[usize; S]>) -> Ordering {
     debug_assert!(is_well_formed(left));
     debug_assert!(is_well_formed(right));
-    debug_assert_ne!(left, right);
 
-    if left.len() > right.len() {
-        let carry = unsafe { sub_assign_slice(&mut left[..right.len()], right) };
-        debug_assert!(!carry);
-        UnequalOrdering::Greater
-    } else {
-        // left.len() <= right.len()
-        let mut last_non_zero_index = None;
-        let mut carry = false;
-        // TODO(PERFORMANCE): Is assembler faster?
-        for i in 0..left.len() {
-            carry = carrying_sub_mut(&mut left[i], right[i], carry);
-            if left[i] != 0 {
-                last_non_zero_index = Some(i);
+    match left.len().cmp(&right.len()) {
+        Ordering::Less => {
+            let mut carry = false;
+            let mut i = 0;
+            while i < left.len() {
+                // TODO(PERFORMANCE): Is assembler faster?
+                let (new_value, new_carry) = carrying_sub(right[i], left[i], carry);
+                left[i] = new_value;
+                carry = new_carry;
+                i += 1;
+            }
+
+            while carry {
+                let (new_value, new_carry) = carrying_sub(right[i], 0, true);
+                left.push(new_value);
+                carry = new_carry;
+                i += 1;
+            }
+
+            left.extend_from_slice(&right[i..]);
+
+            while *left.last().unwrap() == 0 {
+                left.pop();
+            }
+
+            Ordering::Less
+        }
+        Ordering::Equal => {
+            let mut carry = false;
+            for i in 0..left.len() {
+                // TODO(PERFORMANCE): Is assembler faster?
+                carry = carrying_sub_mut(&mut left[i], right[i], carry);
+            }
+
+            if carry {
+                // result is negative
+                to_twos_complement(left);
+                while *left.last().unwrap() == 0 {
+                    left.pop();
+                }
+                Ordering::Less
+            } else {
+                // result is zero or positive
+
+                while let Some(0) = left.last() {
+                    left.pop();
+                }
+
+                // TODO(PERFORMANCE): This test is often not necessary, as it is known in advance
+                //  whether the result can be zero or not.
+                if left.is_empty() {
+                    Ordering::Equal
+                } else {
+                    Ordering::Greater
+                }
             }
         }
-        if carry {
-            to_twos_complement(left);
-            UnequalOrdering::Less
-        } else {
-            left.truncate(1 + last_non_zero_index.unwrap());
-            UnequalOrdering::Greater
+        Ordering::Greater => {
+            let mut carry = unsafe { sub_assign_slice(&mut left[..right.len()], right) };
+            let mut i = 0;
+            while carry && i + right.len() < left.len() {
+                carry = carrying_sub_mut(&mut left[i + right.len()], 0, true);
+                i += 1;
+            }
+            debug_assert!(!carry);
+            while *left.last().unwrap() == 0 {
+                left.pop();
+            }
+
+            Ordering::Greater
         }
     }
 }
@@ -814,6 +827,22 @@ pub fn mul<const S: usize>(
     result
 }
 
+impl<const S: usize> PartialEq for Big<S> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.sign, other.sign) {
+            (Sign::Positive, Sign::Negative) |
+            (Sign::Negative, Sign::Positive) => false,
+            (Sign::Zero, Sign::Zero) => true,
+            (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => {
+                self.numerator == other.numerator && self.denominator == other.denominator
+            }
+            (Sign::Zero, Sign::Positive | Sign::Negative) |
+            (Sign::Positive | Sign::Negative, Sign::Zero) => false,
+        }
+    }
+}
+impl<const S: usize> Eq for Big<S> {}
+
 impl<const S: usize> Ord for Big<S> {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
@@ -900,7 +929,7 @@ mod test {
     use crate::{RB, Sign};
     use crate::rational::big::Big8;
     use crate::rational::big::creation::int_from_str;
-    use crate::rational::big::ops::{add_assign, add_assign_single, is_well_formed, mul, mul_assign_single, sub, sub_assign_result_positive};
+    use crate::rational::big::ops::{add_assign, add_assign_single, is_well_formed, mul, mul_assign_single, sub, sub_assign_result_positive, subtracting_cmp, Ordering};
 
     pub type SV = SmallVec<[usize; 8]>;
 
@@ -1179,6 +1208,8 @@ mod test {
         let y = RB!(-1, 3);
         x -= &y;
         assert_eq!(x, RB!(5, 6));
+
+        assert_eq!((&RB!(200) - RB!(0)), RB!(200));
 
         assert_eq!(RB!(1, 6) - RB!(5, 12), RB!(-1, 4));
         assert_eq!(RB!(4, 7) - RB!(5, 6), RB!(4 * 6 - 7 * 5, 7 * 6));
@@ -1489,6 +1520,87 @@ mod test {
         let mut x = int_from_str::<4>("684684659849886161698149845311616811315531318498498987982211", 10).unwrap();
         add_assign_single(&mut x, 646846844846);
         let expected = int_from_str::<4>("684684659849886161698149845311616811315531318499145834827057", 10).unwrap();
+        assert_eq!(x, expected);
+    }
+
+    #[test]
+    fn test_subtracting_cmp_ne() {
+        let mut x: SV = smallvec![0, 1];
+        let y: SV = smallvec![1];
+        assert_eq!(subtracting_cmp(&mut x, &y), Ordering::Greater);
+        let expected: SV = smallvec![usize::MAX];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![1, 1];
+        let y: SV = smallvec![1];
+        assert_eq!(subtracting_cmp(&mut x, &y), Ordering::Greater);
+        let expected: SV = smallvec![0, 1];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 0, 1];
+        let y: SV = smallvec![1];
+        assert_eq!(subtracting_cmp(&mut x, &y), Ordering::Greater);
+        let expected: SV = smallvec![usize::MAX, usize::MAX];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![1];
+        let y: SV = smallvec![2];
+        assert_eq!(subtracting_cmp(&mut x, &y), Ordering::Less);
+        let expected: SV = smallvec![1];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![1, 0, 0, 1];
+        let y: SV = smallvec![2, 0, 0, 1];
+        assert_eq!(subtracting_cmp(&mut x, &y), Ordering::Less);
+        let expected: SV = smallvec![1];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 0, 0, 2];
+        let y: SV = smallvec![1];
+        assert_eq!(subtracting_cmp(&mut x, &y), Ordering::Greater);
+        let expected: SV = smallvec![usize::MAX, usize::MAX, usize::MAX, 1];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 0, 0, 1];
+        let y: SV = smallvec![usize::MAX, usize::MAX, usize::MAX];
+        assert_eq!(subtracting_cmp(&mut x, &y), Ordering::Greater);
+        let expected: SV = smallvec![1];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![1, 0, 0, 2];
+        let y: SV = smallvec![2, 0, 0, 1];
+        assert_eq!(subtracting_cmp(&mut x, &y), Ordering::Greater);
+        let expected: SV = smallvec![usize::MAX, usize::MAX, usize::MAX];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![1];
+        let y: SV = smallvec![0, 1];
+        assert_eq!(subtracting_cmp(&mut x, &y), Ordering::Less);
+        let expected: SV = smallvec![usize::MAX];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![1];
+        let y: SV = smallvec![1, 1];
+        assert_eq!(subtracting_cmp(&mut x, &y), Ordering::Less);
+        let expected: SV = smallvec![0, 1];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![1];
+        let y: SV = smallvec![1, 0, 0, 1];
+        assert_eq!(subtracting_cmp(&mut x, &y), Ordering::Less);
+        let expected: SV = smallvec![0, 0, 0, 1];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![1];
+        let y: SV = smallvec![2, 0, 0, 1];
+        assert_eq!(subtracting_cmp(&mut x, &y), Ordering::Less);
+        let expected: SV = smallvec![1, 0, 0, 1];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![1];
+        let y: SV = smallvec![0, 0, 0, 1];
+        assert_eq!(subtracting_cmp(&mut x, &y), Ordering::Less);
+        let expected: SV = smallvec![usize::MAX, usize::MAX, usize::MAX];
         assert_eq!(x, expected);
     }
 

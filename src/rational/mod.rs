@@ -39,7 +39,7 @@ trait Rational {
 }
 
 /// Ratio between two numbers.
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Ratio<N, D: NonZero> {
     sign: Sign,
     numerator: N,
