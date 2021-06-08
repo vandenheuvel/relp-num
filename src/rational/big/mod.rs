@@ -11,6 +11,8 @@ use crate::{Sign, Signed};
 use crate::non_zero::NonZero;
 use crate::rational::big::creation::to_str;
 use crate::rational::Ratio;
+use crate::rational::big::ops::is_well_formed;
+use crate::rational::big::ops::normalize::{simplify_fraction_without_info};
 
 mod with_small;
 mod creation;
@@ -23,6 +25,37 @@ mod test;
 pub type Big<const S: usize> = Ratio<SmallVec<[usize; S]>, SmallVec<[usize; S]>>;
 
 pub type Big8 = Big<8>;
+
+impl<const S: usize> Big<S> {
+    fn is_consistent(&self) -> bool {
+        if !is_well_formed(&self.numerator) {
+            return false;
+        }
+        if !is_well_formed(&self.denominator) {
+            return false;
+        }
+
+        match self.sign {
+            Sign::Zero => {
+                self.numerator.is_empty() && self.denominator.len() == 1 && self.denominator[0] == 1
+            }
+            Sign::Positive | Sign::Negative => {
+                if self.numerator.is_empty() {
+                    return false;
+                }
+                if self.denominator.is_empty() {
+                    return false;
+                }
+
+                let mut n_clone = self.numerator.clone();
+                let mut d_clone = self.denominator.clone();
+                simplify_fraction_without_info(&mut n_clone, &mut d_clone);
+
+                n_clone == self.numerator && d_clone == self.denominator
+            }
+        }
+    }
+}
 
 impl<const S: usize> NonZero for SmallVec<[usize; S]> {
     #[must_use]

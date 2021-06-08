@@ -154,6 +154,10 @@ impl<const S: usize> Sum for Big<S> {
 
 impl<const S: usize> Big<S> {
     fn add(&mut self, rhs: &Self) {
+        debug_assert!(self.is_consistent());
+        debug_assert!(!self.is_zero());
+        debug_assert!(!rhs.is_zero());
+
         if self.denominator == rhs.denominator {
             add_assign(&mut self.numerator, &rhs.numerator);
 
@@ -172,6 +176,7 @@ impl<const S: usize> Big<S> {
                 self.numerator = mul(&self.numerator, &rhs.denominator);
                 add_assign(&mut self.numerator, &rhs.numerator);
                 self.denominator = rhs.denominator.clone();
+
                 if self.numerator[0] != 1 || self.numerator.len() > 1 {
                     simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                 }
@@ -216,8 +221,14 @@ impl<const S: usize> Big<S> {
                 }
             }
         }
+
+        debug_assert!(self.is_consistent());
     }
     fn sub(&mut self, rhs: &Self) {
+        debug_assert!(self.is_consistent());
+        debug_assert!(!self.is_zero());
+        debug_assert!(!rhs.is_zero());
+
         if self.denominator == rhs.denominator {
             match subtracting_cmp(&mut self.numerator, &rhs.numerator) {
                 Ordering::Less => self.sign = !self.sign,
@@ -310,6 +321,8 @@ impl<const S: usize> Big<S> {
                 }
             }
         }
+
+        debug_assert!(self.is_consistent());
     }
 }
 
@@ -470,6 +483,13 @@ impl<const S: usize> DivAssign<&Big<S>> for Big<S> {
 
 impl<const S: usize> Big<S> {
     fn mul(&mut self, mut rhs_numerator: SmallVec<[usize; S]>, mut rhs_denominator: SmallVec<[usize; S]>) {
+        debug_assert!(self.is_consistent());
+        debug_assert!(!self.is_zero());
+        debug_assert!(is_well_formed(&rhs_numerator));
+        debug_assert!(!rhs_numerator.is_empty());
+        debug_assert!(is_well_formed(&rhs_denominator));
+        debug_assert!(!rhs_denominator.is_empty());
+
         if (rhs_denominator[0] != 1 || rhs_denominator.len() > 1) && (self.numerator.len() != 1 || self.numerator[0] != 1) {
             // TODO(PERFORMANCE): Check for equality here as a special case, or not?
 
@@ -501,6 +521,8 @@ impl<const S: usize> Big<S> {
 
         self.numerator = mul(&self.numerator, &rhs_numerator);
         self.denominator = mul(&self.denominator, &rhs_denominator);
+
+        debug_assert!(self.is_consistent());
     }
 }
 

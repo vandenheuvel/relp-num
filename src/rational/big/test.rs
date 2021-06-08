@@ -6,6 +6,7 @@ use crate::rational::Rational64;
 use crate::RationalBig;
 use smallvec::smallvec;
 use crate::rational::big::ops::normalize::simplify_fraction_gcd;
+use num_traits::Zero;
 
 #[test]
 fn eq() {
@@ -68,6 +69,10 @@ fn add() {
     let x = Big8::new(1, 1);
     let y = Big8::new(2, 2);
     assert_eq!(x + y, Big8::new(2, 1));
+
+    assert_eq!(RB!(1, 2) + RB!(1, 2), RB!(1));
+    assert_eq!(RB!(1, 2) + RB!(3, 2), RB!(2));
+    assert_eq!(RB!(3, 1) + RB!(4, 1), RB!(7, 1));
 
     let x = Big8::new(2, 1);
     let y = Big8::new(2, 2);
@@ -135,8 +140,6 @@ fn add() {
         denominator: smallvec![5],
     };
     let xx = &y * z;
-    println!("{}", x);
-    println!("{}", xx);
     x += xx;
     let expected = Big8::from_str("23219911849044943287036970642552000000000/24371529219").unwrap();
     assert_eq!(x, expected);
@@ -157,6 +160,38 @@ fn add() {
     let y = Big8::from_str("9876519684989849849849847/3").unwrap();
     let z = Big8::from_str("676230147000539639105184502948895260072789490888394066/205405396405392505636040563938").unwrap();
     assert_eq!(x + y, z);
+
+    let mut x = Big8::from_str("1588989165000/32460463963").unwrap();
+    let y = Big8::from_str("808953992679657007631484461470500000/1609760080345859697668056906889135691").unwrap();
+    let z = Big8::from_str("-9741/100").unwrap();
+
+    let yz = y * z;
+    assert_eq!(
+        yz,
+        Big8::from_str("-7880020842692538911338290139184140500000/160976008034585969766805690688913569100").unwrap(),
+    );
+    x += yz;
+    assert!(x.is_zero());
+
+    let mut x = Big8::from_str("0").unwrap();
+    let y = Big8::from_str("9381074085307/3795475922420").unwrap();
+    let z = Big8::from_str("-1").unwrap();
+
+    let yz = y * z;
+    assert_eq!(yz, Big8::from_str("-9381074085307/3795475922420").unwrap());
+    x += yz;
+    assert_eq!(x, Big8::from_str("-9381074085307/3795475922420").unwrap());
+
+    // 26219000000/81331626909 + 20591406422593/18977379612100 * &2587354000000/28143222255921
+    let x = Big8::from_str("26219000000/81331626909").unwrap();
+    let y = Big8::from_str("20591406422593/18977379612100").unwrap();
+    let z = Big8::from_str("2587354000000/28143222255921").unwrap();
+
+    let yz = y * &z;
+    assert_eq!(yz, Big8::from_str("53277257773121688922000000/534084612258314153908244100").unwrap());
+    let result = x + yz;
+    let expected = Big8::from_str("18336290500738892172980314459998000000/43437970422031134698979313360500486900").unwrap();
+    assert_eq!(result, expected);
 }
 
 #[test]
@@ -332,4 +367,54 @@ fn test_eq() {
     assert_ne!(RB!(-1), RB!(0));
     assert_ne!(RB!(-1), RB!(1));
     assert_ne!(RB!(0), RB!(1));
+}
+
+#[test]
+fn test_consistent() {
+    assert!(Big8 {
+        sign: Sign::Zero,
+        numerator: smallvec![],
+        denominator: smallvec![1],
+    }.is_consistent());
+    assert!(Big8 {
+        sign: Sign::Positive,
+        numerator: smallvec![1],
+        denominator: smallvec![1],
+    }.is_consistent());
+    assert!(!Big8 {
+        sign: Sign::Positive,
+        numerator: smallvec![1],
+        denominator: smallvec![0],
+    }.is_consistent());
+    assert!(Big8 {
+        sign: Sign::Positive,
+        numerator: smallvec![1],
+        denominator: smallvec![1],
+    }.is_consistent());
+    assert!(!Big8 {
+        sign: Sign::Positive,
+        numerator: smallvec![2],
+        denominator: smallvec![2],
+    }.is_consistent());
+    assert!(!Big8 {
+        sign: Sign::Positive,
+        numerator: smallvec![4],
+        denominator: smallvec![6],
+    }.is_consistent());
+    assert!(!Big8 {
+        sign: Sign::Positive,
+        numerator: smallvec![4, 4],
+        denominator: smallvec![6, 9684, 4],
+    }.is_consistent());
+    assert!(Big8 {
+        sign: Sign::Negative,
+        numerator: smallvec![3, 684684685487],
+        denominator: smallvec![2],
+    }.is_consistent());
+
+    assert!(Big8 {
+        sign: Sign::Negative,
+        numerator: smallvec![9381074085307],
+        denominator: smallvec![3795475922420],
+    }.is_consistent());
 }

@@ -41,73 +41,86 @@ pub fn shr_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, 
 pub fn shr<const S: usize>(values: &SmallVec<[usize; S]>, words_to_remove: usize, bits: u32) -> SmallVec<[usize; S]> {
     debug_assert_shr_constraints(values, words_to_remove, bits);
 
-    let last_shifted = values.last().unwrap() >> bits;
-    let words_to_keep = if last_shifted > 0 {
-        values.len() - words_to_remove
+    if bits > 0 {
+        let last_shifted = values.last().unwrap() >> bits;
+        let words_to_keep = if last_shifted > 0 {
+            values.len() - words_to_remove
+        } else {
+            values.len() - words_to_remove - 1
+        };
+
+        let mut result = SmallVec::with_capacity(words_to_keep);
+        for i in 0..(values.len() - words_to_remove - 1) {
+            let mut result_word = values[i + words_to_remove] >> bits;
+            result_word |= values[i + words_to_remove + 1] << (BITS_PER_WORD - bits);
+            result.push(result_word);
+        }
+
+        if last_shifted > 0 {
+            result.push(last_shifted);
+        }
+
+        result
     } else {
-        values.len() - words_to_remove - 1
-    };
-
-    let mut result = SmallVec::with_capacity(words_to_keep);
-    for i in 0..(values.len() - words_to_remove - 1) {
-        let mut result_word = values[i + words_to_remove] >> bits;
-        result_word |= values[i + words_to_remove + 1].wrapping_shl(BITS_PER_WORD - bits);
-        result.push(result_word);
+        SmallVec::from_slice(&values[words_to_remove..])
     }
-
-    if last_shifted > 0 {
-        result.push(last_shifted);
-    }
-
-    result
 }
 
 #[inline]
 pub fn shl_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, bits: u32) {
     debug_assert!(is_well_formed(values));
 
-    let original_length = values.len();
+    if bits > 0 {
+        let original_length = values.len();
 
-    let overflows = bits > values.last().unwrap().leading_zeros();
-    if overflows {
-        values.extend(repeat(0).take(words + 1));
-        *values.last_mut().unwrap() = values[original_length - 1].wrapping_shr(BITS_PER_WORD - bits);
+        let overflows = bits > values.last().unwrap().leading_zeros();
+        if overflows {
+            // bits > 0
+            values.extend(repeat(0).take(words + 1));
+            *values.last_mut().unwrap() = values[original_length - 1] >> (BITS_PER_WORD - bits);
+        } else {
+            values.extend(repeat(0).take(words));
+        }
+
+        for i in (1..original_length).rev() {
+            values[words + i] = values[i] << bits;
+            values[words + i] |= values[i - 1] >> (BITS_PER_WORD - bits);
+        }
+        values[words] <<= bits;
     } else {
-        values.extend(repeat(0).take(words));
+        values.reserve(words);
+        let old_length = values.len();
+        unsafe {
+            values.set_len(old_length + words);
+            ptr::copy(values.as_ptr(), values.as_mut_ptr().add(words),old_length);
+        }
     }
 
-    for i in (1..original_length).rev() {
-        values[words + i] = values[i] << bits | values[i - 1].wrapping_shr(BITS_PER_WORD - bits);
-    }
-    values[words] <<= bits;
-
-    for i in 0..words {
-        values[i] = 0;
-    }
+    values[..words].fill(0);
 
     debug_assert!(is_well_formed(values) && !values.is_empty());
 }
 
 #[inline]
 pub unsafe fn shl_mut_overflowing<const S: usize>(values: &mut SmallVec<[usize; S]>, bits: u32) -> Option<NonZeroUsize> {
-    // TODO(PERFORMANCE): Bits in usize or u32?
     debug_assert_ne!(bits, 0);
     debug_assert!(bits < BITS_PER_WORD);
-    // TODO(CORRECTNESS): Constraints
 
     let original_number_words = values.len();
 
     let value_highest = values.last().unwrap();
     let leading_zeros = value_highest.leading_zeros();
     let carry = if bits > leading_zeros {
-        Some(NonZeroUsize::new(value_highest.wrapping_shr(BITS_PER_WORD - bits)).unwrap())
+        Some(NonZeroUsize::new(value_highest >> (BITS_PER_WORD - bits)).unwrap())
     } else {
         None
     };
 
     for i in (1..original_number_words).rev() {
         values[i] <<= bits;
-        values[i] |= values[i - 1].wrapping_shr(BITS_PER_WORD - bits);
+        if bits > 0 {
+            values[i] |= values[i - 1] >> (BITS_PER_WORD - bits);
+        }
     }
 
     values[0] <<= bits;
@@ -117,17 +130,19 @@ pub unsafe fn shl_mut_overflowing<const S: usize>(values: &mut SmallVec<[usize; 
 
 #[inline]
 pub fn shl<const S: usize>(values: &SmallVec<[usize; S]>, bits: u32) -> SmallVec<[usize; S]> {
-    // TODO(PERFORMANCE): Bits in usize or u32?
     debug_assert_ne!(bits, 0);
+    debug_assert!(bits < BITS_PER_WORD);
     // TODO(CORRECTNESS): Constraints
     debug_assert!(bits <= values.last().unwrap().leading_zeros());
 
     let mut result = SmallVec::with_capacity(values.len());
     result.push(values[0] << bits);
     for i in 1..values.len() {
-        let from_self = values[i] << bits;
-        let from_previous = values[i - 1].wrapping_shr(BITS_PER_WORD - bits);
-        result.push(from_self | from_previous);
+        let mut result_value = values[i] << bits;
+        if bits > 0 {
+            result_value |= values[i - 1] >> (BITS_PER_WORD - bits);
+        }
+        result.push(result_value);
     }
 
     result
@@ -375,6 +390,15 @@ mod test {
         let x: SV = smallvec![0, 1];
         let expected: SV = smallvec![2];
         assert_eq!(shr(&x, 0, (mem::size_of::<usize>() * 8 - 1) as u32), expected);
+
+        // 15588921427233345156 // 4
+        let x: SV = smallvec![15588921427233345156];
+        let expected: SV = smallvec![3897230356808336289];
+        assert_eq!(shr(&x, 0, 2), expected);
+
+        // 15588921427233345156 // 4
+        let x: SV = smallvec![131522304505784511, 2433];
+        assert_eq!(shr(&x, 0, 0), x);
     }
 
     #[test]
@@ -462,6 +486,16 @@ mod test {
         let mut x: SV = smallvec![0, 0, 0, 1];
         shl_mut(&mut x, 2, 1);
         let expected: SV = smallvec![0, 0, 0, 0, 0, 2];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 0, 0, 1];
+        shl_mut(&mut x, 2, 0);
+        let expected: SV = smallvec![0, 0, 0, 0, 0, 1];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 0, 0, 1];
+        shl_mut(&mut x, 0, 0);
+        let expected: SV = smallvec![0, 0, 0, 1];
         assert_eq!(x, expected);
 
         let mut x: SV = smallvec![0, 0, 2_usize.pow((BITS_PER_WORD - 2) as u32)];
