@@ -67,6 +67,8 @@ impl<const S: usize> Big<S> {
                 }
             }
         }
+
+        debug_assert!(self.is_consistent());
     }
     #[inline]
     fn sub_small(&mut self, rhs_numerator: usize, rhs_denominator: usize) {
@@ -156,6 +158,8 @@ impl<const S: usize> Big<S> {
                 }
             }
         }
+
+        debug_assert!(self.is_consistent());
     }
     #[inline]
     fn mul_small(&mut self, mut rhs_numerator: usize, mut rhs_denominator: usize) {
@@ -173,6 +177,8 @@ impl<const S: usize> Big<S> {
 
         mul_assign_single(&mut self.numerator, rhs_numerator);
         mul_assign_single(&mut self.denominator, rhs_denominator);
+
+        debug_assert!(self.is_consistent());
     }
 }
 
@@ -221,8 +227,8 @@ macro_rules! define_interations {
                             match self.sign {
                                 Sign::Zero => other.sign == Sign::Zero,
                                 Sign::Positive | Sign::Negative => {
-                                    self.numerator.len() == 1 &&
                                     self.numerator[0] == other.numerator as usize &&
+                                    self.numerator.len() == 1 &&
                                     self.denominator.len() == 1
                                 }
                             }

@@ -157,18 +157,18 @@ pub fn debug_assert_shr_constraints<const S: usize>(values: &SmallVec<[usize; S]
 }
 
 #[inline]
-pub fn mul(high: usize, low: usize) -> (usize, usize) {
+pub fn mul(left: usize, right: usize) -> (usize, usize) {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fn inner(high: usize, low: usize) -> (usize, usize) {
+    fn inner(left: usize, right: usize) -> (usize, usize) {
         let mut high_out;
         let mut low_out;
 
         unsafe {
             asm!(
                 "mul {v}",
-                v = in(reg) low,
+                v = in(reg) right,
 
-                inout("rax") high => low_out,
+                inout("rax") left => low_out,
                 out("rdx") high_out,
             );
         }
@@ -176,7 +176,7 @@ pub fn mul(high: usize, low: usize) -> (usize, usize) {
         (high_out, low_out)
     }
 
-    inner(high, low)
+    inner(left, right)
 }
 
 #[inline]

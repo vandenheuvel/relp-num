@@ -6,6 +6,8 @@
 #![feature(min_specialization)]
 #![feature(label_break_value)]
 #![feature(trait_alias)]
+#![feature(result_flattening)]
+#![feature(unchecked_math)]
 
 mod binary;
 pub use binary::Binary;

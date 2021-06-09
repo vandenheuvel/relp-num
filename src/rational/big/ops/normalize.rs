@@ -485,6 +485,16 @@ mod test {
         let y: SV = smallvec![81331626909];
         let expected: SV = smallvec![81331626909];
         assert_eq!(gcd(&x, &y), expected);
+
+        let x: SV = smallvec![1202576035807934423, 22];
+        let y: SV = smallvec![8031097105200];
+        let expected: SV = smallvec![501943569075];
+        assert_eq!(gcd(&x, &y), expected);
+
+        let x: SV = smallvec![5427079275432240933];
+        let y: SV = smallvec![8031097105200];
+        let expected: SV = smallvec![6692580921];
+        assert_eq!(gcd(&x, &y), expected);
     }
 
     #[test]

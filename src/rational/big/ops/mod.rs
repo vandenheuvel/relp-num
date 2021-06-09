@@ -8,7 +8,7 @@ use num_traits::{One, Zero};
 use smallvec::SmallVec;
 
 use crate::rational::big::Big;
-use crate::rational::big::ops::building_blocks::{addmul_1, carrying_add_mut, carrying_sub, carrying_sub_mut, mul_1, sub_assign_slice, sub_n, to_twos_complement};
+use crate::rational::big::ops::building_blocks::{addmul_1, carrying_add_mut, carrying_sub, carrying_sub_mut, mul_1, sub_assign_slice, sub_n, to_twos_complement, carrying_add};
 use crate::rational::big::ops::div::{div as div_by_odd_or_even, div_assign_by_odd};
 use crate::rational::big::ops::normalize::{gcd, remove_shared_two_factors_mut, simplify_fraction_gcd, simplify_fraction_without_info};
 use crate::sign::Sign;
@@ -671,16 +671,17 @@ pub fn add_assign<const S: usize>(
         i += 1;
     }
 
-    while carry && i < rhs.len() {
+    while i < rhs.len() {
         let (new_value, new_carry) = rhs[i].overflowing_add(carry as usize);
         values.push(new_value);
         carry = new_carry;
         i += 1;
     }
 
-    // TODO(PERFORMANCE): Check that this separate loop is worth it
-    while i < rhs.len() {
-        values.push(rhs[i]);
+    while carry && i < values.len() {
+        let (new_value, new_carry) = values[i].overflowing_add(carry as usize);
+        values[i] = new_value;
+        carry = new_carry;
         i += 1;
     }
 
@@ -797,15 +798,23 @@ pub fn mul_assign_single<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
     rhs: usize,
 ) {
-    let (mut high, low) = building_blocks::mul(values[0], rhs);
+    let (mut previous_high, low) = building_blocks::mul(values[0], rhs);
     values[0] = low;
+    let mut carry = false;
     for i in 1..values.len() {
-        let (high_new, low) = building_blocks::mul(values[i], rhs);
-        values[i] = high + low;
-        high = high_new;
+        let (high, low) = building_blocks::mul(values[i], rhs);
+        let (value_new, carry_new) = carrying_add(previous_high, low, carry);
+        values[i] = value_new;
+        carry = carry_new;
+        previous_high = high;
     }
-    if high > 0 {
-        values.push(high);
+
+    let (value_new, carry) = carrying_add(previous_high, 0, carry);
+    if value_new > 0 {
+        values.push(value_new);
+        if carry {
+            values.push(1);
+        }
     }
 }
 
@@ -1321,6 +1330,24 @@ mod test {
         add_assign(&mut x, &y);
         let expected = int_from_str::<3>("173226975926339475730356851890413108729280243129302783328593495616490379479273", 10).unwrap();
         assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![12105913134615829217, 2];
+        let y: SV = smallvec![10094979305352480000];
+        add_assign(&mut x, &y);
+        let expected: SV = smallvec![3754148366258757601, 3];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![9471424444590689296, 27735644];
+        let y: SV = smallvec![10094979305352480000];
+        add_assign(&mut x, &y);
+        let expected: SV = smallvec![1119659676233617680, 27735645];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 0, 0, 0, 1];
+        let y: SV = smallvec![1];
+        add_assign(&mut x, &y);
+        let expected: SV = smallvec![1, 0, 0, 0, 1];
+        assert_eq!(x, expected);
     }
 
     #[test]
@@ -1534,6 +1561,19 @@ mod test {
         let mut x = int_from_str::<4>("684684659849886161698149845311616811315531318498498987982211", 10).unwrap();
         mul_assign_single(&mut x, 646846844846);
         let expected = int_from_str::<4>("442886111938355599686725600875542300070422743926852384563217257325034506", 10).unwrap();
+        assert_eq!(x, expected);
+
+        // (2 ** 64 - 1) % 6700417 == 0
+        // ((2 ** 64 - 1) / 6700417) * 2 ** 64
+        let mut x = int_from_str::<8>("50785252159819077446213849579520", 10).unwrap();
+        mul_assign_single(&mut x, 6700417);
+        // (2 ** 64 - 1) * 2 ** 64
+        let expected: SV = smallvec![0, usize::MAX];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![274177];
+        mul_assign_single(&mut x, 67280421310721);
+        let expected: SV = smallvec![1, 1];
         assert_eq!(x, expected);
     }
 

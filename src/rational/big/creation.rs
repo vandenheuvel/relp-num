@@ -744,6 +744,7 @@ mod test {
             }),
         );
 
+        assert_eq!(int_from_str::<8>("407030945657418069975", 10), Ok(smallvec![1202576035807934423, 22]));
         assert_eq!(int_from_str::<8>("36893488147419103232", 10), Ok(smallvec![0, 1 << 1]));
         assert_eq!(int_from_str::<8>("18889465931478580854784", 10), Ok(smallvec![0, 1 << 10]));
         assert_eq!(int_from_str::<8>("19342813113834066795298816", 10), Ok(smallvec![0, 1 << 20]));

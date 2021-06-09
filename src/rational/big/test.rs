@@ -160,38 +160,6 @@ fn add() {
     let y = Big8::from_str("9876519684989849849849847/3").unwrap();
     let z = Big8::from_str("676230147000539639105184502948895260072789490888394066/205405396405392505636040563938").unwrap();
     assert_eq!(x + y, z);
-
-    let mut x = Big8::from_str("1588989165000/32460463963").unwrap();
-    let y = Big8::from_str("808953992679657007631484461470500000/1609760080345859697668056906889135691").unwrap();
-    let z = Big8::from_str("-9741/100").unwrap();
-
-    let yz = y * z;
-    assert_eq!(
-        yz,
-        Big8::from_str("-7880020842692538911338290139184140500000/160976008034585969766805690688913569100").unwrap(),
-    );
-    x += yz;
-    assert!(x.is_zero());
-
-    let mut x = Big8::from_str("0").unwrap();
-    let y = Big8::from_str("9381074085307/3795475922420").unwrap();
-    let z = Big8::from_str("-1").unwrap();
-
-    let yz = y * z;
-    assert_eq!(yz, Big8::from_str("-9381074085307/3795475922420").unwrap());
-    x += yz;
-    assert_eq!(x, Big8::from_str("-9381074085307/3795475922420").unwrap());
-
-    // 26219000000/81331626909 + 20591406422593/18977379612100 * &2587354000000/28143222255921
-    let x = Big8::from_str("26219000000/81331626909").unwrap();
-    let y = Big8::from_str("20591406422593/18977379612100").unwrap();
-    let z = Big8::from_str("2587354000000/28143222255921").unwrap();
-
-    let yz = y * &z;
-    assert_eq!(yz, Big8::from_str("53277257773121688922000000/534084612258314153908244100").unwrap());
-    let result = x + yz;
-    let expected = Big8::from_str("18336290500738892172980314459998000000/43437970422031134698979313360500486900").unwrap();
-    assert_eq!(result, expected);
 }
 
 #[test]
@@ -297,6 +265,68 @@ fn test_mul() {
 }
 
 #[test]
+fn test_mul_add() {
+    let mut x = Big8::from_str("1588989165000/32460463963").unwrap();
+    let y = Big8::from_str("808953992679657007631484461470500000/1609760080345859697668056906889135691").unwrap();
+    let z = Big8::from_str("-9741/100").unwrap();
+
+    let yz = y * z;
+    assert_eq!(
+        yz,
+        Big8::from_str("-7880020842692538911338290139184140500000/160976008034585969766805690688913569100").unwrap(),
+    );
+    x += yz;
+    assert!(x.is_zero());
+
+    let mut x = Big8::from_str("0").unwrap();
+    let y = Big8::from_str("9381074085307/3795475922420").unwrap();
+    let z = Big8::from_str("-1").unwrap();
+
+    let yz = y * z;
+    assert_eq!(yz, Big8::from_str("-9381074085307/3795475922420").unwrap());
+    x += yz;
+    assert_eq!(x, Big8::from_str("-9381074085307/3795475922420").unwrap());
+
+    // 26219000000/81331626909 + 20591406422593/18977379612100 * &2587354000000/28143222255921
+    let x = Big8::from_str("26219000000/81331626909").unwrap();
+    let y = Big8::from_str("20591406422593/18977379612100").unwrap();
+    let z = Big8::from_str("2587354000000/28143222255921").unwrap();
+
+    let yz = y * &z;
+    assert_eq!(yz, Big8::from_str("53277257773121688922000000/534084612258314153908244100").unwrap());
+    let result = x + yz;
+    let expected = Big8::from_str("18336290500738892172980314459998000000/43437970422031134698979313360500486900").unwrap();
+    assert_eq!(result, expected);
+
+
+    let x = Big8::from_str("340282366920938463504022243945446072289/6512495130518689119600").unwrap();
+    let y = Big8::from_str("27940143/20272744325").unwrap();
+    let z = Big8::from_str("-22581710000/20077742763").unwrap();
+
+    let yz = y * z;
+    assert_eq!(yz, Big8::from_str("-630936206584530000/407030945657418069975").unwrap());
+    assert_eq!(x - yz, Big8::from_str("138505453598374099998687302319741407818269762728358498422775/2650787051564352351939188343674463944010000").unwrap());
+
+
+    let x = Big8::from_str("60425219813/8031097105200").unwrap();
+    let y = Big8::from_str("22581710000/20077742763").unwrap();
+    let z = Big8::from_str("55880286/55771507675").unwrap();
+
+    let yz = y * z;
+    assert_eq!(yz, Big8::from_str("1261872413169060000/1119765984603330206025").unwrap());
+    assert_eq!(x + yz, Big8::from_str("77796325643310377435088313973325/8992949357449232987887097098830000").unwrap());
+
+
+    let x = Big8::from_str("60425219813/8031097105200").unwrap();
+    let y = Big8::from_str("22581710000/20077742763").unwrap();
+    let z = Big8::from_str("27940143/20272744325").unwrap();
+
+    let yz = y * &z;
+    assert_eq!(yz, Big8::from_str("630936206584530000/407030945657418069975").unwrap());
+    assert_eq!(x + yz, Big8::from_str("29662044304309632734380146414675/3268905049396108772682393536370000").unwrap());
+}
+
+#[test]
 fn test_div() {
     assert_eq!(RB!(100) / RB!(2), RB!(50));
     assert_eq!(RB!(200) / RB!(2), RB!(100));
@@ -357,6 +387,11 @@ fn test_cmp() {
     assert!(RB!(-5) <= RB!(-5));
     assert!(RB!(-5) <= RB!(5));
     assert!(RB!(200) - RB!(0) > RB!(0));
+
+    let x = Big8::from_str("-583826928791700523/521249090962500").unwrap();
+    let y = Big8::from_str("-1267844014078631957/1042498181925000").unwrap();
+    assert!(x > y);
+    assert!(!(x < y));
 }
 
 #[test]

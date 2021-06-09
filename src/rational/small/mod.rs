@@ -5,6 +5,7 @@ use std::fmt::Display;
 use std::iter::Sum;
 use std::mem;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::str::FromStr;
 
 use num_traits;
 
@@ -115,6 +116,19 @@ macro_rules! rational {
             }
         }
 
+        impl FromStr for $name {
+            type Err = &'static str;
+
+            fn from_str(from: &str) -> Result<Self, Self::Err> {
+                Big::<8>::from_str(from)
+                    .map(|big| match Self::from_big_if_it_fits(big) {
+                        Some(value) => Ok(value),
+                        None => Err("value was too large for this type"),
+                    })
+                    .flatten()
+            }
+        }
+
         impl $name {
             fn from_big_if_it_fits<const S: usize>(big: Big<S>) -> Option<Self> {
                 if num_traits::Zero::is_zero(&big) {
@@ -217,35 +231,6 @@ macro_rules! rational {
             #[inline]
             fn signum(&self) -> NonZeroSign {
                 self.sign.into()
-            }
-        }
-
-        impl Ord for $name {
-            #[must_use]
-            #[inline]
-            fn cmp(&self, other: &Self) -> Ordering {
-                self.partial_cmp(other).unwrap()
-            }
-        }
-
-        impl PartialOrd for $name {
-            #[must_use]
-            #[inline]
-            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-                self.sign.partial_cmp(&other.sign).or_else(|| {
-                    debug_assert_eq!(self.sign, other.sign);
-                    debug_assert_ne!(self.sign, Sign::Zero);
-
-                    let ad = self.numerator * other.denominator;
-                    let bc = self.denominator * other.numerator;
-
-                    Some(match (ad.cmp(&bc), self.sign) {
-                        (Ordering::Less, Sign::Positive) | (Ordering::Greater, Sign::Negative) => Ordering::Less,
-                        (Ordering::Equal, _) => Ordering::Equal,
-                        (Ordering::Greater, Sign::Positive) | (Ordering::Less, Sign::Negative) => Ordering::Greater,
-                        (_, Sign::Zero) => panic!(),
-                    })
-                })
             }
         }
 
@@ -822,6 +807,50 @@ rational!(Rational32, i32, u32, gcd32, simplify32);
 rational!(Rational64, i64, u64, gcd64, simplify64);
 rational!(Rational128, i128, u128, gcd128, simplify128);
 
+
+macro_rules! rational_requiring_wide {
+    ($name:ident, $uty:ty, $BITS: literal, $wide:ty) => {
+        impl Ord for $name {
+            #[must_use]
+            #[inline]
+            fn cmp(&self, other: &Self) -> Ordering {
+                self.partial_cmp(other).unwrap()
+            }
+        }
+
+        impl PartialOrd for $name {
+            #[must_use]
+            #[inline]
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                self.sign.partial_cmp(&other.sign).or_else(|| {
+                    debug_assert_eq!(self.sign, other.sign);
+                    debug_assert_ne!(self.sign, Sign::Zero);
+
+                    let widening_mul = |left, right| {
+                        let wide = unsafe { (left as $wide).unchecked_mul(right as $wide) };
+                        ((wide >> $BITS) as $uty, wide as $uty)
+                    };
+
+                    let ad = widening_mul(self.numerator, other.denominator);
+                    let bc = widening_mul(self.denominator, other.numerator);
+
+                    Some(match (ad.cmp(&bc), self.sign) {
+                        (Ordering::Less, Sign::Positive) | (Ordering::Greater, Sign::Negative) => Ordering::Less,
+                        (Ordering::Equal, _) => Ordering::Equal,
+                        (Ordering::Greater, Sign::Positive) | (Ordering::Less, Sign::Negative) => Ordering::Greater,
+                        (_, Sign::Zero) => panic!(),
+                    })
+                })
+            }
+        }
+    }
+}
+
+rational_requiring_wide!(Rational8, u8, 8, u16);
+rational_requiring_wide!(Rational16, u16, 16, u32);
+rational_requiring_wide!(Rational32, u32, 32, u64);
+rational_requiring_wide!(Rational64, u64, 64, u128);
+
 macro_rules! size_depedent_unsigned {
     ($name:ty, $uty:ty, $other:ty) => {
         impl From<$other> for $name {
@@ -943,6 +972,7 @@ mod test {
     use crate::{NonZero, NonZeroSign, NonZeroSigned, Rational128};
     use crate::{R16, R32, R64, R8};
     use crate::rational::{Ratio, Rational16, Rational32, Rational64, Rational8, Sign};
+    use std::str::FromStr;
 
     #[test]
     fn test_new() {
@@ -1038,6 +1068,8 @@ mod test {
         assert!(R8!(-3) < R8!(0));
         assert!(R8!(-3) < R8!(2));
         assert!(R8!(-3) < R8!(3));
+
+        assert!(Rational8::from_str("255/2").unwrap() < R8!(128));
     }
 
     #[test]
@@ -1187,5 +1219,14 @@ mod test {
         assert_eq!(Rational64::zero().to_string(), "0");
         assert_eq!(R64!(1, 2).to_string(), "1/2");
         assert_eq!(R64!(-1, 2).to_string(), "-1/2");
+    }
+
+    #[test]
+    fn test_from_str() {
+        assert_eq!(Rational8::from_str("8"), Ok(R8!(8)));
+        assert_eq!(Rational8::from_str("-8"), Ok(-R8!(8)));
+        assert_eq!(Rational16::from_str("-16/3"), Ok(R16!(-16, 3)));
+        assert_eq!(Rational16::from_str("16/4"), Ok(R16!(16, 4)));
+        assert_eq!(Rational32::from_str("4294967297"), Err("value was too large for this type"));
     }
 }
