@@ -890,12 +890,22 @@ impl<const S: usize> PartialOrd for Big<S> {
             debug_assert_eq!(self.sign, other.sign);
             debug_assert_ne!(self.sign, Sign::Zero);
 
-            let size_comparison = (self.numerator.len() + other.denominator.len()).cmp(&(other.numerator.len() + self.denominator.len()));
-            match (size_comparison, self.sign) {
-                (Ordering::Less, Sign::Positive) | (Ordering::Greater, Sign::Negative) => Some(Ordering::Less),
-                (Ordering::Equal, _) => None,
-                (Ordering::Greater, Sign::Positive) | (Ordering::Less, Sign::Negative) => Some(Ordering::Greater),
-                (_, Sign::Zero) => panic!(),
+            let left = self.numerator.len() + other.denominator.len();
+            let right = other.numerator.len() + self.denominator.len();
+            if left > right + 1 {
+                Some(match self.sign {
+                    Sign::Positive => Ordering::Greater,
+                    Sign::Negative => Ordering::Less,
+                    Sign::Zero => panic!(),
+                })
+            } else if right > left + 1 {
+                Some(match self.sign {
+                    Sign::Positive => Ordering::Less,
+                    Sign::Negative => Ordering::Greater,
+                    Sign::Zero => panic!(),
+                })
+            } else {
+                None
             }
         });
 
