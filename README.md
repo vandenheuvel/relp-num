@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.com/vandenheuvel/relp-num.svg?branch=main)](https://travis-ci.com/vandenheuvel/relp-num) [![codecov](https://codecov.io/gh/vandenheuvel/relp-num/branch/main/graph/badge.svg)](https://codecov.io/gh/vandenheuvel/relp-num)
+![Build Status](https://github.com/vandenheuvel/relp-num/actions/workflows/rust.yml/badge.svg?branch=main) [![codecov](https://codecov.io/gh/vandenheuvel/relp-num/branch/main/graph/badge.svg)](https://codecov.io/gh/vandenheuvel/relp-num)
 
 # RELP-num
     
