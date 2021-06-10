@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.com/vandenheuvel/relp-num.svg?branch=main)](https://travis-ci.com/vandenheuvel/relp-num) [![codecov](https://codecov.io/gh/vandenheuvel/relp-num/branch/main/graph/badge.svg)](https://codecov.io/gh/vandenheuvel/relp-num)
+[![Build Status](https://github.com/vandenheuvel/relp-num/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/vandenheuvel/relp-num/actions) [![codecov](https://codecov.io/gh/vandenheuvel/relp-num/branch/main/graph/badge.svg)](https://codecov.io/gh/vandenheuvel/relp-num)
 
 # RELP-num
     
@@ -22,3 +22,4 @@ There are already some great general purpose numerics libraries out there, such 
 - [ramp](https://github.com/Aatch/ramp) (arbitrary precision, fast, requires nightly)
 
 This crate is not trying to be one of them and exists to support RELP only.
+
