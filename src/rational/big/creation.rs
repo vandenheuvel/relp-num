@@ -496,9 +496,10 @@ pub fn to_str<const S: usize>(value: &SmallVec<[usize; S]>, radix: u32) -> Strin
                 .map(|word| word.reverse_bits())
                 .rev()
                 .collect();
+            let len_before_shift = value.len() as u32;
             shr_mut(&mut value, 0, leading_zero_bits);
 
-            let bit_count = value.len() as u32 * BITS_PER_WORD - leading_zero_bits;
+            let bit_count = len_before_shift * BITS_PER_WORD - leading_zero_bits;
             debug_assert_eq!(value[0] % 2, 1);
             for bit_index in 0..bit_count {
                 update_digits(&mut digits, value[0] % 2 == 1, radix);
@@ -824,5 +825,7 @@ mod test {
         assert_eq!(to_str(&x, 10), "3146383673420971972032023490593198871229613539715389096610302560000000");
         let y: SV = smallvec![10945929334190035713, 13004504757950498814, 9];
         assert_eq!(to_str(&y, 10), "3302432073363697202172148890923583722241");
+        let y: SV = smallvec![602229295517812052, 3];
+        assert_eq!(to_str(&y, 10), "55942461516646466900");
     }
 }
