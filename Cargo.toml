@@ -19,7 +19,7 @@ smallvec = { version = "1.6.1", features = ["const_generics", "specialization"] 
 criterion = "0.3"
 
 [build-dependencies]
-cc = "1.0.67"
+cc = "1.0.68"
 
 [[bench]]
 name = "bench_main"
