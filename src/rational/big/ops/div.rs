@@ -500,7 +500,7 @@ mod test {
     use smallvec::smallvec;
 
     use crate::rational::big::creation::int_from_str;
-    use crate::rational::big::ops::div::{div_assign_n_words, div_assign_one_word, div_assign_two_words, div_preinv, invert, div};
+    use crate::rational::big::ops::div::{div, div_assign_n_words, div_assign_one_word, div_assign_two_words, div_preinv, invert};
     use crate::rational::big::ops::test::SV;
 
     #[test]

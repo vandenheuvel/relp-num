@@ -8,7 +8,7 @@ use num_traits::{One, Zero};
 use smallvec::SmallVec;
 
 use crate::rational::big::Big;
-use crate::rational::big::ops::building_blocks::{addmul_1, carrying_add_mut, carrying_sub, carrying_sub_mut, mul_1, sub_assign_slice, sub_n, to_twos_complement, carrying_add};
+use crate::rational::big::ops::building_blocks::{addmul_1, carrying_add, carrying_add_mut, carrying_sub, carrying_sub_mut, mul_1, sub_assign_slice, sub_n, to_twos_complement};
 use crate::rational::big::ops::div::{div as div_by_odd_or_even, div_assign_by_odd};
 use crate::rational::big::ops::normalize::{gcd, remove_shared_two_factors_mut, simplify_fraction_gcd, simplify_fraction_without_info};
 use crate::sign::Sign;
@@ -188,6 +188,7 @@ impl<const S: usize> Big<S> {
                 }
             } else {
                 // Neither denominator is 1
+                // TODO(OPTIMIZATION): Should powers be kept out of the gcd?
                 let mut gcd = gcd(&self.denominator, &rhs.denominator);
 
                 if gcd[0] != 1 || gcd.len() > 1 {
@@ -970,7 +971,7 @@ mod test {
     use crate::{RB, Sign};
     use crate::rational::big::Big8;
     use crate::rational::big::creation::int_from_str;
-    use crate::rational::big::ops::{add_assign, add_assign_single, is_well_formed, mul, mul_assign_single, sub, sub_assign_result_positive, subtracting_cmp, Ordering};
+    use crate::rational::big::ops::{add_assign, add_assign_single, is_well_formed, mul, mul_assign_single, Ordering, sub, sub_assign_result_positive, subtracting_cmp};
 
     pub type SV = SmallVec<[usize; 8]>;
 

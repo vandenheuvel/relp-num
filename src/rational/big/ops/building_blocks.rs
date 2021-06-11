@@ -75,10 +75,11 @@ pub fn shl_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, 
 
         let overflows = bits > values.last().unwrap().leading_zeros();
         if overflows {
-            // bits > 0
+            // These values will be overwritten
             values.extend(repeat(0).take(words + 1));
             *values.last_mut().unwrap() = values[original_length - 1] >> (BITS_PER_WORD - bits);
         } else {
+            // These values will be overwritten
             values.extend(repeat(0).take(words));
         }
 
@@ -86,7 +87,7 @@ pub fn shl_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, 
             values[words + i] = values[i] << bits;
             values[words + i] |= values[i - 1] >> (BITS_PER_WORD - bits);
         }
-        values[words] <<= bits;
+        values[words] = values[0] << bits;
     } else {
         values.reserve(words);
         let old_length = values.len();
@@ -365,6 +366,7 @@ mod test {
 
     use smallvec::smallvec;
 
+    use crate::rational::big::creation::int_from_str;
     use crate::rational::big::ops::BITS_PER_WORD;
     use crate::rational::big::ops::building_blocks::{add_2, carrying_add_mut, mul, shl_mut, shl_mut_overflowing, shr, shr_mut, sub_n, to_twos_complement};
     use crate::rational::big::ops::test::SV;
@@ -511,6 +513,11 @@ mod test {
         let mut x: SV = smallvec![0, 1 << (80 - 64)];
         shl_mut(&mut x, 0, 0);
         let expected: SV = smallvec![0, 1 << (80 - 64)];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![8128280416544428961, 8274854478500297142, 3587444469682918757];
+        shl_mut(&mut x, 1, 1);
+        let expected: SV = int_from_str("45037507812500000000000000000000000000000000000000000000000000000000000000000", 10).unwrap();
         assert_eq!(x, expected);
     }
 

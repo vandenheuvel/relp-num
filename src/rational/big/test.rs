@@ -1,12 +1,13 @@
 use std::str::FromStr;
 
+use num_traits::Zero;
+use smallvec::smallvec;
+
 use crate::{NonZero, RB, Sign};
 use crate::rational::big::Big8;
+use crate::rational::big::ops::normalize::simplify_fraction_gcd;
 use crate::rational::Rational64;
 use crate::RationalBig;
-use smallvec::smallvec;
-use crate::rational::big::ops::normalize::simplify_fraction_gcd;
-use num_traits::Zero;
 
 #[test]
 fn eq() {

@@ -495,6 +495,16 @@ mod test {
         let y: SV = smallvec![8031097105200];
         let expected: SV = smallvec![6692580921];
         assert_eq!(gcd(&x, &y), expected);
+
+        let x: SV = smallvec![16256560833088857922, 16549708957000594284, 7174888939365837514];
+        let y: SV = smallvec![12764522021006322602, 13940785908623865679, 16353990074255549379, 2111485];
+        let expected: SV = int_from_str("2441488190682268924480702310120250331237912178039550781250", 10).unwrap();
+        assert_eq!(gcd(&x, &y), expected);
+
+        let x: SV = smallvec![0, 16256560833088857922, 16549708957000594284, 7174888939365837514];
+        let y: SV = smallvec![0, 12764522021006322602, 13940785908623865679, 16353990074255549379, 2111485];
+        let expected: SV = int_from_str("45037507812500000000000000000000000000000000000000000000000000000000000000000", 10).unwrap();
+        assert_eq!(gcd(&x, &y), expected);
     }
 
     #[test]
@@ -606,6 +616,14 @@ mod test {
         assert_eq!(which_odd, WhichOdd::Left(0, 1));
         let expected_left: SV = smallvec![3];
         let expected_right: SV = smallvec![6];
+        assert_eq!(left, expected_left);
+        assert_eq!(right, expected_right);
+
+        let mut left: SV = smallvec![0, 16256560833088857922, 16549708957000594284, 7174888939365837514];
+        let mut right: SV = smallvec![0, 16549708957000594284, 16549708957000594284, 7174888939365837514];
+        remove_shared_two_factors_mut(&mut left, &mut right);
+        let expected_left: SV = int_from_str("1220744095341134462240351155060125165618956089019775390625", 10).unwrap();
+        let expected_right: SV = int_from_str("1220744095341134462240351155060125165619102663081731258806", 10).unwrap();
         assert_eq!(left, expected_left);
         assert_eq!(right, expected_right);
     }

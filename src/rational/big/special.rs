@@ -22,6 +22,7 @@ mod field {
     use num_traits;
 
     mod add {
+        use std::cmp::Ordering;
         use std::ops::{Add, AddAssign, Sub, SubAssign};
 
         use num_traits::Zero;
@@ -33,7 +34,6 @@ mod field {
         use crate::sign::Sign;
 
         use super::*;
-        use std::cmp::Ordering;
 
         impl<const S: usize> Add<Binary> for Big<S> {
             type Output = Self;

@@ -10,9 +10,9 @@ use smallvec::SmallVec;
 use crate::{Sign, Signed};
 use crate::non_zero::NonZero;
 use crate::rational::big::creation::to_str;
-use crate::rational::Ratio;
 use crate::rational::big::ops::is_well_formed;
-use crate::rational::big::ops::normalize::{simplify_fraction_without_info};
+use crate::rational::big::ops::normalize::simplify_fraction_without_info;
+use crate::rational::Ratio;
 
 mod with_small;
 mod creation;
