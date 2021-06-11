@@ -145,15 +145,16 @@ pub fn div_assign_one_word<const S: usize>(values: &mut SmallVec<[usize; S]>, rh
             // rhs > usize::MAX / 2
 
             let mut remainder = *values.last().unwrap();
+            let old_length = values.len();
             if remainder < rhs {
                 values.pop();
             } else {
                 remainder -= rhs;
                 *values.last_mut().unwrap() = 1;
-            };
+            }
 
             let rhs_inverse = invert(rhs);
-            for i in (0..values.len()).rev() {
+            for i in (0..(old_length - 1)).rev() {
                 let (quotient, new_remainder) = div_preinv(remainder, values[i], rhs, rhs_inverse);
                 remainder = new_remainder;
 
@@ -499,8 +500,16 @@ mod test {
     use smallvec::smallvec;
 
     use crate::rational::big::creation::int_from_str;
-    use crate::rational::big::ops::div::{div_assign_n_words, div_assign_one_word, div_assign_two_words, div_preinv, invert};
+    use crate::rational::big::ops::div::{div_assign_n_words, div_assign_one_word, div_assign_two_words, div_preinv, invert, div};
     use crate::rational::big::ops::test::SV;
+
+    #[test]
+    fn test_div() {
+        let x: SV = int_from_str("321087754339295587229459593581818565100", 10).unwrap();
+        let y: SV = smallvec![13985615379161616725];
+        let expected: SV = int_from_str("22958428759431789116", 10).unwrap();
+        assert_eq!(div(&x, &y), expected);
+    }
 
     #[test]
     fn test_invert() {
@@ -557,6 +566,11 @@ mod test {
         let mut x = int_from_str::<4>("99939187751827453177194542570098438266282603262618044779272964070464092694778", 10).unwrap();
         div_assign_one_word(&mut x, 3);
         let expected = int_from_str::<4>("33313062583942484392398180856699479422094201087539348259757654690154697564926", 10).unwrap();
+        assert_eq!(x, expected);
+
+        let mut x: SV = int_from_str("321087754339295587229459593581818565100", 10).unwrap();
+        div_assign_one_word(&mut x, 13985615379161616725);
+        let expected: SV = int_from_str("22958428759431789116", 10).unwrap();
         assert_eq!(x, expected);
     }
 

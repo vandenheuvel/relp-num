@@ -1,7 +1,6 @@
-//! # Number types
+//! # relp-num
 //!
-//! Different data structures and different algorithms are defined over different spaces. This
-//! module defines those spaces and provides implementations.
+//! Number types for the [RELP](https://crates.io/crates/relp) crate.
 #![feature(asm)]
 #![feature(min_specialization)]
 #![feature(label_break_value)]
