@@ -10,7 +10,7 @@ use std::ops::{Mul, MulAssign, Neg, Not};
 
 use crate::non_zero::NonZeroSign;
 
-/// # Signed number
+/// # Signed numbers
 ///
 /// A number that is positive, negative or zero.
 pub trait Signed {

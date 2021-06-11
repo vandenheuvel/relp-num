@@ -19,6 +19,7 @@ mod mixing_signs;
 
 macro_rules! rational {
     ($name:ident, $ity:ty, $uty:ty, $gcd_name:ident, $simplify_name:ident) => {
+        /// A signed ratio between two small integers.
         pub type $name = Ratio<$uty, $uty>;
 
         impl $name {

@@ -46,4 +46,5 @@ pub use traits::FieldRef;
 pub use traits::OrderedField;
 pub use traits::OrderedFieldRef;
 
+// This re-export is used in macros used to construct rationals in tests.
 pub use num_traits::FromPrimitive;

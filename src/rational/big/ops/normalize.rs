@@ -408,7 +408,7 @@ pub unsafe fn trailing_zeros<const S: usize>(values: &SmallVec<[usize; S]>) -> (
 mod test {
     use smallvec::smallvec;
 
-    use crate::rational::big::creation::{int_from_str, to_str};
+    use crate::rational::big::creation::int_from_str;
     use crate::rational::big::ops::gcd;
     use crate::rational::big::ops::normalize::{binary_gcd, gcd_scalar, gcd_single, remove_shared_two_factors_mut, simplify_fraction_gcd, simplify_fraction_gcd_single, simplify_fraction_without_info, trailing_zeros, WhichOdd};
     use crate::rational::big::ops::test::SV;

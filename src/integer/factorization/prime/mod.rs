@@ -12,6 +12,7 @@ use crate::non_zero::NonZero;
 mod buckets;
 pub mod primes;
 
+/// Determining whether a number is a prime.
 pub trait Prime: NonZero {
     fn is_prime(&self) -> bool;
 }

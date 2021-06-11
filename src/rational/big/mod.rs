@@ -24,6 +24,9 @@ mod test;
 
 pub type Big<const S: usize> = Ratio<SmallVec<[usize; S]>, SmallVec<[usize; S]>>;
 
+/// An arbitrary precision type.
+///
+/// Represents any rational number with a sign, numerator and denominator.
 pub type Big8 = Big<8>;
 
 impl<const S: usize> Big<S> {
