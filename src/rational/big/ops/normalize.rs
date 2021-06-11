@@ -408,7 +408,7 @@ pub unsafe fn trailing_zeros<const S: usize>(values: &SmallVec<[usize; S]>) -> (
 mod test {
     use smallvec::smallvec;
 
-    use crate::rational::big::creation::int_from_str;
+    use crate::rational::big::creation::{int_from_str, to_str};
     use crate::rational::big::ops::gcd;
     use crate::rational::big::ops::normalize::{binary_gcd, gcd_scalar, gcd_single, remove_shared_two_factors_mut, simplify_fraction_gcd, simplify_fraction_gcd_single, simplify_fraction_without_info, trailing_zeros, WhichOdd};
     use crate::rational::big::ops::test::SV;
@@ -624,6 +624,14 @@ mod test {
         remove_shared_two_factors_mut(&mut left, &mut right);
         let expected_left: SV = int_from_str("1220744095341134462240351155060125165618956089019775390625", 10).unwrap();
         let expected_right: SV = int_from_str("1220744095341134462240351155060125165619102663081731258806", 10).unwrap();
+        assert_eq!(left, expected_left);
+        assert_eq!(right, expected_right);
+
+        let mut left: SV = smallvec![0, 12511854210725346487, 1932217123071064976, 10302437120704275430, 18852552];
+        let mut right: SV = smallvec![0, 6021696704607738643, 14862474386500622791, 14562584587638410510, 8871];
+        remove_shared_two_factors_mut(&mut left, &mut right);
+        let expected_left: SV = smallvec![12511854210725346487, 1932217123071064976, 10302437120704275430, 18852552];
+        let expected_right: SV = smallvec![6021696704607738643, 14862474386500622791, 14562584587638410510, 8871];
         assert_eq!(left, expected_left);
         assert_eq!(right, expected_right);
     }

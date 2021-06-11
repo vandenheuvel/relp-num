@@ -28,10 +28,11 @@ pub fn shr_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, 
 
         values.truncate(words_to_keep);
     } else {
+        let remaining_words = original_number_words - words;
         unsafe {
-            ptr::copy(values[words..].as_ptr(), values.as_mut_ptr(), words);
-            values.truncate(original_number_words - words);
+            ptr::copy(values[words..].as_ptr(), values.as_mut_ptr(), remaining_words);
         }
+        values.truncate(remaining_words);
     }
 
     debug_assert!(is_well_formed(values));
@@ -448,6 +449,11 @@ mod test {
         let mut x: SV = smallvec![0, 1 << (80 - 64)];
         shr_mut(&mut x, 0, 0);
         let expected: SV = smallvec![0, 1 << (80 - 64)];
+        assert_eq!(x, expected);
+
+        let mut x: SV = smallvec![0, 12511854210725346487, 1932217123071064976, 10302437120704275430, 18852552];
+        shr_mut(&mut x, 1, 0);
+        let expected: SV = smallvec![12511854210725346487, 1932217123071064976, 10302437120704275430, 18852552];
         assert_eq!(x, expected);
     }
 
