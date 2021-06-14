@@ -20,6 +20,7 @@ mod creation {
 
 mod field {
     use num_traits;
+    use smallvec::smallvec;
 
     mod add {
         use std::cmp::Ordering;
@@ -31,6 +32,7 @@ mod field {
         use crate::one::One;
         use crate::rational::big::Big;
         use crate::rational::big::ops::{add_assign, subtracting_cmp};
+        use crate::rational::big::ops::building_blocks::{both_not_one, is_one, is_zero};
         use crate::sign::Sign;
 
         use super::*;
@@ -101,20 +103,19 @@ mod field {
                     Sign::Positive => add_assign(&mut self.numerator, &self.denominator),
                     Sign::Zero => {
                         self.sign = Sign::Positive;
-                        debug_assert!(self.numerator.is_empty());
-                        self.numerator.push(1);
-                        debug_assert_eq!(self.denominator[0], 1);
-                        debug_assert_eq!(self.denominator.len(), 1);
+                        debug_assert!(is_zero(&self.numerator));
+                        self.numerator = smallvec![1];
+                        debug_assert!(is_one(&self.denominator));
                     }
                     Sign::Negative => {
-                        if self.numerator[0] == 1 && self.denominator[0] == 1 && self.numerator.len() == 1 && self.denominator.len() == 1 {
-                            self.set_zero();
-                        } else {
+                        if both_not_one(&self.numerator, &self.denominator) {
                             match subtracting_cmp(&mut self.numerator, &self.denominator) {
                                 Ordering::Less => self.sign = !self.sign,
                                 Ordering::Greater => {}
                                 Ordering::Equal => panic!(),
                             }
+                        } else {
+                            self.set_zero();
                         }
                     }
                 }
@@ -144,14 +145,14 @@ mod field {
             fn sub_assign(&mut self, _: One) {
                 match self.sign {
                     Sign::Positive => {
-                        if self.numerator[0] == 1 && self.denominator[0] == 1 && self.numerator.len() == 1 && self.denominator.len() == 1 {
-                            self.set_zero();
-                        } else {
+                        if !is_one(&mut self.numerator) || !is_one(&self.denominator) {
                             match subtracting_cmp(&mut self.numerator, &self.denominator) {
                                 Ordering::Less => self.sign = !self.sign,
                                 Ordering::Greater => {}
                                 Ordering::Equal => {}
                             }
+                        } else {
+                            self.set_zero();
                         }
                     }
                     Sign::Zero => {

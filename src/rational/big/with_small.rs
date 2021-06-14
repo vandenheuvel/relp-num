@@ -7,7 +7,7 @@ use smallvec::smallvec;
 
 use crate::rational::{Rational16, Rational32, Rational64, Rational8};
 use crate::rational::big::ops::{add_assign, add_assign_single, mul_assign_single, subtracting_cmp, subtracting_cmp_ne_single};
-use crate::rational::big::ops::building_blocks::{carrying_sub_mut, shr_mut};
+use crate::rational::big::ops::building_blocks::{carrying_sub_mut, is_zero, nonzero_is_one, shr_mut};
 use crate::rational::big::ops::div::div_assign_one_word;
 use crate::rational::big::ops::normalize::{gcd_single, prepare_gcd_single, simplify_fraction_gcd};
 use crate::rational::big::ops::normalize::simplify_fraction_gcd_single;
@@ -39,7 +39,7 @@ impl<const S: usize> Big<S> {
                 let mut right_numerator = self.denominator.clone();
                 mul_assign_single(&mut right_numerator, rhs_numerator);
                 add_assign(&mut self.numerator, &right_numerator);
-            } else if self.denominator[0] == 1 && self.denominator.len() == 1 {
+            } else if nonzero_is_one(&self.denominator) {
                 mul_assign_single(&mut self.numerator, rhs_denominator);
                 add_assign_single(&mut self.numerator, rhs_numerator);
                 self.denominator.truncate(1);
@@ -62,7 +62,7 @@ impl<const S: usize> Big<S> {
 
                 mul_assign_single(&mut self.denominator, rhs_denominator);
 
-                if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                if !nonzero_is_one(&self.numerator) {
                     simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                 }
             }
@@ -94,7 +94,7 @@ impl<const S: usize> Big<S> {
                 if self.numerator[0] == self.denominator[0] && self.numerator.len() == 1 {
                     self.set_one();
                 } else {
-                    if (self.numerator[0] != 1 || self.numerator.len() > 1) && (self.denominator[0] != 1) {
+                    if !nonzero_is_one(&self.numerator) && (self.denominator[0] != 1) { // denominator.len() == 1
                         self.denominator[0] = simplify_fraction_gcd_single(&mut self.numerator, self.denominator[0]);
                     }
                 }
@@ -112,7 +112,7 @@ impl<const S: usize> Big<S> {
                     self.numerator.pop();
                 }
                 
-                if self.denominator[0] != 1 && (self.numerator[0] != 1 || self.numerator.len() > 1) {
+                if self.denominator[0] != 1 && !nonzero_is_one(&self.numerator) {
                     self.denominator[0] = simplify_fraction_gcd_single(&mut self.numerator, self.denominator[0]);
                 }
             }
@@ -125,7 +125,7 @@ impl<const S: usize> Big<S> {
                     Ordering::Greater => {}
                     Ordering::Equal => panic!(),
                 }
-            } else if self.denominator[0] == 1 && self.denominator.len() == 1 {
+            } else if nonzero_is_one(&self.denominator) {
                 mul_assign_single(&mut self.numerator, rhs_denominator);
                 match subtracting_cmp_ne_single(&mut self.numerator, rhs_numerator) {
                     Ordering::Less => self.sign = !self.sign,
@@ -153,7 +153,7 @@ impl<const S: usize> Big<S> {
                 }
                 mul_assign_single(&mut self.denominator, rhs_denominator);
 
-                if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                if !nonzero_is_one(&self.numerator) {
                     simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                 }
             }
@@ -163,15 +163,14 @@ impl<const S: usize> Big<S> {
     }
     #[inline]
     fn mul_small(&mut self, mut rhs_numerator: usize, mut rhs_denominator: usize) {
-        debug_assert!(!self.numerator.is_empty());
+        debug_assert!(!is_zero(&self.numerator));
+        debug_assert_ne!(rhs_denominator, 0);
 
-        let lhs_numerator_one = self.numerator.len() == 1 && self.numerator[0] == 1;
-        if rhs_denominator != 1 && !lhs_numerator_one {
+        if rhs_denominator != 1 && !nonzero_is_one(&self.numerator) {
             rhs_denominator = simplify_fraction_gcd_single(&mut self.numerator, rhs_denominator)
         }
 
-        let lhs_denominator_one = self.denominator[0] == 1 && self.denominator.len() == 1;
-        if rhs_numerator != 1 && !lhs_denominator_one {
+        if rhs_numerator != 1 && !nonzero_is_one(&self.denominator) {
             rhs_numerator = simplify_fraction_gcd_single(&mut self.denominator, rhs_numerator)
         }
 

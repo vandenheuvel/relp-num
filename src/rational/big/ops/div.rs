@@ -4,7 +4,7 @@ use std::ptr::copy;
 use smallvec::{smallvec, SmallVec};
 
 use crate::rational::big::ops::{BITS_PER_WORD, cmp, is_well_formed};
-use crate::rational::big::ops::building_blocks::{add_2, add_assign_slice, mul, shl, shl_mut, shl_mut_overflowing, shr, sub_2, sub_assign_slice, submul_slice};
+use crate::rational::big::ops::building_blocks::{add_2, add_assign_slice, mul, nonzero_is_one, shl, shl_mut, shl_mut_overflowing, shr, sub_2, sub_assign_slice, submul_slice};
 use crate::rational::big::ops::normalize::trailing_zeros;
 
 #[inline]
@@ -87,7 +87,7 @@ pub fn div<const S: usize>(
     let right = shr(rhs, zero_words, zero_bits);
 
     // right is odd now
-    if !(right[0] == 1 && right.len() == 1) {
+    if !nonzero_is_one(&right) {
         div_assign_by_odd(&mut left, &right);
     }
 

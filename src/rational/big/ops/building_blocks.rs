@@ -360,6 +360,36 @@ pub fn carrying_sub_mut(value: &mut usize, rhs: usize, carry: bool) -> bool {
     new_carry
 }
 
+#[inline]
+pub fn is_zero(values: &[usize]) -> bool {
+    debug_assert!(is_well_formed(values));
+
+    values.is_empty()
+}
+
+#[inline]
+pub fn is_one(values: &[usize]) -> bool {
+    debug_assert!(is_well_formed(values));
+
+    values.len() == 1 && values[0] == 1
+}
+
+#[inline]
+pub fn nonzero_is_one(values: &[usize]) -> bool {
+    debug_assert!(is_well_formed(values));
+    debug_assert!(!values.is_empty());
+
+    values[0] == 1 && values.len() == 1
+}
+
+#[inline]
+pub fn both_not_one(left: &[usize], right: &[usize]) -> bool {
+    debug_assert!(!is_zero(left));
+    debug_assert!(!is_zero(right));
+
+    (left[0] != 1 || left.len() > 1) && (right[0] != 1 || right.len() > 1)
+}
+
 #[cfg(test)]
 mod test {
     use std::mem;
@@ -369,7 +399,7 @@ mod test {
 
     use crate::rational::big::creation::int_from_str;
     use crate::rational::big::ops::BITS_PER_WORD;
-    use crate::rational::big::ops::building_blocks::{add_2, carrying_add_mut, mul, shl_mut, shl_mut_overflowing, shr, shr_mut, sub_n, to_twos_complement};
+    use crate::rational::big::ops::building_blocks::{add_2, both_not_one, carrying_add_mut, mul, shl_mut, shl_mut_overflowing, shr, shr_mut, sub_n, to_twos_complement};
     use crate::rational::big::ops::test::SV;
 
     #[test]
@@ -615,5 +645,21 @@ mod test {
         let mut value = 1;
         let carry = carrying_add_mut(&mut value, usize::MAX, true);
         assert_eq!((value, carry), (1, true));
+    }
+
+    #[test]
+    fn test_both_one() {
+        assert!(!both_not_one(&[1], &[1]));
+        assert!(!both_not_one(&[1], &[2]));
+        assert!(!both_not_one(&[2], &[1]));
+        assert!(!both_not_one(&[1], &[1, 2]));
+        assert!(!both_not_one(&[1, 2], &[1]));
+        assert!(both_not_one(&[6], &[7]));
+        assert!(both_not_one(&[6], &[1, 2]));
+        assert!(both_not_one(&[1, 6], &[3]));
+        assert!(both_not_one(&[6, 2], &[7, 2]));
+        assert!(both_not_one(&[1, 2], &[7, 2]));
+        assert!(both_not_one(&[2, 2], &[1, 2]));
+        assert!(both_not_one(&[1, 2], &[1, 2]));
     }
 }

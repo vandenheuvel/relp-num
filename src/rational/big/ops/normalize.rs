@@ -4,7 +4,7 @@ use std::mem;
 use smallvec::SmallVec;
 
 use crate::rational::big::ops::{BITS_PER_WORD, cmp, is_well_formed, sub, sub_assign_result_positive, sub_assign_single_result_positive};
-use crate::rational::big::ops::building_blocks::{shl_mut, shr, shr_mut};
+use crate::rational::big::ops::building_blocks::{both_not_one, nonzero_is_one, shl_mut, shr, shr_mut};
 use crate::rational::big::ops::div::{div_assign_by_odd, div_assign_double, div_assign_one_word};
 
 #[inline]
@@ -13,8 +13,8 @@ pub fn gcd<const S: usize>(left: &SmallVec<[usize; S]>, right: &SmallVec<[usize;
     debug_assert!(is_well_formed(right));
     debug_assert!(!left.is_empty());
     debug_assert!(!right.is_empty());
-    debug_assert!(left[0] != 1 || left.len() > 1);
-    debug_assert!(right[0] != 1 || right.len() > 1);
+    debug_assert!(!nonzero_is_one(left));
+    debug_assert!(!nonzero_is_one(right));
     debug_assert_ne!(left, right);
 
     let (left_zero_words, left_zero_bits) = unsafe { trailing_zeros(left) };
@@ -134,7 +134,7 @@ pub fn simplify_fraction_gcd_single<const S: usize>(left: &mut SmallVec<[usize; 
     if right_shifted > 1 {
         let other = shr(left, 0, left_to_shift);
         // TODO(PERFORMANCE): If no left_to_shift, do the first allocation after subtraction?
-        if other[0] != 1 || other.len() > 1 {
+        if !nonzero_is_one(&other) {
             debug_assert_eq!(other[0] % 2, 1);
             debug_assert_eq!(right_shifted % 2, 1);
             // TODO(ARCHITECTURE): Don't pass that bit count through the function to cancel it again after
@@ -157,7 +157,7 @@ pub fn simplify_fraction_without_info<const S: usize>(numerator: &mut SmallVec<[
     debug_assert!(!numerator.is_empty());
     debug_assert!(!denominator.is_empty());
 
-    if numerator[0] == 1 && numerator.len() == 1 || denominator[0] == 1 && denominator.len() == 1 {
+    if !both_not_one(numerator, denominator) {
         return;
     }
 
@@ -219,7 +219,7 @@ pub fn simplify_fraction_gcd<const S: usize>(left: &mut SmallVec<[usize; S]>, ri
         WhichOdd::Both => (left.clone(), right.clone()),
     };
 
-    if !(start_left[0] == 1 && start_left.len() == 1) && !(start_right[0] == 1 && start_right.len() == 1) {
+    if both_not_one(&start_left, &start_right) {
         let gcd = binary_gcd(start_left, start_right);
         debug_assert!(is_well_formed(&gcd));
         debug_assert!(!gcd.is_empty());

@@ -10,6 +10,7 @@ use smallvec::SmallVec;
 use crate::{Sign, Signed};
 use crate::non_zero::NonZero;
 use crate::rational::big::creation::to_str;
+use crate::rational::big::ops::building_blocks::{is_one, is_zero, nonzero_is_one};
 use crate::rational::big::ops::is_well_formed;
 use crate::rational::big::ops::normalize::simplify_fraction_without_info;
 use crate::rational::Ratio;
@@ -40,7 +41,7 @@ impl<const S: usize> Big<S> {
 
         match self.sign {
             Sign::Zero => {
-                self.numerator.is_empty() && self.denominator.len() == 1 && self.denominator[0] == 1
+                is_zero(&self.numerator) && is_one(&self.denominator)
             }
             Sign::Positive | Sign::Negative => {
                 if self.numerator.is_empty() {
@@ -80,7 +81,7 @@ impl<const S: usize> fmt::Display for Big<S> {
 
         f.write_str(&to_str(&self.numerator, 10))?;
 
-        if self.denominator.len() > 1 || self.denominator[0] != 1 {
+        if !nonzero_is_one(&self.denominator) {
             f.write_str("/")?;
             f.write_str(&to_str(&self.denominator, 10))?;
         }

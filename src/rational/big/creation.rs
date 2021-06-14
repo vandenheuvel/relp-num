@@ -308,7 +308,7 @@ impl<const S: usize> num_traits::Zero for Big<S> {
     fn set_zero(&mut self) {
         self.sign = Sign::Zero;
         self.numerator.clear();
-        debug_assert!(self.denominator.len() >= 1);
+        debug_assert!(!self.denominator.is_empty());
         self.denominator[0] = 1;
         self.denominator.truncate(1);
     }

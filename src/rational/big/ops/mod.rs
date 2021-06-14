@@ -8,7 +8,7 @@ use num_traits::{One, Zero};
 use smallvec::SmallVec;
 
 use crate::rational::big::Big;
-use crate::rational::big::ops::building_blocks::{addmul_1, carrying_add, carrying_add_mut, carrying_sub, carrying_sub_mut, mul_1, sub_assign_slice, sub_n, to_twos_complement};
+use crate::rational::big::ops::building_blocks::{addmul_1, both_not_one, carrying_add, carrying_add_mut, carrying_sub, carrying_sub_mut, is_zero, mul_1, nonzero_is_one, sub_assign_slice, sub_n, to_twos_complement};
 use crate::rational::big::ops::div::{div as div_by_odd_or_even, div_assign_by_odd};
 use crate::rational::big::ops::normalize::{gcd, remove_shared_two_factors_mut, simplify_fraction_gcd, simplify_fraction_without_info};
 use crate::sign::Sign;
@@ -22,16 +22,29 @@ pub const BITS_PER_WORD: u32 = (mem::size_of::<usize>() * 8) as u32;
 impl<const S: usize> Add<Big<S>> for Big<S> {
     type Output = Self;
 
+    #[inline]
     fn add(mut self, rhs: Big<S>) -> Self::Output {
-        // TODO(PERFORMANCE): Can The ownership of rhs be utilized?
-        self += &rhs;
-        self
+        match (self.sign, rhs.sign) {
+            (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => {
+                // TODO(PERFORMANCE): Can the ownership of rhs be utilized?
+                self.add_assign(&rhs);
+                self
+            },
+            (Sign::Positive, Sign::Negative) | (Sign::Negative, Sign::Positive) => {
+                // TODO(PERFORMANCE): Can the ownership of rhs be utilized?
+                self.sub_assign(&rhs);
+                self
+            },
+            (_, Sign::Zero) => self,
+            (Sign::Zero, _) => rhs,
+        }
     }
 }
 
 impl<const S: usize> Add<Big<S>> for &Big<S> {
     type Output = Big<S>;
 
+    #[inline]
     fn add(self, rhs: Big<S>) -> Self::Output {
         Add::add(rhs, self)
     }
@@ -40,6 +53,7 @@ impl<const S: usize> Add<Big<S>> for &Big<S> {
 impl<const S: usize> Add<&Big<S>> for Big<S> {
     type Output = Self;
 
+    #[inline]
     fn add(mut self, rhs: &Big<S>) -> Self::Output {
         self += rhs;
         self
@@ -49,6 +63,7 @@ impl<const S: usize> Add<&Big<S>> for Big<S> {
 impl<const S: usize> Add for &Big<S> {
     type Output = Big<S>;
 
+    #[inline]
     fn add(self, rhs: Self) -> Self::Output {
         // TODO(PERFORMANCE): Which one should be cloned?
         let x = self.clone();
@@ -57,39 +72,51 @@ impl<const S: usize> Add for &Big<S> {
 }
 
 impl<const S: usize> AddAssign<Big<S>> for Big<S> {
+    #[inline]
     fn add_assign(&mut self, rhs: Big<S>) {
         AddAssign::add_assign(self, &rhs);
     }
 }
 
 impl<const S: usize> AddAssign<&Big<S>> for Big<S> {
+    #[inline]
     fn add_assign(&mut self, rhs: &Big<S>) {
         match (self.sign, rhs.sign) {
-            (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => self.add(rhs),
-            (Sign::Positive, Sign::Negative) | (Sign::Negative, Sign::Positive) => self.sub(rhs),
+            (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => self.add_assign(rhs),
+            (Sign::Positive, Sign::Negative) | (Sign::Negative, Sign::Positive) => self.sub_assign(rhs),
             (_, Sign::Zero) => {},
-            (Sign::Zero, _) => {
-                *self = Self {
-                    sign: rhs.sign,
-                    numerator: rhs.numerator.clone(),
-                    denominator: rhs.denominator.clone(),
-                };
-            },
+            (Sign::Zero, _) => *self = rhs.clone(),
         }
     }
 }
 
-impl<const S: usize> Sub<Big<S>> for Big<S> {
+impl<const S: usize> Sub for Big<S> {
     type Output = Self;
 
-    fn sub(self, rhs: Big<S>) -> Self::Output {
-        Sub::sub(self, &rhs)
+    #[inline]
+    fn sub(mut self, mut rhs: Big<S>) -> Self::Output {
+        match (self.sign, rhs.sign) {
+            (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => {
+                self.sub_assign(&rhs);
+                self
+            },
+            (Sign::Positive, Sign::Negative) | (Sign::Negative, Sign::Positive) => {
+                self.add_assign(&rhs);
+                self
+            },
+            (_, Sign::Zero) => self,
+            (Sign::Zero, _) => {
+                rhs.sign = !rhs.sign;
+                rhs
+            },
+        }
     }
 }
 
 impl<const S: usize> Sub<&Big<S>> for Big<S> {
     type Output = Self;
 
+    #[inline]
     fn sub(mut self, rhs: &Big<S>) -> Self::Output {
         SubAssign::sub_assign(&mut self, rhs);
         self
@@ -99,6 +126,7 @@ impl<const S: usize> Sub<&Big<S>> for Big<S> {
 impl<const S: usize> Sub<Big<S>> for &Big<S> {
     type Output = Big<S>;
 
+    #[inline]
     fn sub(self, rhs: Big<S>) -> Self::Output {
         -Sub::sub(rhs, self)
     }
@@ -107,6 +135,7 @@ impl<const S: usize> Sub<Big<S>> for &Big<S> {
 impl<const S: usize> Sub for &Big<S> {
     type Output = Big<S>;
 
+    #[inline]
     fn sub(self, rhs: Self) -> Self::Output {
         // TODO(PERFORMANCE): Which one should be cloned?
         Sub::sub(self.clone(), rhs)
@@ -114,16 +143,18 @@ impl<const S: usize> Sub for &Big<S> {
 }
 
 impl<const S: usize> SubAssign<Big<S>> for Big<S> {
+    #[inline]
     fn sub_assign(&mut self, rhs: Big<S>) {
         SubAssign::sub_assign(self, &rhs);
     }
 }
 
 impl<const S: usize> SubAssign<&Big<S>> for Big<S> {
+    #[inline]
     fn sub_assign(&mut self, rhs: &Big<S>) {
         match (self.sign, rhs.sign) {
-            (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => self.sub(rhs),
-            (Sign::Positive, Sign::Negative) | (Sign::Negative, Sign::Positive) => self.add(rhs),
+            (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => self.sub_assign(rhs),
+            (Sign::Positive, Sign::Negative) | (Sign::Negative, Sign::Positive) => self.add_assign(rhs),
             (_, Sign::Zero) => {},
             (Sign::Zero, _) => {
                 *self = Self {
@@ -137,6 +168,7 @@ impl<const S: usize> SubAssign<&Big<S>> for Big<S> {
 }
 
 impl<const S: usize> Sum for Big<S> {
+    #[inline]
     fn sum<I: Iterator<Item=Self>>(mut iter: I) -> Self {
         let first = iter.next();
         match first {
@@ -153,7 +185,8 @@ impl<const S: usize> Sum for Big<S> {
 }
 
 impl<const S: usize> Big<S> {
-    fn add(&mut self, rhs: &Self) {
+    #[inline]
+    fn add_assign(&mut self, rhs: &Self) {
         debug_assert!(self.is_consistent());
         debug_assert!(!self.is_zero());
         debug_assert!(!rhs.is_zero());
@@ -166,32 +199,32 @@ impl<const S: usize> Big<S> {
             match cmp(&self.numerator, &self.denominator) {
                 Ordering::Equal => self.set_one(),
                 Ordering::Less | Ordering::Greater => {
-                    if (self.numerator[0] != 1 || self.numerator.len() > 1) && (self.denominator[0] != 1 || self.denominator.len() > 1) {
+                    if both_not_one(&self.numerator, &self.denominator){
                         simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                     }
                 }
             }
         } else {
-            if self.denominator[0] == 1 && self.denominator.len() == 1 { // denominator == 1
+            if nonzero_is_one(&self.denominator) {
                 self.numerator = mul(&self.numerator, &rhs.denominator);
                 add_assign(&mut self.numerator, &rhs.numerator);
                 self.denominator = rhs.denominator.clone();
 
-                if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                if !nonzero_is_one(&self.numerator) {
                     simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                 }
-            } else if rhs.denominator[0] == 1 && rhs.denominator.len() == 1 { // denominator == 1
+            } else if nonzero_is_one(&rhs.denominator) {
                 let numerator = mul(&rhs.numerator, &self.denominator);
                 add_assign(&mut self.numerator, &numerator);
-                if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                if !nonzero_is_one(&self.numerator) {
                     simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                 }
             } else {
                 // Neither denominator is 1
-                // TODO(OPTIMIZATION): Should powers be kept out of the gcd?
+                // TODO(OPTIMIZATION): Should powers of two be kept out of the gcd?
                 let mut gcd = gcd(&self.denominator, &rhs.denominator);
 
-                if gcd[0] != 1 || gcd.len() > 1 {
+                if !nonzero_is_one(&gcd) {
                     if cmp(&rhs.denominator, &gcd) == Ordering::Equal {
                         // No need to modify numerator
                     } else {
@@ -206,7 +239,7 @@ impl<const S: usize> Big<S> {
                         add_assign(&mut self.numerator, &rhs.numerator);
                         self.denominator = rhs.denominator.clone();
                     } else {
-                        if gcd[0] != 1 || gcd.len() > 1 {
+                        if !nonzero_is_one(&gcd) {
                             div_assign_by_odd(&mut self.denominator, &gcd);
                         }
                         let right = mul(&rhs.numerator, &self.denominator);
@@ -225,7 +258,8 @@ impl<const S: usize> Big<S> {
 
         debug_assert!(self.is_consistent());
     }
-    fn sub(&mut self, rhs: &Self) {
+    #[inline]
+    fn sub_assign(&mut self, rhs: &Self) {
         debug_assert!(self.is_consistent());
         debug_assert!(!self.is_zero());
         debug_assert!(!rhs.is_zero());
@@ -244,13 +278,13 @@ impl<const S: usize> Big<S> {
             match cmp(&self.numerator, &self.denominator) {
                 Ordering::Equal => self.set_one(),
                 Ordering::Less | Ordering::Greater => {
-                    if (self.numerator[0] != 1 || self.numerator.len() > 1) && (self.denominator[0] != 1 || self.denominator.len() > 1) {
+                    if both_not_one(&self.numerator, &self.denominator) {
                         simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                     }
                 }
             }
         } else {
-            if self.denominator[0] == 1 && self.denominator.len() == 1 { // denominator == 1
+            if nonzero_is_one(&self.denominator) {
                 self.numerator = mul(&self.numerator, &rhs.denominator);
 
                 match subtracting_cmp(&mut self.numerator, &rhs.numerator) {
@@ -259,10 +293,10 @@ impl<const S: usize> Big<S> {
                     Ordering::Equal => panic!(),
                 }
                 self.denominator = rhs.denominator.clone();
-                if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                if !nonzero_is_one(&self.numerator) {
                     simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                 }
-            } else if rhs.denominator[0] == 1 && rhs.denominator.len() == 1 { // denominator == 1
+            } else if nonzero_is_one(&rhs.denominator) {
                 let numerator = mul(&rhs.numerator, &self.denominator);
 
                 match subtracting_cmp(&mut self.numerator, &numerator) {
@@ -270,14 +304,14 @@ impl<const S: usize> Big<S> {
                     Ordering::Greater => {},
                     Ordering::Equal => panic!(),
                 }
-                if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                if !nonzero_is_one(&self.numerator) {
                     simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                 }
             } else {
                 // Neither denominator is 1
                 let mut gcd = gcd(&self.denominator, &rhs.denominator);
 
-                if gcd[0] != 1 || gcd.len() > 1 {
+                if !nonzero_is_one(&gcd) {
                     if cmp(&rhs.denominator, &gcd) == Ordering::Equal {
                         // No need to modify numerator
                     } else {
@@ -296,7 +330,7 @@ impl<const S: usize> Big<S> {
                         }
                         self.denominator = rhs.denominator.clone();
                     } else {
-                        if gcd[0] != 1 || gcd.len() > 1 {
+                        if !nonzero_is_one(&gcd) {
                             div_assign_by_odd(&mut self.denominator, &gcd);
                         }
                         let right = mul(&rhs.numerator, &self.denominator);
@@ -307,7 +341,7 @@ impl<const S: usize> Big<S> {
                         };
                         self.denominator = mul(&rhs.denominator, &self.denominator);
                     }
-                    if self.numerator[0] != 1 || self.numerator.len() > 1 {
+                    if !nonzero_is_one(&self.numerator) {
                         simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                     }
                 } else {
@@ -327,6 +361,7 @@ impl<const S: usize> Big<S> {
     }
 }
 
+#[inline]
 fn cmp(left: &[usize], right: &[usize]) -> Ordering {
     // debug_assert!(is_well_formed(left));
     // debug_assert!(is_well_formed(right));
@@ -351,6 +386,7 @@ fn cmp(left: &[usize], right: &[usize]) -> Ordering {
 impl<const S: usize> Mul for Big<S> {
     type Output = Self;
 
+    #[inline]
     fn mul(mut self, rhs: Self) -> Self::Output {
         MulAssign::mul_assign(&mut self, rhs);
         self
@@ -360,6 +396,7 @@ impl<const S: usize> Mul for Big<S> {
 impl<const S: usize> Mul<&Big<S>> for Big<S> {
     type Output = Self;
 
+    #[inline]
     fn mul(mut self, rhs: &Big<S>) -> Self::Output {
         // TODO(PERFORMANCE): Should cloning be avoided?
         MulAssign::mul_assign(&mut self, rhs.clone());
@@ -370,6 +407,7 @@ impl<const S: usize> Mul<&Big<S>> for Big<S> {
 impl<const S: usize> Mul<Big<S>> for &Big<S> {
     type Output = Big<S>;
 
+    #[inline]
     fn mul(self, rhs: Big<S>) -> Self::Output {
         Mul::mul(rhs, self)
     }
@@ -378,6 +416,7 @@ impl<const S: usize> Mul<Big<S>> for &Big<S> {
 impl<const S: usize> Mul<&Big<S>> for &Big<S> {
     type Output = Big<S>;
 
+    #[inline]
     fn mul(self, rhs: &Big<S>) -> Self::Output {
         let mut x = self.clone();
         // TODO(PERFORMANCE): Should cloning be avoided?
@@ -387,6 +426,7 @@ impl<const S: usize> Mul<&Big<S>> for &Big<S> {
 }
 
 impl<const S: usize> MulAssign for Big<S> {
+    #[inline]
     fn mul_assign(&mut self, rhs: Self) {
         match (self.sign, rhs.sign) {
             (Sign::Positive | Sign::Negative, Sign::Positive | Sign::Negative) => {
@@ -402,6 +442,7 @@ impl<const S: usize> MulAssign for Big<S> {
 }
 
 impl<const S: usize> MulAssign<&Big<S>> for Big<S> {
+    #[inline]
     fn mul_assign(&mut self, rhs: &Self) {
         match (self.sign, rhs.sign) {
             (Sign::Positive | Sign::Negative, Sign::Positive | Sign::Negative) => {
@@ -419,6 +460,7 @@ impl<const S: usize> MulAssign<&Big<S>> for Big<S> {
 impl<const S: usize> Div<Big<S>> for Big<S> {
     type Output = Big<S>;
 
+    #[inline]
     fn div(mut self, rhs: Big<S>) -> Self::Output {
         DivAssign::div_assign(&mut self, rhs);
         self
@@ -428,6 +470,7 @@ impl<const S: usize> Div<Big<S>> for Big<S> {
 impl<const S: usize> Div<&Big<S>> for Big<S> {
     type Output = Big<S>;
 
+    #[inline]
     fn div(mut self, rhs: &Big<S>) -> Self::Output {
         DivAssign::div_assign(&mut self, rhs);
         self
@@ -437,6 +480,7 @@ impl<const S: usize> Div<&Big<S>> for Big<S> {
 impl<const S: usize> Div<Big<S>> for &Big<S> {
     type Output = Big<S>;
 
+    #[inline]
     fn div(self, rhs: Big<S>) -> Self::Output {
         let mut x = self.clone();
         // TODO(PERFORMANCE): Should cloning be avoided?
@@ -448,6 +492,7 @@ impl<const S: usize> Div<Big<S>> for &Big<S> {
 impl<const S: usize> Div<&Big<S>> for &Big<S> {
     type Output = Big<S>;
 
+    #[inline]
     fn div(self, rhs: &Big<S>) -> Self::Output {
         let mut x = self.clone();
         // TODO(PERFORMANCE): Should cloning be avoided?
@@ -457,6 +502,7 @@ impl<const S: usize> Div<&Big<S>> for &Big<S> {
 }
 
 impl<const S: usize> DivAssign for Big<S> {
+    #[inline]
     fn div_assign(&mut self, rhs: Self) {
         match (self.sign, rhs.sign) {
             (Sign::Positive | Sign::Negative, Sign::Positive | Sign::Negative) => {
@@ -470,6 +516,7 @@ impl<const S: usize> DivAssign for Big<S> {
 }
 
 impl<const S: usize> DivAssign<&Big<S>> for Big<S> {
+    #[inline]
     fn div_assign(&mut self, rhs: &Self) {
         match (self.sign, rhs.sign) {
             (Sign::Positive | Sign::Negative, Sign::Positive | Sign::Negative) => {
@@ -483,15 +530,16 @@ impl<const S: usize> DivAssign<&Big<S>> for Big<S> {
 }
 
 impl<const S: usize> Big<S> {
+    #[inline]
     fn mul(&mut self, mut rhs_numerator: SmallVec<[usize; S]>, mut rhs_denominator: SmallVec<[usize; S]>) {
         debug_assert!(self.is_consistent());
         debug_assert!(!self.is_zero());
         debug_assert!(is_well_formed(&rhs_numerator));
-        debug_assert!(!rhs_numerator.is_empty());
+        debug_assert!(!is_zero(&rhs_numerator));
         debug_assert!(is_well_formed(&rhs_denominator));
-        debug_assert!(!rhs_denominator.is_empty());
+        debug_assert!(!is_zero(&rhs_denominator));
 
-        if (rhs_denominator[0] != 1 || rhs_denominator.len() > 1) && (self.numerator.len() != 1 || self.numerator[0] != 1) {
+        if both_not_one(&rhs_denominator, &self.numerator) {
             // TODO(PERFORMANCE): Check for equality here as a special case, or not?
 
             match cmp(&rhs_denominator, &self.numerator) {
@@ -506,7 +554,7 @@ impl<const S: usize> Big<S> {
             }
         }
 
-        if (self.denominator[0] != 1 || self.denominator.len() > 1) && (rhs_numerator.len() != 1 || rhs_numerator[0] != 1) {
+        if both_not_one(&self.denominator, &rhs_numerator) {
             // TODO(PERFORMANCE): Check for equality here as a special case, or not?
             match cmp(&rhs_numerator, &self.denominator) {
                 Ordering::Equal => {
@@ -860,6 +908,7 @@ pub fn mul<const S: usize>(
 }
 
 impl<const S: usize> PartialEq for Big<S> {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         match (self.sign, other.sign) {
             (Sign::Positive, Sign::Negative) |
@@ -957,7 +1006,7 @@ impl<const S: usize> Neg for &Big<S> {
 }
 
 #[inline]
-pub fn is_well_formed<const S: usize>(values: &SmallVec<[usize; S]>) -> bool {
+pub fn is_well_formed(values: &[usize]) -> bool {
     match values.last() {
         None => true,
         Some(&value) => value != 0,
