@@ -1,3 +1,4 @@
+use std::intrinsics::assume;
 use std::iter::repeat;
 use std::num::NonZeroUsize;
 use std::ptr;
@@ -5,7 +6,6 @@ use std::ptr;
 use smallvec::SmallVec;
 
 use crate::rational::big::ops::{BITS_PER_WORD, is_well_formed};
-use std::intrinsics::assume;
 
 #[inline]
 pub fn shr_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, bits: u32) {

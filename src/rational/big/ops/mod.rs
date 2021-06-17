@@ -1,4 +1,5 @@
 use std::cmp::{min, Ordering};
+use std::intrinsics::assume;
 use std::iter::repeat;
 use std::iter::Sum;
 use std::mem;
@@ -12,7 +13,6 @@ use crate::rational::big::ops::building_blocks::{addmul_1, both_not_one, carryin
 use crate::rational::big::ops::div::{div as div_by_odd_or_even, div_assign_by_odd};
 use crate::rational::big::ops::normalize::{gcd, remove_shared_two_factors_mut, simplify_fraction_gcd, simplify_fraction_without_info};
 use crate::sign::Sign;
-use std::intrinsics::assume;
 
 pub mod building_blocks;
 pub mod div;
