@@ -7,6 +7,7 @@
 #![feature(trait_alias)]
 #![feature(result_flattening)]
 #![feature(unchecked_math)]
+#![feature(core_intrinsics)]
 
 mod binary;
 pub use binary::Binary;

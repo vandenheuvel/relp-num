@@ -5,6 +5,7 @@ use std::ptr;
 use smallvec::SmallVec;
 
 use crate::rational::big::ops::{BITS_PER_WORD, is_well_formed};
+use std::intrinsics::assume;
 
 #[inline]
 pub fn shr_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, bits: u32) {
@@ -131,10 +132,9 @@ pub unsafe fn shl_mut_overflowing<const S: usize>(values: &mut SmallVec<[usize; 
 }
 
 #[inline]
-pub fn shl<const S: usize>(values: &SmallVec<[usize; S]>, bits: u32) -> SmallVec<[usize; S]> {
+pub fn shl<const S: usize>(values: &[usize], bits: u32) -> SmallVec<[usize; S]> {
     debug_assert_ne!(bits, 0);
     debug_assert!(bits < BITS_PER_WORD);
-    // TODO(CORRECTNESS): Constraints
     debug_assert!(bits <= values.last().unwrap().leading_zeros());
 
     let mut result = SmallVec::with_capacity(values.len());
@@ -151,7 +151,7 @@ pub fn shl<const S: usize>(values: &SmallVec<[usize; S]>, bits: u32) -> SmallVec
 }
 
 #[inline]
-pub fn debug_assert_shr_constraints<const S: usize>(values: &SmallVec<[usize; S]>, words_to_remove: usize, bits: u32) {
+pub fn debug_assert_shr_constraints(values: &[usize], words_to_remove: usize, bits: u32) {
     debug_assert!(is_well_formed(values));
     debug_assert!(!values.is_empty(), "Should not be called on a zero value");
     debug_assert!(words_to_remove < values.len(), "Can't shift away all words");
@@ -330,6 +330,13 @@ pub unsafe fn sub_assign_slice(values: &mut [usize], rhs: &[usize]) -> bool {
     carry
 }
 
+#[inline]
+pub fn carrying_add_mut(value: &mut usize, rhs: usize, carry: bool) -> bool {
+    let (new_value, new_carry) = carrying_add(*value, rhs, carry);
+    *value = new_value;
+    new_carry
+}
+
 // Copied from an open pr on rust
 #[inline]
 pub fn carrying_add(value: usize, rhs: usize, carry: bool) -> (usize, bool) {
@@ -339,8 +346,8 @@ pub fn carrying_add(value: usize, rhs: usize, carry: bool) -> (usize, bool) {
 }
 
 #[inline]
-pub fn carrying_add_mut(value: &mut usize, rhs: usize, carry: bool) -> bool {
-    let (new_value, new_carry) = carrying_add(*value, rhs, carry);
+pub fn carrying_sub_mut(value: &mut usize, rhs: usize, carry: bool) -> bool {
+    let (new_value, new_carry) = carrying_sub(*value, rhs, carry);
     *value = new_value;
     new_carry
 }
@@ -351,13 +358,6 @@ pub fn carrying_sub(value: usize, rhs: usize, carry: bool) -> (usize, bool) {
     let (a, b) = value.overflowing_sub(rhs);
     let (c, d) = a.overflowing_sub(carry as usize);
     (c, b | d)
-}
-
-#[inline]
-pub fn carrying_sub_mut(value: &mut usize, rhs: usize, carry: bool) -> bool {
-    let (new_value, new_carry) = carrying_sub(*value, rhs, carry);
-    *value = new_value;
-    new_carry
 }
 
 #[inline]
@@ -379,6 +379,10 @@ pub fn nonzero_is_one(values: &[usize]) -> bool {
     debug_assert!(is_well_formed(values));
     debug_assert!(!values.is_empty());
 
+    unsafe {
+        assume(!values.is_empty());
+    }
+
     values[0] == 1 && values.len() == 1
 }
 
@@ -386,6 +390,11 @@ pub fn nonzero_is_one(values: &[usize]) -> bool {
 pub fn both_not_one(left: &[usize], right: &[usize]) -> bool {
     debug_assert!(!is_zero(left));
     debug_assert!(!is_zero(right));
+
+    unsafe {
+        assume(!left.is_empty());
+        assume(!right.is_empty());
+    }
 
     (left[0] != 1 || left.len() > 1) && (right[0] != 1 || right.len() > 1)
 }

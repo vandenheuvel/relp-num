@@ -12,6 +12,7 @@ use crate::rational::big::ops::building_blocks::{addmul_1, both_not_one, carryin
 use crate::rational::big::ops::div::{div as div_by_odd_or_even, div_assign_by_odd};
 use crate::rational::big::ops::normalize::{gcd, remove_shared_two_factors_mut, simplify_fraction_gcd, simplify_fraction_without_info};
 use crate::sign::Sign;
+use std::intrinsics::assume;
 
 pub mod building_blocks;
 pub mod div;
@@ -199,7 +200,7 @@ impl<const S: usize> Big<S> {
             match cmp(&self.numerator, &self.denominator) {
                 Ordering::Equal => self.set_one(),
                 Ordering::Less | Ordering::Greater => {
-                    if both_not_one(&self.numerator, &self.denominator){
+                    if both_not_one(&self.numerator, &self.denominator) {
                         simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
                     }
                 }
@@ -711,6 +712,13 @@ pub fn add_assign<const S: usize>(
 ) {
     debug_assert!(is_well_formed(values));
     debug_assert!(is_well_formed(rhs));
+    debug_assert!(!is_zero(values));
+    debug_assert!(!is_zero(rhs));
+
+    unsafe {
+        assume(!values.is_empty());
+        assume(!rhs.is_empty());
+    }
 
     let mut i = 0;
 
@@ -735,7 +743,7 @@ pub fn add_assign<const S: usize>(
     }
 
     if carry {
-        values.push(1)
+        values.push(1);
     }
 }
 

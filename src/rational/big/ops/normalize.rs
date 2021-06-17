@@ -392,7 +392,7 @@ fn cmp_and_remove<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &mut S
 /// the second item indicates the number of trailing bits that are zero in the first value that is
 /// not zero.
 #[inline]
-pub unsafe fn trailing_zeros<const S: usize>(values: &SmallVec<[usize; S]>) -> (usize, u32) {
+pub unsafe fn trailing_zeros(values: &[usize]) -> (usize, u32) {
     debug_assert!(!values.is_empty() && is_well_formed(values));
 
     let mut zero_words = 0;

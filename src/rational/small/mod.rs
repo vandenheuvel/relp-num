@@ -908,7 +908,7 @@ size_depedent_unsigned!(Rational128, u128, u32);
 size_depedent_unsigned!(Rational128, u128, u64);
 size_depedent_unsigned!(Rational128, u128, u128);
 
-macro_rules! size_depedent_signed {
+macro_rules! size_dependent_signed {
     ($name:ty, $uty:ty, $other_signed:ty) => {
         impl From<$other_signed> for $name {
             #[must_use]
@@ -948,21 +948,21 @@ macro_rules! size_depedent_signed {
     }
 }
 
-size_depedent_signed!(Rational8, u8, i8);
-size_depedent_signed!(Rational16, u16, i8);
-size_depedent_signed!(Rational16, u16, i16);
-size_depedent_signed!(Rational32, u32, i8);
-size_depedent_signed!(Rational32, u32, i16);
-size_depedent_signed!(Rational32, u32, i32);
-size_depedent_signed!(Rational64, u64, i8);
-size_depedent_signed!(Rational64, u64, i16);
-size_depedent_signed!(Rational64, u64, i32);
-size_depedent_signed!(Rational64, u64, i64);
-size_depedent_signed!(Rational128, u128, i8);
-size_depedent_signed!(Rational128, u128, i16);
-size_depedent_signed!(Rational128, u128, i32);
-size_depedent_signed!(Rational128, u128, i64);
-size_depedent_signed!(Rational128, u128, i128);
+size_dependent_signed!(Rational8, u8, i8);
+size_dependent_signed!(Rational16, u16, i8);
+size_dependent_signed!(Rational16, u16, i16);
+size_dependent_signed!(Rational32, u32, i8);
+size_dependent_signed!(Rational32, u32, i16);
+size_dependent_signed!(Rational32, u32, i32);
+size_dependent_signed!(Rational64, u64, i8);
+size_dependent_signed!(Rational64, u64, i16);
+size_dependent_signed!(Rational64, u64, i32);
+size_dependent_signed!(Rational64, u64, i64);
+size_dependent_signed!(Rational128, u128, i8);
+size_dependent_signed!(Rational128, u128, i16);
+size_dependent_signed!(Rational128, u128, i32);
+size_dependent_signed!(Rational128, u128, i64);
+size_dependent_signed!(Rational128, u128, i128);
 
 #[cfg(test)]
 mod test {
