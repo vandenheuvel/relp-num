@@ -1,14 +1,15 @@
 use std::cmp::Ordering;
 
 use crate::non_zero::NonZero;
+use std::fmt::Debug;
 
-pub(crate) fn merge_sparse_indices<I: Ord, T: NonZero + Eq>(
+pub(crate) fn merge_sparse_indices<I: Ord + Debug, T: NonZero + Eq, U: NonZero>(
     left: impl Iterator<Item=(I, T)> + Sized,
     right: impl Iterator<Item=(I, T)> + Sized,
-    operation: impl Fn(T, T) -> T,
-    operation_left: impl Fn(T) -> T,
-    operation_right: impl Fn(T) -> T,
-) -> Vec<(I, T)> {
+    operation: impl Fn(T, T) -> U,
+    operation_left: impl Fn(T) -> U,
+    operation_right: impl Fn(T) -> U,
+) -> Vec<(I, U)> {
     let mut result = Vec::with_capacity(left.size_hint().0.max(right.size_hint().0));
 
     let mut left = left.peekable();
@@ -18,17 +19,26 @@ pub(crate) fn merge_sparse_indices<I: Ord, T: NonZero + Eq>(
         match left_index.cmp(&right_index) {
             Ordering::Less => {
                 let (index, value) = left.next().unwrap();
+                debug_assert!(value.is_not_zero());
+
                 result.push((index, operation_left(value)));
             },
             Ordering::Equal => {
                 let (left_index, left_value) = left.next().unwrap();
-                let operation_result = operation(left_value, right.next().unwrap().1);
+                let (right_index, right_value) = right.next().unwrap();
+                debug_assert_eq!(left_index, right_index);
+                debug_assert!(left_value.is_not_zero());
+                debug_assert!(right_value.is_not_zero());
+
+                let operation_result = operation(left_value, right_value);
                 if operation_result.is_not_zero() {
                     result.push((left_index, operation_result));
                 }
             },
             Ordering::Greater => {
                 let (index, value) = right.next().unwrap();
+                debug_assert!(value.is_not_zero());
+
                 result.push((index, operation_right(value)));
             },
         }

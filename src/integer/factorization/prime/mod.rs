@@ -44,6 +44,7 @@ impl Prime for u64 {
     }
 }
 
+#[inline]
 fn hash_function_64(mut hash: u64) -> usize {
     hash = u64::wrapping_mul((hash >> 32) ^ hash, 0x45d9f3b3335b369);
     hash = u64::wrapping_mul((hash >> 32) ^ hash, 0x3335b36945d9f3b);
@@ -55,11 +56,13 @@ fn hash_function_64(mut hash: u64) -> usize {
 
 
 // given 0 <= a,b,n < 2^64, computes (a*b)%n without overflow
+#[inline]
 fn safe_mul(a: u64, b: u64, n: u64) -> u64 {
     (((a as u128) * b as u128) % n as u128) as u64
 }
 
 // given 0 <= a,b,n < 2^64, computes (a^b)%n without overflow
+#[inline]
 fn safe_exp(mut base: u64, exponent: u64, n: u64) -> u64 {
     let mut result: u64 = 1;
     let mut power: u64 = 1;
@@ -80,6 +83,7 @@ fn safe_exp(mut base: u64, exponent: u64, n: u64) -> u64 {
 }
 
 impl Prime for u32 {
+    #[inline]
     fn is_prime(&self) -> bool {
         debug_assert!(self.is_not_zero());
 
@@ -104,16 +108,13 @@ trait ProbablePrime {
 }
 
 impl ProbablePrime for u32 {
+    #[inline]
     fn is_probable_prime(&self, base: u32) -> bool {
         debug_assert!(*self > 2);
 
-        let mut d = self - 1;
-        let mut s = 0;
-
-        while d % 2 == 0 {
-            s += 1;
-            d /= 2;
-        }
+        let mut d = *self - 1;
+        let s = d.trailing_zeros();
+        d >>= s;
 
         let mut current: u64 = 1;
         let mut power_to_do = d;
@@ -147,6 +148,7 @@ impl ProbablePrime for u32 {
 
 impl ProbablePrime for u64 {
     // given 2 <= n,a < 2^64, a prime, check whether n is a-SPRP
+    #[inline]
     fn is_probable_prime(&self, base: Self) -> bool {
         if *self == base {
             return true;
@@ -156,12 +158,9 @@ impl ProbablePrime for u64 {
             return false;
         }
 
-        let mut d: u64 = *self - 1;
-        let mut s: i32 = 0;
-        while d % 2 == 0 {
-            s += 1;
-            d /= 2;
-        }
+        let mut d = *self - 1;
+        let s = d.trailing_zeros();
+        d >>= s;
 
         let mut current: u64 = safe_exp(base, d, *self);
         if current == 1 {
@@ -180,6 +179,7 @@ impl ProbablePrime for u64 {
     }
 }
 
+#[inline]
 fn hash_function_32(mut hash: u64) -> usize {
     for _ in 0..2 {
         hash = (hash >> 16) ^ hash;
@@ -241,7 +241,7 @@ mod test {
     }
 
     #[test]
-    fn test_count_primes64() {
+    fn test_count_primes_64() {
         assert_eq!((1_u64..1_000_000_u64).filter(Prime::is_prime).count(), 78498);
         // assert_eq!((1_u64..10_000_000_u64).filter(Prime::is_prime).count(), 664579);
     }

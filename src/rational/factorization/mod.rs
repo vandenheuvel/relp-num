@@ -1,31 +1,35 @@
-use std::convert::identity;
-use std::ops::{Neg, Sub};
-
 use crate::non_zero::NonZero;
 use crate::rational::Ratio;
 use crate::rational::utilities::merge_sparse_indices;
 use crate::traits::factorization::{NonZeroFactorizable, NonZeroFactorization};
+use std::fmt::Debug;
+use num_traits::One;
 
-impl<Numerator, Denominator, Factor, Power> NonZeroFactorizable for Ratio<Numerator, Denominator>
+impl<Numerator, Denominator, Factor> NonZeroFactorizable for Ratio<Numerator, Denominator>
 where
-    Numerator: NonZeroFactorizable<Factor=Factor, Power=Power>,
-    Denominator: NonZeroFactorizable<Factor=Factor, Power=Power>,
-    Factor: Ord + NonZero + Clone,
-    Power: Neg<Output=Power> + Sub<Output=Power> + Eq + NonZero + Copy + Clone,
-    Ratio<Numerator, Denominator>: NonZero,
+    Ratio<Numerator, Denominator>: NonZero + One,
+    Numerator: NonZeroFactorizable<Factor=Factor, Power=u8>,
+    Denominator: NonZeroFactorizable<Factor=Factor, Power=u8>,
+    Factor: Ord + NonZero + Clone + Debug,
 {
     type Factor = Factor;
-    type Power = Power;
+    type Power = i8;
 
     fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power> {
-        debug_assert!(self.numerator.is_not_zero() && self.denominator.is_not_zero());
+        debug_assert!(self.numerator.is_not_zero());
+        let all_powers_small = |factors: &[(Factor, u8)]| {
+            factors.iter().all(|&(_, p)| p <= i8::MAX as u8)
+        };
 
         let NonZeroFactorization { factors: n_factors, .. } = self.numerator.factorize();
+        debug_assert!(all_powers_small(&n_factors));
         let NonZeroFactorization { factors: d_factors, .. } = self.denominator.factorize();
+        debug_assert!(all_powers_small(&d_factors));
 
         let factors = merge_sparse_indices(
             n_factors.into_iter(), d_factors.into_iter(),
-            Sub::sub, identity, |x| -x,
+            |left, right| left as i8 - right as i8,
+            |x| x as i8, |x| -(x as i8),
         );
 
         NonZeroFactorization { sign: self.sign.into(), factors }

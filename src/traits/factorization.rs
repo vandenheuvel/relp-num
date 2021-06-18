@@ -1,21 +1,26 @@
 //! # Number factorization
 //!
 //! Factorize integers and rational numbers into numbers that are often primes.
+use std::ops::{Add, AddAssign, Sub, SubAssign};
+
+use num_traits::One;
+
 use crate::non_zero::{NonZero, NonZeroSign};
+use crate::Signed;
 
 /// Creating a factorization of an integer or rational number.
 ///
 /// This factorization does not necessarily consist of primes, as this can be computationally
 /// expensive.
-pub trait NonZeroFactorizable: NonZero {
+pub trait NonZeroFactorizable: NonZero + One + Clone {
     /// Some number greater than 1, probably a prime but not necessarily.
-    type Factor: NonZero + Ord + Clone;
+    type Factor: NonZero + Eq + PartialEq + Ord + PartialOrd + Clone;
     /// How often the factor appears in the number.
     ///
     /// This is marked Copy, because a 64-bit power already allows for values up to 2^(2^64), which
     /// has about 5.6 * 10^18 decimal digits. Finding primes that are larger than that is too
     /// expensive.
-    type Power: NonZero + Copy + Clone;
+    type Power: Add<Output=Self::Power> + AddAssign + Sub<Output=Self::Power> + SubAssign + One + Signed + Copy + Clone;
 
     /// Decompose into factors.
     ///
