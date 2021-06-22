@@ -15,6 +15,14 @@ use crate::non_zero::NonZeroSign;
 /// A number that is positive, negative or zero.
 pub trait Signed {
     fn signum(&self) -> Sign;
+    #[inline]
+    fn is_positive(&self) -> bool {
+        self.signum() == Sign::Positive
+    }
+    #[inline]
+    fn is_negative(&self) -> bool {
+        self.signum() == Sign::Negative
+    }
 }
 
 macro_rules! unsigned {
@@ -152,6 +160,16 @@ mod test {
         assert_eq!(Signed::signum(&1_i128), Sign::Positive);
         assert_eq!(Signed::signum(&0_u32), Sign::Zero);
         assert_eq!(Signed::signum(&1_u64), Sign::Positive);
+    }
+
+    #[test]
+    fn test_sign_boolean() {
+        assert!(6.is_positive());
+        assert!((-5).is_negative());
+        assert!(!0.is_positive());
+        assert!(!0.is_negative());
+        assert!(!6.is_negative());
+        assert!(!(-5).is_positive());
     }
 
     #[test]
