@@ -1,48 +1,49 @@
+use std::convert::TryFrom;
 use std::str::FromStr;
 
 use num_traits::Zero;
 use smallvec::smallvec;
 
-use crate::{NonZero, RB, Sign};
+use crate::{NonZero, NonZeroUbig, RB, Sign, Ubig};
+use crate::integer::big::ops::normalize::simplify_fraction_gcd;
+use crate::R64;
 use crate::rational::big::Big8;
-use crate::rational::big::ops::normalize::simplify_fraction_gcd;
-use crate::rational::Rational64;
 use crate::RationalBig;
 
 #[test]
 fn eq() {
     // with Self
-    let x = Big8::new(1, 1);
-    let y = Big8::new(2, 2);
+    let x = RB!(1, 1);
+    let y = RB!(2, 2);
     assert_eq!(x, y);
 
-    let x = Big8::new(2, 1);
-    let y = Big8::new(2, 2);
+    let x = RB!(2, 1);
+    let y = RB!(2, 2);
     assert_ne!(x, y);
 
-    let x = Big8::new(-1, 1);
-    let y = Big8::new(-2, 2);
+    let x = RB!(-1, 1);
+    let y = RB!(-2, 2);
     assert_eq!(x, y);
 
-    let x = Big8::new(0, 1);
-    let y = Big8::new(-0, 2);
+    let x = RB!(0, 1);
+    let y = RB!(-0, 2);
     assert_eq!(x, y);
 
     // with Rational64
-    let x = Big8::new(1, 1);
-    let y = Rational64::new(2, 2);
+    let x = RB!(1, 1);
+    let y = R64!(2, 2);
     assert_eq!(x, y);
 
-    let x = Big8::new(2, 1);
-    let y = Rational64::new(2, 2);
+    let x = RB!(2, 1);
+    let y = R64!(2, 2);
     assert_ne!(x, y);
 
-    let x = Big8::new(-1, 1);
-    let y = Rational64::new(-2, 2);
+    let x = RB!(-1, 1);
+    let y = R64!(-2, 2);
     assert_eq!(x, y);
 
-    let x = Big8::new(0, 1);
-    let y = Rational64::new(-0, 2);
+    let x = RB!(0, 1);
+    let y = R64!(-0, 2);
     assert_eq!(x, y);
 }
 
@@ -79,46 +80,46 @@ fn zero() {
 #[test]
 fn add() {
     // with Self
-    let x = Big8::new(1, 1);
-    let y = Big8::new(2, 2);
-    assert_eq!(x + y, Big8::new(2, 1));
+    let x = RB!(1, 1);
+    let y = RB!(2, 2);
+    assert_eq!(x + y, RB!(2, 1));
 
     assert_eq!(RB!(1, 2) + RB!(1, 2), RB!(1));
     assert_eq!(RB!(1, 2) + RB!(3, 2), RB!(2));
     assert_eq!(RB!(3, 1) + RB!(4, 1), RB!(7, 1));
 
-    let x = Big8::new(2, 1);
-    let y = Big8::new(2, 2);
-    assert_eq!(x + &y, Big8::new(3, 1));
+    let x = RB!(2, 1);
+    let y = RB!(2, 2);
+    assert_eq!(x + &y, RB!(3, 1));
 
-    let x = Big8::new(-1, 1);
-    let y = Big8::new(-2, 2);
-    assert_eq!(x + y, Big8::new(-2, 1));
+    let x = RB!(-1, 1);
+    let y = RB!(-2, 2);
+    assert_eq!(x + y, RB!(-2, 1));
 
-    let x = Big8::new(0, 1);
-    let y = &Big8::new(-0, 2);
-    assert_eq!(x + y, Big8::new(0, 1));
+    let x = RB!(0, 1);
+    let y = &RB!(-0, 2);
+    assert_eq!(x + y, RB!(0, 1));
 
     // with Rational64
-    let mut x = Big8::new(1, 1);
-    let y = Big8::new(2, 2);
+    let mut x = RB!(1, 1);
+    let y = RB!(2, 2);
     x += y;
-    assert_eq!(x, Big8::new(2, 1));
+    assert_eq!(x, RB!(2, 1));
 
-    let mut x = Big8::new(2, 1);
-    let y = Big8::new(2, 2);
+    let mut x = RB!(2, 1);
+    let y = RB!(2, 2);
     x += &y;
-    assert_eq!(x, Big8::new(3, 1));
+    assert_eq!(x, RB!(3, 1));
 
-    let mut x = Big8::new(1, 1);
-    let y = Rational64::new(2, 2);
+    let mut x = RB!(1, 1);
+    let y = R64!(2, 2);
     x += y;
-    assert_eq!(x, Big8::new(2, 1));
+    assert_eq!(x, RB!(2, 1));
 
-    let mut x = Big8::new(2, 1);
-    let y = Rational64::new(2, 2);
+    let mut x = RB!(2, 1);
+    let y = R64!(2, 2);
     x += &y;
-    assert_eq!(x, Big8::new(3, 1));
+    assert_eq!(x, RB!(3, 1));
 
     let x = Big8::from_str("3146383673420971972032023490593198871229613539715389096610302560000000/3302432073363697202172148890923583722241").unwrap();
     let y = Big8::from_str("-19040000000/24371529219").unwrap();
@@ -135,23 +136,20 @@ fn add() {
     let expected = Big8::from_str("76682181630963772103758511304607920049504288847839925168388021404881164840000000/80485319769746097976607076963162564582789311659779").unwrap();
     assert_eq!(&x + y, expected);
 
-    let mut x = Big8 {
-        sign: Sign::Positive,
-        numerator: smallvec![13284626917187606528, 14353657804625640860, 11366567065457835548, 501247837944],
-        denominator: smallvec![10945929334190035713, 13004504757950498814, 9],
-    };
-    simplify_fraction_gcd(&mut x.numerator, &mut x.denominator);
-    let mut y = Big8 {
-        sign: Sign::Positive,
-        numerator: smallvec![12384794773201432064, 64560677146],
-        denominator: smallvec![12499693862731150083, 66111026448],
-    };
-    simplify_fraction_gcd(&mut y.numerator, &mut y.denominator);
-    let z = Big8 {
-        sign: Sign::Negative,
-        numerator: smallvec![4],
-        denominator: smallvec![5],
-    };
+    let mut x = Big8::try_from((
+        Sign::Positive,
+        [13284626917187606528, 14353657804625640860, 11366567065457835548, 501247837944],
+        [10945929334190035713, 13004504757950498814, 9],
+    )).unwrap();
+    unsafe { simplify_fraction_gcd(x.numerator.inner_mut(), x.denominator.inner_mut()); }
+    let mut y = Big8::try_from((
+        Sign::Positive,
+        [12384794773201432064, 64560677146],
+        [12499693862731150083, 66111026448],
+    )).unwrap();
+    unsafe { simplify_fraction_gcd(y.numerator.inner_mut(), y.denominator.inner_mut()); }
+    let z = Big8::try_from((Sign::Negative, [4], [5])).unwrap();
+
     let xx = &y * z;
     x += xx;
     let expected = Big8::from_str("23219911849044943287036970642552000000000/24371529219").unwrap();
@@ -178,42 +176,42 @@ fn add() {
 #[test]
 fn test_sub() {
     // with Self
-    let x = Big8::new(1, 1);
-    let y = Big8::new(2, 2);
-    assert_eq!(x - y, Big8::new(0, 1));
+    let x = RB!(1);
+    let y = RB!(2, 2);
+    assert_eq!(x - y, RB!(0));
 
-    let x = Big8::new(2, 1);
-    let y = Big8::new(2, 2);
-    assert_eq!(x - &y, Big8::new(1, 1));
+    let x = RB!(2, 1);
+    let y = RB!(2, 2);
+    assert_eq!(x - &y, RB!(1, 1));
 
-    let x = Big8::new(-1, 1);
-    let y = Big8::new(-2, 2);
-    assert_eq!(x - y, Big8::new(0, 1));
+    let x = RB!(-1, 1);
+    let y = RB!(-2, 2);
+    assert_eq!(x - y, RB!(0, 1));
 
-    let x = Big8::new(0, 1);
-    let y = &Big8::new(-0, 2);
-    assert_eq!(x - y, Big8::new(0, 1));
+    let x = RB!(0, 1);
+    let y = &RB!(-0, 2);
+    assert_eq!(x - y, RB!(0, 1));
 
     // with Rational64
-    let mut x = Big8::new(1, 1);
-    let y = Big8::new(2, 2);
+    let mut x = RB!(1, 1);
+    let y = RB!(2, 2);
     x -= y;
-    assert_eq!(x, Big8::new(0, 1));
+    assert_eq!(x, RB!(0, 1));
 
-    let mut x = Big8::new(2, 1);
-    let y = Big8::new(2, 2);
+    let mut x = RB!(2, 1);
+    let y = RB!(2, 2);
     x -= &y;
-    assert_eq!(x, Big8::new(1, 1));
+    assert_eq!(x, RB!(1, 1));
 
-    let mut x = Big8::new(1, 1);
-    let y = Rational64::new(2, 2);
+    let mut x = RB!(1, 1);
+    let y = R64!(2, 2);
     x -= y;
-    assert_eq!(x, Big8::new(0, 1));
+    assert_eq!(x, RB!(0, 1));
 
-    let mut x = Big8::new(2, 1);
-    let y = Rational64::new(2, 2);
+    let mut x = RB!(2, 1);
+    let y = R64!(2, 2);
     x -= &y;
-    assert_eq!(x, Big8::new(1, 1));
+    assert_eq!(x, RB!(1, 1));
 
     let mut x = Big8::from_str("68498984987984986896468746354684684684968/68468465468464168545346854646").unwrap();
     let y = Big8::from_str("9876519684989849849849847").unwrap();
@@ -241,31 +239,29 @@ fn test_sub() {
 
 #[test]
 fn test_mul() {
-    let x = Big8::new(1, 2);
-    let y = Big8::new(3, 4);
-    assert_eq!(x * y, Big8::new(3, 8));
+    let x = RB!(1, 2);
+    let y = RB!(3, 4);
+    assert_eq!(x * y, RB!(3, 8));
 
-    let x = Big8::new(5, 6);
-    let y = Big8::new(7, 8);
-    assert_eq!(x * &y, Big8::new(35, 48));
+    let x = RB!(5, 6);
+    let y = RB!(7, 8);
+    assert_eq!(x * &y, RB!(35, 48));
 
-    let x = Big8::new(-11, 12);
-    let y = Rational64::new(-13, 14);
-    assert_eq!(x * &y, Big8::new(11 * 13, 12 * 14));
+    assert_eq!(RB!(-11, 12) * &R64!(-13, 14), RB!(11 * 13, 12 * 14));
 
-    let x = Big8::new(0, 1);
-    let y = &Rational64::new(-0, 2);
-    assert_eq!(x * y, Big8::new(0, 1));
+    let x = RB!(0, 1);
+    let y = &R64!(-0, 2);
+    assert_eq!(x * y, RB!(0, 1));
 
-    let mut x = Big8::new(1, 1);
-    let y = Big8::new(2, 2);
+    let mut x = RB!(1, 1);
+    let y = RB!(2, 2);
     x *= y;
-    assert_eq!(x, Big8::new(1, 1));
+    assert_eq!(x, RB!(1, 1));
 
-    let mut x = Big8::new(2, 1);
-    let y = Big8::new(2, 2);
+    let mut x = RB!(2, 1);
+    let y = RB!(2, 2);
     x *= y;
-    assert_eq!(x, Big8::new(8, 4));
+    assert_eq!(x, RB!(8, 4));
 
     assert_eq!(
         Big8::from_str("1190934288550035983230200000000/1219533185348999122218328290051").unwrap() * RB!(-4, 5),
@@ -400,16 +396,8 @@ fn test_div() {
     x /= y;
     assert_eq!(x, Big8::from_str("99550002515313968217065296118981690514/55358511346179901505955").unwrap());
 
-    let mut x = Big8 {
-        sign: Sign::Positive,
-        numerator: smallvec![284420063794166937],
-        denominator: smallvec![602229295517812052, 3],
-    };
-    let y = Big8 {
-        sign: Sign::Negative,
-        numerator: smallvec![6093041683748885985, 1000],
-        denominator: smallvec![1721078525850741390, 3],
-    };
+    let mut x = Big8::try_from((Sign::Positive, [284420063794166937], [602229295517812052, 3])).unwrap();
+    let y = Big8::try_from((Sign::Negative, [6093041683748885985, 1000], [1721078525850741390, 3])).unwrap();
     x /= y;
     assert_eq!(x, Big8::from_str("-16229381642834663314847732106441783006/1032297130200835312942712593365546686796500").unwrap());
 }
@@ -422,18 +410,18 @@ fn test_display() {
     assert_eq!(RB!(1, 2).to_string(), "1/2");
     assert_eq!(RB!(-1, 2).to_string(), "-1/2");
 
-    let x = Big8 {
-        sign: Sign::Positive,
-        numerator: smallvec![13284626917187606528, 14353657804625640860, 11366567065457835548, 501247837944],
-        denominator: smallvec![10945929334190035713, 13004504757950498814, 9],
-    };
+    let x = Big8::try_from((
+        Sign::Positive,
+        [13284626917187606528, 14353657804625640860, 11366567065457835548, 501247837944],
+        [10945929334190035713, 13004504757950498814, 9],
+    )).unwrap();
     assert_eq!(x.to_string(), "3146383673420971972032023490593198871229613539715389096610302560000000/3302432073363697202172148890923583722241");
 
-    let x = Big8 {
-        sign: Sign::Positive,
-        numerator: smallvec![284420063794166937],
-        denominator: smallvec![602229295517812052, 3],
-    };
+    let x = Big8::try_from((
+        Sign::Positive,
+        [284420063794166937],
+        [602229295517812052, 3],
+    )).unwrap();
     assert_eq!(x.to_string(), "284420063794166937/55942461516646466900");
 }
 
@@ -441,11 +429,11 @@ fn test_display() {
 fn test_sum() {
     assert_eq!((0..50001).map(Big8::from).sum::<Big8>(), RB!(1250025000));
     assert_eq!(
-        (0..1).map(|i| Big8::new(i, (i + 1) as u64)).sum::<Big8>(),
+        (0..1).map(|i| Big8::new(i, (i + 1) as u64).unwrap()).sum::<Big8>(),
         RB!(0),
     );
     assert_eq!(
-        (0..43).map(|i| Big8::new(i, (i + 1) as u64)).sum::<Big8>(),
+        (0..43).map(|i| Big8::new(i, (i + 1) as u64).unwrap()).sum::<Big8>(),
         RB!(4728144095208782983, 122332313750680800),
     );
 }
@@ -493,50 +481,47 @@ fn test_eq() {
 
 #[test]
 fn test_consistent() {
-    assert!(Big8 {
-        sign: Sign::Zero,
-        numerator: smallvec![],
-        denominator: smallvec![1],
-    }.is_consistent());
-    assert!(Big8 {
-        sign: Sign::Positive,
-        numerator: smallvec![1],
-        denominator: smallvec![1],
-    }.is_consistent());
-    assert!(!Big8 {
-        sign: Sign::Positive,
-        numerator: smallvec![1],
-        denominator: smallvec![0],
-    }.is_consistent());
-    assert!(Big8 {
-        sign: Sign::Positive,
-        numerator: smallvec![1],
-        denominator: smallvec![1],
-    }.is_consistent());
-    assert!(!Big8 {
-        sign: Sign::Positive,
-        numerator: smallvec![2],
-        denominator: smallvec![2],
-    }.is_consistent());
-    assert!(!Big8 {
-        sign: Sign::Positive,
-        numerator: smallvec![4],
-        denominator: smallvec![6],
-    }.is_consistent());
-    assert!(!Big8 {
-        sign: Sign::Positive,
-        numerator: smallvec![4, 4],
-        denominator: smallvec![6, 9684, 4],
-    }.is_consistent());
-    assert!(Big8 {
-        sign: Sign::Negative,
-        numerator: smallvec![3, 684684685487],
-        denominator: smallvec![2],
-    }.is_consistent());
+    unsafe {
+        assert!(Big8 {
+            sign: Sign::Zero,
+            numerator: Ubig::from_inner_unchecked(smallvec![]),
+            denominator: NonZeroUbig::from_inner_unchecked(smallvec![1]),
+        }.is_well_formed());
+        assert!(Big8 {
+            sign: Sign::Positive,
+            numerator: Ubig::from_inner_unchecked(smallvec![1]),
+            denominator: NonZeroUbig::from_inner_unchecked(smallvec![1]),
+        }.is_well_formed());
+        assert!(Big8 {
+            sign: Sign::Positive,
+            numerator: Ubig::from_inner_unchecked(smallvec![1]),
+            denominator: NonZeroUbig::from_inner_unchecked(smallvec![1]),
+        }.is_well_formed());
+        assert!(!Big8 {
+            sign: Sign::Positive,
+            numerator: Ubig::from_inner_unchecked(smallvec![2]),
+            denominator: NonZeroUbig::from_inner_unchecked(smallvec![2]),
+        }.is_well_formed());
+        assert!(!Big8 {
+            sign: Sign::Positive,
+            numerator: Ubig::from_inner_unchecked(smallvec![4]),
+            denominator: NonZeroUbig::from_inner_unchecked(smallvec![6]),
+        }.is_well_formed());
+        assert!(!Big8 {
+            sign: Sign::Positive,
+            numerator: Ubig::from_inner_unchecked(smallvec![4, 4]),
+            denominator: NonZeroUbig::from_inner_unchecked(smallvec![6, 9684, 4]),
+        }.is_well_formed());
+        assert!(Big8 {
+            sign: Sign::Negative,
+            numerator: Ubig::from_inner_unchecked(smallvec![3, 684684685487]),
+            denominator: NonZeroUbig::from_inner_unchecked(smallvec![2]),
+        }.is_well_formed());
 
-    assert!(Big8 {
-        sign: Sign::Negative,
-        numerator: smallvec![9381074085307],
-        denominator: smallvec![3795475922420],
-    }.is_consistent());
+        assert!(Big8 {
+            sign: Sign::Negative,
+            numerator: Ubig::from_inner_unchecked(smallvec![9381074085307]),
+            denominator: NonZeroUbig::from_inner_unchecked(smallvec![3795475922420]),
+        }.is_well_formed());
+    }
 }

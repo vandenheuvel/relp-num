@@ -5,7 +5,7 @@ authors = ["Bram van den Heuvel <bram@vandenheuvel.online>"]
 edition = "2018"
 description = "Number types for the relp crate"
 repository = "https://github.com/vandenheuvel/relp-num"
-license = "MIT"
+license = "GPL-3.0-only"
 
 keywords = ["relp", "exact", "precision", "number", "rational"]
 categories = ["algorithms", "science"]

@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
+use std::fmt::Debug;
 
 use crate::non_zero::NonZero;
-use std::fmt::Debug;
 
 pub(crate) fn merge_sparse_indices<I: Ord + Debug, T: NonZero + Eq, U: NonZero>(
     left: impl Iterator<Item=(I, T)> + Sized,

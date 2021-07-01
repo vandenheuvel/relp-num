@@ -1,229 +1,24 @@
 //! # Rational types of fixed size
-use std::cmp::{min, Ordering};
 use std::fmt;
 use std::fmt::Display;
-use std::iter::Sum;
-use std::mem;
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
-use std::str::FromStr;
+use std::ops::Neg;
 
-use num_traits;
-
+use crate::integer::big::ops::normalize::gcd_scalar;
 use crate::non_zero::{NonZero, NonZeroSign, NonZeroSigned};
-use crate::rational::big::Big;
-use crate::rational::big::ops::normalize::gcd_scalar;
 use crate::rational::Ratio;
 use crate::sign::{Sign, Signed};
 
-mod mixing_signs;
+mod io;
+pub(crate) mod ops;
 
 macro_rules! rational {
-    ($name:ident, $ity:ty, $uty:ty, $gcd_name:ident, $simplify_name:ident) => {
+    ($name:ident, $ity:ty, $uty:ty) => {
         /// A signed ratio between two small integers.
-        pub type $name = Ratio<$uty, $uty>;
+        pub type $name = Ratio<Sign, $uty, $uty>;
 
-        impl $name {
-            #[must_use]
-            pub fn new(numerator: $ity, mut denominator: $uty) -> Self {
-                debug_assert_ne!(denominator, 0);
-
-                let mut numerator_abs = numerator.unsigned_abs();
-                if numerator == 0 {
-                    <Self as num_traits::Zero>::zero()
-                } else if numerator_abs == denominator {
-                    Self {
-                        sign: Signed::signum(&numerator),
-                        numerator: 1,
-                        denominator: 1,
-                    }
-                } else {
-                    if numerator_abs != 1 && denominator != 1 {
-                        let gcd = gcd_scalar(numerator_abs as usize, denominator as usize) as $uty;
-
-                        numerator_abs /= gcd;
-                        denominator /= gcd;
-                    }
-
-                    Self {
-                        sign: Signed::signum(&numerator),
-                        numerator: numerator_abs,
-                        denominator,
-                    }
-                }
-            }
-            pub fn new_signed<T: Into<Sign>>(sign: T, numerator: $uty, denominator: $uty) -> Self {
-                debug_assert_ne!(denominator, 0);
-                let sign = sign.into();
-                debug_assert!((numerator == 0) == (sign == Sign::Zero));
-
-                match sign {
-                    Sign::Positive => debug_assert_ne!(numerator, 0),
-                    Sign::Zero => {
-                        debug_assert_eq!(numerator, 0);
-                        return <Self as num_traits::Zero>::zero();
-                    },
-                    Sign::Negative => {}
-                }
-
-                let (numerator, denominator) = $simplify_name(numerator, denominator);
-
-                Self {
-                    sign,
-                    numerator,
-                    denominator,
-                }
-            }
-        }
-
-        impl num_traits::FromPrimitive for $name {
-            #[must_use]
-            #[inline]
-            fn from_i64(n: i64) -> Option<Self> {
-                if n.unsigned_abs() <= <$uty>::MAX as u64 {
-                    Some(Self {
-                        sign: Signed::signum(&n),
-                        numerator: n.unsigned_abs() as $uty,
-                        denominator: 1,
-                    })
-                } else {
-                    None
-                }
-            }
-
-            #[must_use]
-            #[inline]
-            fn from_u64(n: u64) -> Option<Self> {
-                if n <= <$uty>::MAX as u64 {
-                    Some(Self {
-                        sign: Signed::signum(&n),
-                        numerator: n as $uty,
-                        denominator: 1,
-                    })
-                } else {
-                    None
-                }
-            }
-
-            #[must_use]
-            #[inline]
-            fn from_f32(n: f32) -> Option<Self> {
-                Big::<8>::from_f32(n).map(Self::from_big_if_it_fits).flatten()
-            }
-
-            #[must_use]
-            #[inline]
-            fn from_f64(n: f64) -> Option<Self> {
-                Big::<16>::from_f64(n).map(Self::from_big_if_it_fits).flatten()
-            }
-        }
-
-        impl FromStr for $name {
-            type Err = &'static str;
-
-            fn from_str(from: &str) -> Result<Self, Self::Err> {
-                Big::<8>::from_str(from)
-                    .map(|big| match Self::from_big_if_it_fits(big) {
-                        Some(value) => Ok(value),
-                        None => Err("value was too large for this type"),
-                    })
-                    .flatten()
-            }
-        }
-
-        impl $name {
-            fn from_big_if_it_fits<const S: usize>(big: Big<S>) -> Option<Self> {
-                if num_traits::Zero::is_zero(&big) {
-                    return Some(<Self as num_traits::Zero>::zero());
-                }
-
-                if big.numerator.len() == 1 && big.denominator.len() == 1 {
-                    if big.numerator[0] <= <$uty>::MAX as usize && big.denominator[0] <= <$uty>::MAX as usize {
-                        return Some(Self {
-                            sign: big.sign,
-                            numerator: big.numerator[0] as $uty,
-                            denominator: big.denominator[0] as $uty,
-                        })
-                    }
-                }
-
-                None
-            }
-        }
-
-        impl num_traits::ToPrimitive for $name {
-            fn to_i64(&self) -> Option<i64> {
-                if self.denominator == 1 && self.numerator as u128 <= i64::MAX as u128 {
-                    Some(match self.sign {
-                        Sign::Positive => self.numerator as i64,
-                        Sign::Zero => 0,
-                        Sign::Negative => -(self.numerator as i64),
-                    })
-                } else { None }
-            }
-
-            fn to_u64(&self) -> Option<u64> {
-                match self.sign {
-                    Sign::Positive => {
-                        if self.denominator == 1 {
-                            if self.numerator as u128 <= u64::MAX as u128 {
-                                Some(self.numerator as u64)
-                            } else { None }
-                        } else {
-                            None
-                        }
-                    }
-                    Sign::Zero => Some(0),
-                    Sign::Negative => None,
-                }
-            }
-
-            fn to_f64(&self) -> Option<f64> {
-                Some(match self.sign {
-                    Sign::Positive => self.numerator as f64 / self.denominator as f64,
-                    Sign::Zero => 0_f64,
-                    Sign::Negative => -(self.numerator as f64 / self.denominator as f64),
-                })
-            }
-        }
-
-        impl From<&$name> for $name {
-            #[must_use]
-            #[inline]
-            fn from(other: &$name) -> Self {
-                *other
-            }
-        }
-
-        impl NonZero for $name {
-            #[must_use]
-            #[inline]
-            fn is_not_zero(&self) -> bool {
-                self.numerator != 0
-            }
-        }
-
-        impl num_traits::Zero for $name {
-            #[must_use]
-            #[inline]
-            fn zero() -> Self {
-                Self {
-                    sign: Sign::Zero,
-                    numerator: 0,
-                    denominator: 1,
-                }
-            }
-
-            #[inline]
-            fn set_zero(&mut self) {
-                self.sign = Sign::Zero;
-                self.numerator = 0;
-                self.denominator = 1;
-            }
-
-            #[must_use]
-            #[inline]
-            fn is_zero(&self) -> bool {
-                self.sign == Sign::Zero
+        impl Signed for $name {
+            fn signum(&self) -> Sign {
+                self.sign
             }
         }
 
@@ -231,460 +26,9 @@ macro_rules! rational {
             #[must_use]
             #[inline]
             fn signum(&self) -> NonZeroSign {
+                debug_assert!(self.is_not_zero());
+
                 self.sign.into()
-            }
-        }
-
-        impl<'a> Add<&'a $name> for &'a $name {
-            type Output = $name;
-
-            #[must_use]
-            #[inline]
-            fn add(self, rhs: Self) -> Self::Output {
-                Add::add(self.clone(), rhs)
-            }
-        }
-
-        impl Add for $name {
-            type Output = Self;
-
-            #[must_use]
-            #[inline]
-            fn add(mut self, rhs: Self) -> Self::Output {
-                AddAssign::add_assign(&mut self, rhs);
-                self
-            }
-        }
-
-        impl Sum for $name {
-            fn sum<I: Iterator<Item=Self>>(mut iter: I) -> Self {
-                let first_value = iter.next();
-                match first_value {
-                    None => <Self as num_traits::Zero>::zero(),
-                    Some(mut total) => {
-
-                        while let Some(next_value) = iter.next() {
-                            total += next_value;
-                        }
-
-                        total
-                    }
-                }
-            }
-        }
-
-        impl Add<&$name> for $name {
-            type Output = Self;
-
-            #[must_use]
-            #[inline]
-            fn add(mut self, rhs: &Self) -> Self::Output {
-                AddAssign::add_assign(&mut self, rhs);
-                self
-            }
-        }
-
-        impl Add<$name> for &$name {
-            type Output = $name;
-
-            #[must_use]
-            #[inline]
-            fn add(self, rhs: $name) -> Self::Output {
-                Add::add(rhs, self)
-            }
-        }
-
-        impl AddAssign<&$name> for $name {
-            #[inline]
-            fn add_assign(&mut self, rhs: &Self) {
-                match (self.sign, rhs.sign) {
-                    (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => self.add(rhs),
-                    (Sign::Positive, Sign::Negative) | (Sign::Negative, Sign::Positive) => self.sub(rhs),
-                    (_, Sign::Zero) => {},
-                    (Sign::Zero, _) => {
-                        *self = Self {
-                            sign: rhs.sign,
-                            numerator: rhs.numerator,
-                            denominator: rhs.denominator,
-                        };
-                    },
-                }
-            }
-        }
-
-        impl AddAssign for $name {
-            #[inline]
-            fn add_assign(&mut self, rhs: Self) {
-                AddAssign::add_assign(self, &rhs);
-            }
-        }
-
-        impl Sub for $name {
-            type Output = Self;
-
-            #[must_use]
-            #[inline]
-            fn sub(mut self, rhs: Self) -> Self::Output {
-                SubAssign::sub_assign(&mut self, rhs);
-                self
-            }
-        }
-
-        impl<'a> Sub<&'a $name> for &'a $name {
-            type Output = $name;
-
-            #[must_use]
-            #[inline]
-            fn sub(self, rhs: Self) -> Self::Output {
-                Sub::sub(self.clone(), rhs)
-            }
-        }
-
-        impl Sub<&$name> for $name {
-            type Output = Self;
-
-            #[must_use]
-            #[inline]
-            fn sub(mut self, rhs: &Self) -> Self::Output {
-                SubAssign::sub_assign(&mut self, rhs);
-                self
-            }
-        }
-
-        impl Sub<$name> for &$name {
-            type Output = $name;
-
-            #[must_use]
-            #[inline]
-            fn sub(self, rhs: $name) -> Self::Output {
-                -Sub::sub(rhs, self)
-            }
-        }
-
-        impl SubAssign<&$name> for $name {
-            #[inline]
-            fn sub_assign(&mut self, rhs: &Self) {
-                match (self.sign, rhs.sign) {
-                    (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => self.sub(rhs),
-                    (Sign::Positive, Sign::Negative) | (Sign::Negative, Sign::Positive) => self.add(rhs),
-                    (_, Sign::Zero) => {},
-                    (Sign::Zero, _) => {
-                        *self = Self {
-                            sign: !rhs.sign,
-                            numerator: rhs.numerator,
-                            denominator: rhs.denominator,
-                        };
-                    },
-                }
-            }
-        }
-
-        impl SubAssign for $name {
-            #[inline]
-            fn sub_assign(&mut self, rhs: Self) {
-                SubAssign::sub_assign(self, &rhs)
-            }
-        }
-
-        impl $name {
-            #[inline]
-            fn add(&mut self, rhs: &Self) {
-                if self.denominator == rhs.denominator {
-                    self.numerator += rhs.numerator;
-
-                    // Numerator can't be zero
-
-                    if self.numerator == self.denominator {
-                        self.numerator = 1;
-                        self.denominator = 1;
-                    } else if self.denominator != 1 {
-                        // numerator can't be 1 because two positive things were added
-                        let gcd = $gcd_name(self.numerator, self.denominator);
-                        self.numerator /= gcd;
-                        self.denominator /= gcd;
-                    }
-                } else {
-                    if self.denominator == 1 {
-                        self.numerator *= rhs.denominator;
-                        self.numerator += rhs.numerator;
-                        self.denominator = rhs.denominator;
-                    } else if rhs.denominator == 1 {
-                        self.numerator += rhs.numerator * self.denominator;
-                    } else {
-                        // Neither denominator is 1
-                        let gcd = $gcd_name(self.denominator, rhs.denominator);
-
-                        self.numerator *= rhs.denominator / gcd;
-                        self.denominator /= gcd;
-
-                        self.numerator += rhs.numerator * self.denominator;
-                        self.denominator *= rhs.denominator;
-
-                        let (n, d) = $simplify_name(self.numerator, self.denominator);
-                        self.numerator = n;
-                        self.denominator = d;
-                    }
-                }
-            }
-            #[inline]
-            fn sub(&mut self, rhs: &Self) {
-                if self.denominator == rhs.denominator {
-                    self.sub_direction(rhs.numerator);
-
-                    if self.numerator == self.denominator {
-                        self.numerator = 1;
-                        self.denominator = 1;
-                    } else if self.denominator != 1 && self.numerator != 1 {
-                        let gcd = $gcd_name(self.numerator, self.denominator);
-                        self.numerator /= gcd;
-                        self.denominator /= gcd;
-                    }
-                } else {
-                    if self.denominator == 1 {
-                        self.numerator *= rhs.denominator;
-                        self.sub_direction(rhs.numerator);
-                        self.denominator = rhs.denominator;
-                    } else if rhs.denominator == 1 {
-                        self.sub_direction(rhs.numerator * self.denominator);
-                    } else {
-                        // Neither denominator is 1
-                        let gcd = $gcd_name(self.denominator, rhs.denominator);
-
-                        self.numerator *= rhs.denominator / gcd;
-                        self.denominator /= gcd;
-
-                        let rhs_numerator = rhs.numerator * self.denominator;
-                        if self.numerator < rhs_numerator {
-                            self.sign = !self.sign;
-                            self.numerator = rhs_numerator - self.numerator;
-                        } else {
-                            // larger than, not zero
-                            self.numerator -= rhs_numerator;
-                        }
-                        self.denominator *= rhs.denominator;
-
-                        let (n, d) = $simplify_name(self.numerator, self.denominator);
-                        self.numerator = n;
-                        self.denominator = d;
-                    }
-                }
-            }
-            #[inline]
-            fn sub_direction(&mut self, rhs_numerator: $uty) {
-                match self.numerator.cmp(&rhs_numerator) {
-                    Ordering::Less => {
-                        self.sign = !self.sign;
-                        self.numerator = rhs_numerator - self.numerator;
-                    }
-                    Ordering::Equal => <Self as num_traits::Zero>::set_zero(self),
-                    Ordering::Greater => {
-                        self.numerator -= rhs_numerator;
-                    }
-                }
-            }
-        }
-
-        impl num_traits::One for $name {
-            #[must_use]
-            #[inline]
-            fn one() -> Self {
-                Self {
-                    sign: Sign::Positive,
-                    numerator: 1,
-                    denominator: 1,
-                }
-            }
-
-            #[inline]
-            fn set_one(&mut self) {
-                self.sign = Sign::Positive;
-                self.numerator = 1;
-                self.denominator = 1;
-            }
-
-            #[must_use]
-            #[inline]
-            fn is_one(&self) -> bool {
-                self.numerator == 1 && self.denominator == 1 && self.sign == Sign::Positive
-            }
-        }
-
-        impl Mul<&$name> for $name {
-            type Output = Self;
-
-            #[must_use]
-            #[inline]
-            fn mul(mut self, rhs: &Self) -> Self::Output {
-                MulAssign::mul_assign(&mut self, rhs);
-                self
-            }
-        }
-
-        impl<'a> Mul<&'a $name> for &'a $name {
-            type Output = $name;
-
-            #[must_use]
-            #[inline]
-            fn mul(self, rhs: Self) -> Self::Output {
-                Mul::mul(self.clone(), rhs)
-            }
-        }
-
-        impl Mul for $name {
-            type Output = Self;
-
-            #[must_use]
-            #[inline]
-            fn mul(mut self, rhs: Self) -> Self::Output {
-                MulAssign::mul_assign(&mut self, rhs);
-                self
-            }
-        }
-
-        impl MulAssign for $name {
-            #[inline]
-            fn mul_assign(&mut self, rhs: Self) {
-                MulAssign::mul_assign(self, &rhs);
-            }
-        }
-
-        impl Mul<$name> for &$name {
-            type Output = $name;
-
-            #[must_use]
-            #[inline]
-            fn mul(self, rhs: $name) -> Self::Output {
-                Mul::mul(rhs, self)
-            }
-        }
-
-        impl MulAssign<&$name> for $name {
-            #[inline]
-            fn mul_assign(&mut self, rhs: &Self) {
-                match (self.sign, rhs.sign) {
-                    (Sign::Positive | Sign::Negative, Sign::Positive | Sign::Negative) => {
-                        self.sign *= rhs.sign;
-                        self.mul(rhs.numerator, rhs.denominator);
-                    }
-                    (Sign::Zero, _) => {}
-                    (_, Sign::Zero) => <Self as num_traits::Zero>::set_zero(self),
-                }
-            }
-        }
-
-        impl Div for $name {
-            type Output = Self;
-
-            #[must_use]
-            #[inline]
-            fn div(mut self, rhs: Self) -> Self::Output {
-                DivAssign::div_assign(&mut self, rhs);
-                self
-            }
-        }
-
-        impl Div<&$name> for $name {
-            type Output = Self;
-
-            #[must_use]
-            #[inline]
-            fn div(mut self, rhs: &Self) -> Self::Output {
-                DivAssign::div_assign(&mut self, rhs);
-                self
-            }
-        }
-
-        impl<'a> Div<&'a $name> for &'a $name {
-            type Output = $name;
-
-            #[must_use]
-            #[inline]
-            fn div(self, rhs: Self) -> Self::Output {
-                Div::div(self.clone(), rhs)
-            }
-        }
-
-        impl Div<$name> for &$name {
-            type Output = $name;
-
-            #[must_use]
-            #[inline]
-            fn div(self, mut rhs: $name) -> Self::Output {
-                match (self.sign, rhs.sign) {
-                    (Sign::Positive | Sign::Negative, Sign::Positive | Sign::Negative) => {
-                        let sign = self.sign * rhs.sign;
-                        <$name>::mul(&mut rhs, self.denominator, self.numerator);
-                        Self::Output {
-                            sign,
-                            numerator: rhs.denominator,
-                            denominator: rhs.numerator,
-                        }
-                    }
-                    (_, Sign::Zero) => panic!(),
-                    (Sign::Zero, _) => {
-                        <$name as num_traits::Zero>::set_zero(&mut rhs);
-                        rhs
-                    }
-                }
-            }
-        }
-
-        impl DivAssign for $name {
-            #[inline]
-            fn div_assign(&mut self, rhs: Self) {
-                DivAssign::div_assign(self, &rhs);
-            }
-        }
-
-        impl DivAssign<&$name> for $name {
-            #[inline]
-            fn div_assign(&mut self, rhs: &Self) {
-                match (self.sign, rhs.sign) {
-                    (Sign::Positive | Sign::Negative, Sign::Positive | Sign::Negative) => {
-                        self.sign *= rhs.sign;
-                        self.mul(rhs.denominator, rhs.numerator);
-                    }
-                    (_, Sign::Zero) => panic!(),
-                    (Sign::Zero, _) => {}
-                }
-            }
-        }
-
-        impl $name {
-            #[inline]
-            fn mul(&mut self, mut rhs_numerator: $uty, mut rhs_denominator: $uty) {
-                if self.numerator != 1 && rhs_denominator != 1 {
-                    if self.numerator == rhs_denominator {
-                        self.numerator = rhs_numerator;
-                        let (n, d) = $simplify_name(self.numerator, self.denominator);
-                        self.numerator = n;
-                        self.denominator = d;
-                        return
-                    }
-
-                    let gcd_ad = $gcd_name(self.numerator, rhs_denominator);
-                    debug_assert!(gcd_ad > 0);
-                    self.numerator /= gcd_ad;
-                    rhs_denominator /= gcd_ad;
-                }
-
-                if rhs_numerator != 1 && self.denominator != 1 {
-                    if rhs_numerator == self.denominator {
-                        self.denominator = rhs_denominator;
-                        let (n, d) = $simplify_name(self.numerator, self.denominator);
-                        self.numerator = n;
-                        self.denominator = d;
-                        return
-                    }
-
-                    let gcd_bc = $gcd_name(self.denominator, rhs_numerator);
-                    debug_assert!(gcd_bc > 0);
-                    rhs_numerator /= gcd_bc;
-                    self.denominator /= gcd_bc;
-                }
-
-                self.numerator *= rhs_numerator;
-                self.denominator *= rhs_denominator;
             }
         }
 
@@ -710,57 +54,6 @@ macro_rules! rational {
                     numerator: self.numerator,
                     denominator: self.denominator,
                 }
-            }
-        }
-
-        #[inline]
-        pub fn $simplify_name(numerator: $uty, denominator: $uty) -> ($uty, $uty) {
-            debug_assert_ne!(numerator, 0);
-            debug_assert_ne!(denominator, 0);
-
-            if numerator == 1 || denominator == 1 {
-                (numerator, denominator)
-            } else {
-                let gcd = $gcd_name(numerator, denominator);
-                (numerator / gcd, denominator / gcd)
-            }
-        }
-
-        #[inline]
-        fn $gcd_name(mut left: $uty, mut right: $uty) -> $uty {
-            debug_assert_ne!(left, 0);
-            debug_assert_ne!(right, 0);
-            debug_assert_ne!(left, 1);
-            debug_assert_ne!(right, 1);
-
-            let left_trailing = left.trailing_zeros();
-            let right_trailing = right.trailing_zeros();
-            let min_trailing = min(left_trailing, right_trailing);
-
-            left >>= left_trailing;
-            right >>= right_trailing;
-
-            loop {
-                debug_assert_eq!(left % 2, 1);
-                debug_assert_eq!(left % 2, 1);
-
-                if left == right {
-                    break left << min_trailing
-                }
-
-                if left > right {
-                    mem::swap(&mut left, &mut right);
-                }
-
-                right -= left;
-
-                right >>= right.trailing_zeros();
-            }
-        }
-
-        impl Signed for $name {
-            fn signum(&self) -> Sign {
-                self.sign
             }
         }
 
@@ -801,168 +94,31 @@ macro_rules! rational {
         }
     }
 }
+rational!(Rational8, i8, u8);
+rational!(Rational16, i16, u16);
+rational!(Rational32, i32, u32);
+rational!(Rational64, i64, u64);
+rational!(Rational128, i128, u128);
 
-rational!(Rational8, i8, u8, gcd8, simplify8);
-rational!(Rational16, i16, u16, gcd16, simplify16);
-rational!(Rational32, i32, u32, gcd32, simplify32);
-rational!(Rational64, i64, u64, gcd64, simplify64);
-rational!(Rational128, i128, u128, gcd128, simplify128);
+macro_rules! rational_non_zero {
+    ($name:ident, $ity:ty, $uty:ty) => {
+        pub type $name = Ratio<NonZeroSign, $uty, $uty>;
 
-
-macro_rules! rational_requiring_wide {
-    ($name:ident, $uty:ty, $BITS: literal, $wide:ty) => {
-        impl Ord for $name {
-            #[must_use]
-            #[inline]
-            fn cmp(&self, other: &Self) -> Ordering {
-                self.partial_cmp(other).unwrap()
+        impl PartialEq for $name {
+            fn eq(&self, other: &Self) -> bool {
+                self.numerator == other.numerator &&
+                    self.denominator == other.denominator &&
+                    self.sign == other.sign
             }
         }
-
-        impl PartialOrd for $name {
-            #[must_use]
-            #[inline]
-            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-                self.sign.partial_cmp(&other.sign).or_else(|| {
-                    debug_assert_eq!(self.sign, other.sign);
-                    debug_assert_ne!(self.sign, Sign::Zero);
-
-                    let widening_mul = |left, right| {
-                        let wide = unsafe { (left as $wide).unchecked_mul(right as $wide) };
-                        ((wide >> $BITS) as $uty, wide as $uty)
-                    };
-
-                    let ad = widening_mul(self.numerator, other.denominator);
-                    let bc = widening_mul(self.denominator, other.numerator);
-
-                    Some(match (ad.cmp(&bc), self.sign) {
-                        (Ordering::Less, Sign::Positive) | (Ordering::Greater, Sign::Negative) => Ordering::Less,
-                        (Ordering::Equal, _) => Ordering::Equal,
-                        (Ordering::Greater, Sign::Positive) | (Ordering::Less, Sign::Negative) => Ordering::Greater,
-                        (_, Sign::Zero) => panic!(),
-                    })
-                })
-            }
-        }
+        impl Eq for $name {}
     }
 }
-
-rational_requiring_wide!(Rational8, u8, 8, u16);
-rational_requiring_wide!(Rational16, u16, 16, u32);
-rational_requiring_wide!(Rational32, u32, 32, u64);
-rational_requiring_wide!(Rational64, u64, 64, u128);
-
-macro_rules! size_depedent_unsigned {
-    ($name:ty, $uty:ty, $other:ty) => {
-        impl From<$other> for $name {
-            #[must_use]
-            #[inline]
-            fn from(other: $other) -> Self {
-                Self {
-                    sign: Signed::signum(&other),
-                    numerator: other as $uty,
-                    denominator: 1,
-                }
-            }
-        }
-        impl From<&$other> for $name {
-            #[must_use]
-            #[inline]
-            fn from(other: &$other) -> Self {
-                Self {
-                    sign: Signed::signum(other),
-                    numerator: *other as $uty,
-                    denominator: 1,
-                }
-            }
-        }
-        impl From<($other, $other)> for $name {
-            #[must_use]
-            #[inline]
-            fn from(other: ($other, $other)) -> Self {
-                debug_assert_ne!(other.1, 0);
-
-                Self {
-                    sign: Signed::signum(&other.0) * Signed::signum(&other.1),
-                    numerator: other.0 as $uty,
-                    denominator: other.1 as $uty,
-                }
-            }
-        }
-    }
-}
-
-size_depedent_unsigned!(Rational8, u8, u8);
-size_depedent_unsigned!(Rational16, u16, u8);
-size_depedent_unsigned!(Rational16, u16, u16);
-size_depedent_unsigned!(Rational32, u32, u8);
-size_depedent_unsigned!(Rational32, u32, u16);
-size_depedent_unsigned!(Rational32, u32, u32);
-size_depedent_unsigned!(Rational64, u64, u8);
-size_depedent_unsigned!(Rational64, u64, u16);
-size_depedent_unsigned!(Rational64, u64, u32);
-size_depedent_unsigned!(Rational64, u64, u64);
-size_depedent_unsigned!(Rational128, u128, u8);
-size_depedent_unsigned!(Rational128, u128, u16);
-size_depedent_unsigned!(Rational128, u128, u32);
-size_depedent_unsigned!(Rational128, u128, u64);
-size_depedent_unsigned!(Rational128, u128, u128);
-
-macro_rules! size_dependent_signed {
-    ($name:ty, $uty:ty, $other_signed:ty) => {
-        impl From<$other_signed> for $name {
-            #[must_use]
-            #[inline]
-            fn from(other: $other_signed) -> Self {
-                Self {
-                    sign: Signed::signum(&other),
-                    numerator: other.unsigned_abs() as $uty,
-                    denominator: 1,
-                }
-            }
-        }
-        impl From<&$other_signed> for $name {
-            #[must_use]
-            #[inline]
-            fn from(other: &$other_signed) -> Self {
-                Self {
-                    sign: Signed::signum(other),
-                    numerator: other.unsigned_abs() as $uty,
-                    denominator: 1,
-                }
-            }
-        }
-        impl From<($other_signed, $other_signed)> for $name {
-            #[must_use]
-            #[inline]
-            fn from(other: ($other_signed, $other_signed)) -> Self {
-                debug_assert_ne!(other.1, 0);
-
-                Self {
-                    sign: Signed::signum(&other.0) * Signed::signum(&other.1),
-                    numerator: other.0.unsigned_abs() as $uty,
-                    denominator: other.1.unsigned_abs() as $uty,
-                }
-            }
-        }
-    }
-}
-
-size_dependent_signed!(Rational8, u8, i8);
-size_dependent_signed!(Rational16, u16, i8);
-size_dependent_signed!(Rational16, u16, i16);
-size_dependent_signed!(Rational32, u32, i8);
-size_dependent_signed!(Rational32, u32, i16);
-size_dependent_signed!(Rational32, u32, i32);
-size_dependent_signed!(Rational64, u64, i8);
-size_dependent_signed!(Rational64, u64, i16);
-size_dependent_signed!(Rational64, u64, i32);
-size_dependent_signed!(Rational64, u64, i64);
-size_dependent_signed!(Rational128, u128, i8);
-size_dependent_signed!(Rational128, u128, i16);
-size_dependent_signed!(Rational128, u128, i32);
-size_dependent_signed!(Rational128, u128, i64);
-size_dependent_signed!(Rational128, u128, i128);
+rational_non_zero!(NonZeroRational8, i8, u8);
+rational_non_zero!(NonZeroRational16, i16, u16);
+rational_non_zero!(NonZeroRational32, i32, u32);
+rational_non_zero!(NonZeroRational64, i64, u64);
+rational_non_zero!(NonZeroRational128, i128, u128);
 
 #[cfg(test)]
 mod test {
@@ -977,17 +133,10 @@ mod test {
 
     #[test]
     fn test_new() {
-        let a = Rational8::new(0, 2);
-        assert_eq!(a, Ratio { sign: Sign::Zero, numerator: 0_u8, denominator: 1 });
-
-        let a = Rational16::new(2, 2);
-        assert_eq!(a, Ratio { sign: Sign::Positive, numerator: 1, denominator: 1 });
-
-        let a = Rational32::new(6, 2);
-        assert_eq!(a, Ratio { sign: Sign::Positive, numerator: 3, denominator: 1 });
-
-        let a = Rational64::new(-6, 2);
-        assert_eq!(a, Ratio { sign: Sign::Negative, numerator: 3, denominator: 1 });
+        assert_eq!(R8!(0, 2), Ratio { sign: Sign::Zero, numerator: 0_u8, denominator: 1 });
+        assert_eq!(R8!(2, 2), Ratio { sign: Sign::Positive, numerator: 1, denominator: 1 });
+        assert_eq!(R8!(6, 2), Ratio { sign: Sign::Positive, numerator: 3, denominator: 1 });
+        assert_eq!(R8!(-6, 2), Ratio { sign: Sign::Negative, numerator: 3, denominator: 1 });
     }
 
     #[test]
@@ -995,12 +144,12 @@ mod test {
         assert_eq!(<Rational8 as From<_>>::from(1_u8), Rational8::one());
         assert_eq!(<Rational32 as From<_>>::from(1), Rational32::one());
 
-        assert_eq!(FromPrimitive::from_u64(16), Some(Rational8::new(16, 1)));
+        assert_eq!(FromPrimitive::from_u64(16), Some(R8!(16)));
         assert_eq!(FromPrimitive::from_u16(0), Some(Rational8::zero()));
         assert_eq!(<Rational16 as FromPrimitive>::from_u32(u32::MAX), None);
-        assert_eq!(FromPrimitive::from_i32(i32::MAX), Some(Rational32::new(i32::MAX, 1)));
+        assert_eq!(FromPrimitive::from_i32(i32::MAX), Some(R32!(i32::MAX, 1)));
         assert_eq!(<Rational64 as FromPrimitive>::from_i128(i128::MAX), None);
-        assert_eq!(FromPrimitive::from_i16(-1), Some(Rational8::new(-2, 2)));
+        assert_eq!(FromPrimitive::from_i16(-1), Some(R8!(-2, 2)));
 
         assert_eq!(<Rational128 as FromPrimitive>::from_f64(f64::NAN), None);
         assert_eq!(<Rational64 as FromPrimitive>::from_f64(f64::INFINITY), None);
@@ -1016,7 +165,7 @@ mod test {
 
     #[test]
     fn test_to() {
-        assert_eq!(Rational8::new(1, 1).to_i32(), Some(1));
+        assert_eq!(Rational8::new(1, 1).unwrap().to_i32(), Some(1));
         assert_eq!(R8!(-10).to_i32(), Some(-10));
         assert_eq!(R8!(-11).to_u16(), None);
         assert_eq!(R32!(-156, 99).to_f64(), Some(-156_f64 / 99_f64));
@@ -1116,7 +265,7 @@ mod test {
     #[test]
     fn test_sum() {
         assert_eq!((0..10).map(Rational32::from).sum::<Rational32>(), R32!(45));
-        assert_eq!((0_i16..10).map(|i| Rational16::new(i, 2)).sum::<Rational16>(), R16!(45, 2));
+        assert_eq!((0_i16..10).map(|i| Rational16::new(i, 2).unwrap()).sum::<Rational16>(), R16!(45, 2));
         let vs = vec![
             (R32!(23, 31), R32!(-699, 65)),
             (R32!(29, 31), R32!(-30736, 1885)),

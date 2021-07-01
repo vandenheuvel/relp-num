@@ -1,50 +1,82 @@
+use std::{fmt, mem};
 use std::cmp::{min, Ordering};
+use std::convert::TryFrom;
 use std::iter::repeat;
-use std::mem;
 use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
 use std::str::FromStr;
 
 use num_traits;
+use num_traits::{One, Zero};
 use smallvec::{smallvec, SmallVec};
 
-use crate::rational::big::Big;
-use crate::rational::big::ops::{add_assign_single, BITS_PER_WORD, mul_assign_single};
-use crate::rational::big::ops::building_blocks::shr_mut;
-use crate::rational::big::ops::is_well_formed;
-use crate::rational::big::ops::normalize::{gcd_scalar, simplify_fraction_without_info};
+use crate::{NonZero, NonZeroSign, Ubig};
+use crate::integer::big::{BITS_PER_WORD, NonZeroUbig};
+use crate::integer::big::ops::normalize::{gcd_scalar, simplify_fraction_without_info};
+use crate::rational::big::{Big, NonZeroBig};
 use crate::rational::Ratio;
-use crate::rational::small::{simplify128, simplify16, simplify32, simplify64, simplify8};
+use crate::rational::small::ops::building_blocks::{simplify128, simplify16, simplify32, simplify64, simplify8};
 use crate::sign::Sign;
 use crate::sign::Signed;
 
 impl<const S: usize> Big<S> {
-    pub fn new(numerator: i64, denominator: u64) -> Self {
-        debug_assert_ne!(denominator, 0);
+    pub fn new(numerator: i64, denominator: u64) -> Option<Self> {
+        if 0 != denominator {
+            Some({
+                let mut numerator_abs = numerator.unsigned_abs() as usize;
+                let mut denominator = denominator as usize;
+                if numerator == 0 {
+                    Self::zero()
+                } else if numerator_abs == denominator {
+                    Self {
+                        sign: Signed::signum(&numerator),
+                        numerator: Ubig::one(),
+                        denominator: NonZeroUbig::one(),
+                    }
+                } else {
+                    if numerator_abs != 1 && denominator != 1 {
+                        let gcd = gcd_scalar(numerator_abs, denominator);
 
-        let mut numerator_abs = numerator.unsigned_abs() as usize;
-        let mut denominator = denominator as usize;
-        if numerator == 0 {
-            <Self as num_traits::Zero>::zero()
-        } else if numerator_abs == denominator {
-            Self {
-                sign: Signed::signum(&numerator),
-                numerator: smallvec![1],
-                denominator: smallvec![1],
-            }
+                        numerator_abs /= gcd;
+                        denominator /= gcd;
+                    }
+
+                    Self {
+                        sign: Signed::signum(&numerator),
+                        numerator: Ubig::new(numerator_abs),
+                        denominator: unsafe { NonZeroUbig::new_unchecked(denominator) },
+                    }
+                }
+            })
         } else {
-            if numerator_abs != 1 && denominator != 1 {
-                let gcd = gcd_scalar(numerator_abs, denominator);
+            None
+        }
+    }
+}
 
-                numerator_abs /= gcd;
-                denominator /= gcd;
-            }
+impl<const S: usize> fmt::Debug for Big<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.sign {
+            Sign::Positive => {}
+            Sign::Zero => return f.write_str("0"),
+            Sign::Negative => f.write_str("-")?,
+        }
 
-            Self {
-                sign: Signed::signum(&numerator),
-                numerator: smallvec![numerator_abs],
-                denominator: smallvec![denominator],
+        if self.numerator.len() == 1 {
+            fmt::Debug::fmt(&self.numerator.first().unwrap(), f)?;
+        } else {
+            fmt::Debug::fmt(self.numerator.inner(), f)?;
+        }
+
+        if !self.denominator.is_one() {
+            f.write_str(" / ")?;
+            if self.denominator.len() == 1 {
+                fmt::Debug::fmt(self.denominator.first(), f)?;
+            } else {
+                fmt::Debug::fmt(&self.denominator.inner(), f)?;
             }
         }
+
+        Ok(())
     }
 }
 
@@ -54,8 +86,8 @@ macro_rules! from_integer_unsigned {
             fn from(value: $ty) -> Self {
                 Self {
                     sign: Signed::signum(&value),
-                    numerator: if value > 0 { smallvec![value as usize] } else { smallvec![] },
-                    denominator: smallvec![1],
+                    numerator: Ubig::from(value as usize),
+                    denominator: NonZeroUbig::one(),
                 }
             }
         }
@@ -74,8 +106,8 @@ macro_rules! from_integer_signed {
             fn from(value: $ty) -> Self {
                 Self {
                     sign: Signed::signum(&value),
-                    numerator: if value != 0 { smallvec![value.unsigned_abs() as usize] } else { smallvec![] },
-                    denominator: smallvec![1],
+                    numerator: Ubig::new(value.unsigned_abs() as usize),
+                    denominator: NonZeroUbig::one(),
                 }
             }
         }
@@ -94,6 +126,9 @@ macro_rules! impl_from_iu {
             #[must_use]
             #[inline]
             fn from((numerator, denominator): ($numerator, $denominator)) -> Self {
+                // This is for tests only at the moment, do a run time assert
+                assert!(denominator.is_not_zero());
+
                 if mem::size_of::<$numerator>() > mem::size_of::<usize>() {
                     debug_assert!(numerator.abs() <= usize::MAX as $numerator);
                 }
@@ -109,8 +144,8 @@ macro_rules! impl_from_iu {
 
                     Self {
                         sign,
-                        numerator: smallvec![numerator as usize],
-                        denominator: smallvec![denominator as usize],
+                        numerator: Ubig::new(numerator as usize),
+                        denominator: NonZeroUbig::new(denominator as usize).unwrap(),
                     }
                 }
             }
@@ -130,6 +165,9 @@ macro_rules! impl_from_ii {
             #[must_use]
             #[inline]
             fn from((numerator, denominator): ($ty, $ty)) -> Self {
+                // This is for tests only at the moment, do a run time assert
+                assert!(denominator.is_not_zero());
+
                 if mem::size_of::<$ty>() > mem::size_of::<usize>() {
                     debug_assert!(numerator.abs() <= usize::MAX as $ty);
                 }
@@ -142,8 +180,8 @@ macro_rules! impl_from_ii {
 
                 Self {
                     sign,
-                    numerator: smallvec![numerator.unsigned_abs() as usize],
-                    denominator: smallvec![denominator.unsigned_abs() as usize],
+                    numerator: Ubig::from(numerator.unsigned_abs() as usize),
+                    denominator: NonZeroUbig::new(denominator.unsigned_abs() as usize).unwrap(),
                 }
             }
         }
@@ -159,8 +197,8 @@ impl_from_ii!(isize);
 
 macro_rules! impl_from_ratio {
     ($numerator:ty, $denominator:ty, $denominator_inner:ty) => {
-        impl<const S: usize> From<Ratio<$numerator, $denominator>> for Big<S> {
-            fn from(ratio: Ratio<$numerator, $denominator>) -> Self {
+        impl<const S: usize> From<Ratio<Sign, $numerator, $denominator>> for Big<S> {
+            fn from(ratio: Ratio<Sign, $numerator, $denominator>) -> Self {
                 if mem::size_of::<$numerator>() > mem::size_of::<usize>() {
                     debug_assert!(ratio.numerator.abs() <= usize::MAX as $numerator);
                 }
@@ -173,8 +211,11 @@ macro_rules! impl_from_ratio {
                 } else {
                     Self {
                         sign: ratio.sign,
-                        numerator: smallvec![ratio.numerator.unsigned_abs() as usize],
-                        denominator: smallvec![ratio.denominator.get() as usize],
+                        numerator: Ubig::new(ratio.numerator.unsigned_abs() as usize),
+                        denominator: unsafe {
+                            // SAFETY: The denominator type is NonZeroU*
+                            NonZeroUbig::new_unchecked(ratio.denominator.get() as usize)
+                        },
                     }
                 }
             }
@@ -194,14 +235,18 @@ const ONES_64: u64 = (1 << 11) - 1;
 
 impl<const S: usize> num_traits::FromPrimitive for Big<S> {
     fn from_i64(n: i64) -> Option<Self> {
-        Some(Self::new(n, 1))
+        Some(Self {
+            sign: Signed::signum(&n),
+            numerator: Ubig::new(n.unsigned_abs() as usize),
+            denominator: NonZeroUbig::one(),
+        })
     }
 
     fn from_u64(n: u64) -> Option<Self> {
         Some(Self {
-            sign: Signed::signum(&n),
-            numerator: if n > 0 { smallvec![n as usize] } else { smallvec![] },
-            denominator: smallvec![1],
+            sign: if n != 0 { Sign::Positive } else { Sign::Zero },
+            numerator: Ubig::new(n as usize),
+            denominator: NonZeroUbig::one(),
         })
     }
 
@@ -213,10 +258,23 @@ impl<const S: usize> num_traits::FromPrimitive for Big<S> {
 
         match (exponent, fraction) {
             (0, 0) => Some(<Self as num_traits::Zero>::zero()),
-            (0, _) => Some(Self::from_float(sign as u64, 1 - 127 - 23, fraction as u64)), // subnormals
+            (0, _) => {
+                let non_zero_fraction = unsafe {
+                    // SAFETY: Zero would have matched earlier branch
+                    NonZeroU64::new_unchecked(fraction as u64)
+                };
+                Some(Self::from_float(sign as u64, 1 - 127 - 23, non_zero_fraction))
+            }, // subnormals
             (ONES_32, 0) => None, // infinity
             (ONES_32, _) => None, // NaN
-            _ => Some(Self::from_float(sign as u64, exponent as i32 - 127 - 23, (fraction + (1 << 23))  as u64)),
+            _ => {
+                let non_zero_fraction = unsafe {
+                    // SAFETY: A constant is always added
+                    NonZeroU64::new_unchecked((fraction + (1 << 23)) as u64)
+                    // SAFETY: A constant is always added
+                };
+                Some(Self::from_float(sign as u64, exponent as i32 - 127 - 23, non_zero_fraction))
+            },
         }
     }
 
@@ -230,16 +288,28 @@ impl<const S: usize> num_traits::FromPrimitive for Big<S> {
 
         match (exponent, fraction) {
             (0, 0) => Some(<Self as num_traits::Zero>::zero()),
-            (0, _) => Some(Self::from_float(sign, 1 - 1023 - 52, fraction)), // subnormals
+            (0, _) => {
+                let non_zero_fraction = unsafe {
+                    // SAFETY: Zero would have matched earlier branch
+                    NonZeroU64::new_unchecked(fraction)
+                };
+                Some(Self::from_float(sign, 1 - 1023 - 52, non_zero_fraction))
+            }, // subnormals
             (ONES_64, 0) => None, // infinity
             (ONES_64, _) => None, // NaN
-            _ => Some(Self::from_float(sign, exponent as i32 - 1023 - 52, fraction + (1 << 52))),
+            _ => {
+                let non_zero_fraction = unsafe {
+                    // SAFETY: A constant is always added
+                    NonZeroU64::new_unchecked(fraction + (1 << 52))
+                };
+                Some(Self::from_float(sign, exponent as i32 - 1023 - 52, non_zero_fraction))
+            },
         }
     }
 }
 
 impl<const S: usize> Big<S> {
-    fn from_float(sign: u64, power: i32, fraction: u64) -> Self {
+    fn from_float(sign: u64, power: i32, fraction: NonZeroU64) -> Self {
         let (numerator, denominator) = match power.cmp(&0) {
             Ordering::Less => {
                 let numerator_zeros = fraction.trailing_zeros();
@@ -256,11 +326,18 @@ impl<const S: usize> Big<S> {
                 denominator.extend(repeat(0).take(words_shift as usize));
                 denominator.push(1 << bits_shift);
 
-                (smallvec![fraction as usize >> numerator_shift], denominator)
+                let numerator = unsafe {
+                    // SAFETY: Fraction is non zero
+                    Ubig::from_inner_unchecked(smallvec![fraction.get() as usize >> numerator_shift])
+                };
+
+                (numerator, unsafe { NonZeroUbig::from_inner_unchecked(denominator) })
             }
             Ordering::Equal => {
-                debug_assert_ne!(fraction, 0);
-                (smallvec![fraction as usize], smallvec![1])
+                (unsafe {
+                    // SAFETY: Fraction is non zero
+                    Ubig::from_inner_unchecked(smallvec![fraction.get() as usize])
+                }, NonZeroUbig::one())
             },
             Ordering::Greater => {
                 let shift = power.unsigned_abs();
@@ -273,12 +350,18 @@ impl<const S: usize> Big<S> {
 
                 numerator.extend(repeat(0).take(words_shift as usize));
 
-                numerator.push((fraction as usize) << bits_shift);
+                numerator.push((fraction.get() as usize) << bits_shift);
                 if overflows {
-                    numerator.push(fraction as usize >> (BITS_PER_WORD - bits_shift));
+                    numerator.push(fraction.get() as usize >> (BITS_PER_WORD - bits_shift));
                 }
 
-                (numerator, smallvec![1])
+                (
+                    unsafe {
+                        // SAFETY: last value is not zero
+                        Ubig::from_inner_unchecked(numerator)
+                    },
+                    NonZeroUbig::one(),
+                )
             }
         };
 
@@ -286,6 +369,21 @@ impl<const S: usize> Big<S> {
             sign: if sign > 0 { Sign::Negative } else { Sign::Positive },
             numerator,
             denominator,
+        }
+    }
+}
+
+impl<const S: usize, const I1: usize, const I2: usize> TryFrom<(Sign, [usize; I1], [usize; I2])> for Big<S> {
+    // TODO
+    type Error = ();
+
+    fn try_from((sign, numerator, denominator): (Sign, [usize; I1], [usize; I2])) -> Result<Self, Self::Error> {
+        match (sign, Ubig::try_from(numerator), NonZeroUbig::try_from(denominator)) {
+            (Sign::Positive | Sign::Negative, Ok(numerator), Ok(denominator)) if !numerator.is_zero() => {
+                Ok(Self { sign, numerator, denominator })
+            }
+            (Sign::Zero, Ok(numerator), Ok(_)) if numerator.is_zero() => Ok(Self::zero()),
+            _ => Err(()),
         }
     }
 }
@@ -300,17 +398,15 @@ impl<const S: usize> num_traits::Zero for Big<S> {
     fn zero() -> Self {
         Self {
             sign: Sign::Zero,
-            numerator: SmallVec::with_capacity(0),
-            denominator: smallvec![1],
+            numerator: Ubig::zero(),
+            denominator: NonZeroUbig::one(),
         }
     }
 
     fn set_zero(&mut self) {
         self.sign = Sign::Zero;
-        self.numerator.clear();
-        debug_assert!(!self.denominator.is_empty());
-        self.denominator[0] = 1;
-        self.denominator.truncate(1);
+        self.numerator.set_zero();
+        self.denominator.set_one();
     }
 
     fn is_zero(&self) -> bool {
@@ -322,17 +418,14 @@ impl<const S: usize> num_traits::One for Big<S> {
     fn one() -> Self {
         Self {
             sign: Sign::Positive,
-            numerator: smallvec![1],
-            denominator: smallvec![1],
+            numerator: Ubig::one(),
+            denominator: NonZeroUbig::one(),
         }
     }
 
     fn set_one(&mut self) {
-        self.numerator.clear();
-        self.numerator.push(1);
-        debug_assert!(self.denominator.len() >= 1);
-        self.denominator[0] = 1;
-        self.denominator.truncate(1);
+        self.numerator.set_one();
+        self.denominator.set_one();
     }
 
     fn is_one(&self) -> bool {
@@ -340,32 +433,45 @@ impl<const S: usize> num_traits::One for Big<S> {
     }
 }
 
-impl<const S: usize> Big<S> {
-    pub fn new_signed<T: Into<Sign>>(sign: T, numerator: u64, denominator: u64) -> Self {
-        debug_assert_ne!(denominator, 0);
-
-        let sign = sign.into();
-
-        match sign {
-            Sign::Positive => debug_assert_ne!(numerator, 0),
-            Sign::Zero => {
-                debug_assert_eq!(numerator, 0);
-
-                return Self {
-                    sign: Sign::Zero,
-                    numerator: smallvec![],
-                    denominator: smallvec![1],
-                };
-            },
-            Sign::Negative => {}
-        }
-
-        let (numerator, denominator) = simplify64(numerator, denominator);
-
+impl<const S: usize> num_traits::One for NonZeroBig<S> {
+    fn one() -> Self {
         Self {
-            sign,
-            numerator: smallvec![numerator as usize],
-            denominator: smallvec![denominator as usize],
+            sign: NonZeroSign::Positive,
+            numerator: NonZeroUbig::one(),
+            denominator: NonZeroUbig::one(),
+        }
+    }
+
+    fn set_one(&mut self) {
+        self.numerator.set_one();
+        self.denominator.set_one();
+    }
+
+    fn is_one(&self) -> bool {
+        self.numerator[0] == 1 && self.denominator[0] == 1 && self.numerator.len() == 1 && self.denominator.len() == 1
+    }
+}
+
+impl<const S: usize> Big<S> {
+    pub fn new_signed<T: Into<Sign>>(sign: T, numerator: u64, denominator: u64) -> Option<Self> {
+        if denominator != 0 {
+            let sign = sign.into();
+
+            match (sign, numerator) {
+                (Sign::Positive | Sign::Negative, n) if n != 0 => {
+                    let (numerator, denominator) = simplify64(numerator, denominator);
+
+                    Some(Self {
+                        sign,
+                        numerator: Ubig::new(numerator as usize),
+                        denominator: unsafe { NonZeroUbig::new_unchecked(denominator as usize) },
+                    })
+                }
+                (Sign::Zero, 0) => Some(Self::zero()),
+                _ => None,
+            }
+        } else {
+            None
         }
     }
 }
@@ -374,7 +480,7 @@ impl<const S: usize> FromStr for Big<S> {
     type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let radix = 10;
+        let _radix = 10;
 
         if s.contains(".") || s.contains(",") {
             return Err("Decimal separators are not supported");
@@ -391,72 +497,40 @@ impl<const S: usize> FromStr for Big<S> {
 
                 match s.find("/") {
                     None => {
-                        let numerator = int_from_str(s, radix)?;
+                        let numerator = Ubig::from_str(s)?;
 
-                        if numerator.is_empty() {
-                            Ok(<Self as num_traits::Zero>::zero())
-                        } else {
-                            Ok(Big {
-                                sign,
-                                numerator,
-                                denominator: smallvec![1],
-                            })
-                        }
+                        Ok(Big {
+                            sign: if numerator.is_not_zero() { sign } else { Sign::Zero },
+                            numerator,
+                            denominator: NonZeroUbig::one(),
+                        })
                     }
                     Some(index) => {
                         // The number is a ratio between two others
                         let (numerator_text, denominator_text) = (&s[..index], &s[(index + 1)..]);
-                        let mut numerator = int_from_str(numerator_text, radix)?;
-                        let mut denominator = int_from_str(denominator_text, radix)?;
-                        if denominator.is_empty() {
-                            return Err("Zero division");
-                        }
+                        let mut numerator = Ubig::from_str(numerator_text)?;
+                        let mut denominator = NonZeroUbig::from_str(denominator_text)
+                            .map_err(|value| {
+                                match value {
+                                    "Zero value" => "Zero division",
+                                    other => other,
+                                }
+                            })?;
 
-                        if numerator.is_empty() {
-                            Ok(<Self as num_traits::Zero>::zero())
-                        } else {
-                            simplify_fraction_without_info(&mut numerator, &mut denominator);
+                        Ok(if numerator.is_not_zero() {
+                            unsafe {
+                                // SAFETY: Are well-formed and non zero
+                                simplify_fraction_without_info(numerator.inner_mut(), denominator.inner_mut());
+                            }
 
-                            Ok(Big {
+                            Big {
                                 sign,
                                 numerator,
                                 denominator,
-                            })
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn int_from_str<const S: usize>(s: &str, radix: u32) -> Result<SmallVec<[usize; S]>, &'static str> {
-    debug_assert!(radix <= 36);
-
-    match s.len() {
-        0 => Err("Empty string"),
-        _ => {
-            let mut char_iterator = s.chars().skip_while(|&c| c == '0');
-            match char_iterator.next() {
-                None => Ok(smallvec![]),
-                Some(value) => {
-                    match value.to_digit(radix) {
-                        None => Err("Character is not a digit"),
-                        Some(value) => {
-                            let mut total = smallvec![value as usize];
-
-                            for character in char_iterator {
-                                match character.to_digit(radix) {
-                                    None => return Err("Character is not a digit"),
-                                    Some(value) => {
-                                        mul_assign_single(&mut total, radix as usize);
-                                        add_assign_single(&mut total, value as usize);
-                                    }
-                                }
                             }
-
-                            Ok(total)
-                        }
+                        } else {
+                            Zero::zero()
+                        })
                     }
                 }
             }
@@ -464,84 +538,22 @@ pub fn int_from_str<const S: usize>(s: &str, radix: u32) -> Result<SmallVec<[usi
     }
 }
 
-static ASCII_LOWER: [char; 26] = [
-    'a', 'b', 'c', 'd', 'e',
-    'f', 'g', 'h', 'i', 'j',
-    'k', 'l', 'm', 'n', 'o',
-    'p', 'q', 'r', 's', 't',
-    'u', 'v', 'w', 'x', 'y',
-    'z',
-];
-
-pub fn to_str<const S: usize>(value: &SmallVec<[usize; S]>, radix: u32) -> String {
-    debug_assert!(is_well_formed(value));
-    debug_assert!(radix > 1 && radix <= 36);
-
-    match value.len() {
-        0 => "0".to_string(),
-        _ => {
-            let mut digits = vec![0];
-
-            // Set highest word to the lowest index, and reverse the bits
-            let mut leading_zero_words = 0;
-            while value[leading_zero_words] == 0 {
-                // At least the last value is not allowed to be zero, so we don't have to check bounds
-                leading_zero_words += 1;
-            }
-            let leading_zero_bits = value.last().unwrap().leading_zeros();
-
-            // Set highest word to the lowest index, and reverse the bits
-            let mut value: SmallVec<[usize; S]> = value.iter()
-                .skip(leading_zero_words)
-                .map(|word| word.reverse_bits())
-                .rev()
-                .collect();
-            let len_before_shift = value.len() as u32;
-            shr_mut(&mut value, 0, leading_zero_bits);
-
-            let bit_count = len_before_shift * BITS_PER_WORD - leading_zero_bits;
-            debug_assert_eq!(value[0] % 2, 1);
-            for bit_index in 0..bit_count {
-                update_digits(&mut digits, value[0] % 2 == 1, radix);
-                shr_mut(&mut value, 0, 1);
-
-                if value.is_empty() {
-                    // Had this many bits remaining
-                    for _ in (bit_index + 1)..(leading_zero_words as u32 * BITS_PER_WORD + bit_count) {
-                        update_digits(&mut digits, false, radix);
-                    }
-                    break;
-                }
-            }
-
-            digits.into_iter()
-                .rev()
-                .map(|digit| {
-                    if digit < 10 {
-                        digit.to_string()
-                    } else {
-                        ASCII_LOWER[(digit - 10) as usize].to_string()
-                    }
-                })
-                .collect()
+impl<const S: usize> fmt::Display for Big<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.sign {
+            Sign::Positive => {}
+            Sign::Zero => return f.write_str("0"),
+            Sign::Negative => f.write_str("-")?,
         }
-    }
-}
 
-fn update_digits(digits: &mut Vec<u32>, mut carry: bool, radix: u32) {
-    for digit in digits.iter_mut() {
-        *digit *= 2; // binary, each bit multiplies by 2
-        if carry {
-            *digit += 1;
-            carry = false;
+        fmt::Display::fmt(&self.numerator, f)?;
+
+        if !self.denominator.is_one() {
+            f.write_str("/")?;
+            fmt::Display::fmt(&self.denominator, f)?;
         }
-        if *digit >= radix {
-            *digit %= radix;
-            carry = true;
-        }
-    }
-    if carry {
-        digits.push(1);
+
+        fmt::Result::Ok(())
     }
 }
 
@@ -549,51 +561,51 @@ fn update_digits(digits: &mut Vec<u32>, mut carry: bool, radix: u32) {
 mod test {
     use std::str::FromStr;
 
-    use num_traits::One;
+    use num_traits::{One, Zero};
     use smallvec::{smallvec, SmallVec};
 
-    use crate::{Abs, Rational64, RationalBig, Sign};
+    use crate::{Abs, Rational64, RationalBig, Sign, Ubig};
+    use crate::integer::big::{BITS_PER_WORD, NonZeroUbig};
+    use crate::integer::big::creation::from_str_radix;
+    use crate::integer::big::ops::normalize::simplify_fraction_without_info;
     use crate::rational::big::{Big, Big8};
-    use crate::rational::big::creation::{int_from_str, to_str};
-    use crate::rational::big::ops::BITS_PER_WORD;
-    use crate::rational::big::ops::normalize::simplify_fraction_without_info;
     use crate::RB;
 
     #[test]
     fn from() {
-        let x = Rational64::new(4, 3);
+        let x = Rational64::new(4, 3).unwrap();
         let y = Big8::from(x);
-        let z = Big8::new(4, 3);
+        let z = RB!(4, 3);
         assert_eq!(y, z);
 
         let x = <Big8 as num_traits::FromPrimitive>::from_f32(0_f32).unwrap();
-        assert_eq!(x, Big8::new(0, 1));
+        assert_eq!(x, RB!(0, 1));
 
         let x = <Big8 as num_traits::FromPrimitive>::from_f32(1_f32).unwrap();
-        assert_eq!(x, Big8::new(1, 1));
+        assert_eq!(x, RB!(1, 1));
 
         let x = <Big8 as num_traits::FromPrimitive>::from_f32(0.5).unwrap();
-        assert_eq!(x, Big8::new(1, 2));
+        assert_eq!(x, RB!(1, 2));
 
         let x = <Big8 as num_traits::FromPrimitive>::from_f32(2_f32).unwrap();
-        assert_eq!(x, Big8::new(2, 1));
+        assert_eq!(x, RB!(2, 1));
 
         let x = <Big8 as num_traits::FromPrimitive>::from_f32(1.5_f32).unwrap();
-        assert_eq!(x, Big8::new(3, 2));
+        assert_eq!(x, RB!(3, 2));
         let x = <Big8 as num_traits::FromPrimitive>::from_f64(0_f64).unwrap();
-        assert_eq!(x, Big8::new(0, 1));
+        assert_eq!(x, RB!(0, 1));
 
         let x = <Big8 as num_traits::FromPrimitive>::from_f64(1_f64).unwrap();
-        assert_eq!(x, Big8::new(1, 1));
+        assert_eq!(x, RB!(1, 1));
 
         let x = <Big8 as num_traits::FromPrimitive>::from_f64(0.5).unwrap();
-        assert_eq!(x, Big8::new(1, 2));
+        assert_eq!(x, RB!(1, 2));
 
         let x = <Big8 as num_traits::FromPrimitive>::from_f64(2_f64).unwrap();
-        assert_eq!(x, Big8::new(2, 1));
+        assert_eq!(x, RB!(2, 1));
 
         let x = <Big8 as num_traits::FromPrimitive>::from_f64(1.5_f64).unwrap();
-        assert_eq!(x, Big8::new(3, 2));
+        assert_eq!(x, RB!(3, 2));
 
         let x = <Big8 as num_traits::FromPrimitive>::from_f64(f64::MIN_POSITIVE).unwrap();
         let (words, bits) = (1022 / BITS_PER_WORD, 1022 % BITS_PER_WORD);
@@ -601,8 +613,8 @@ mod test {
         denominator.push(1 << bits);
         let expected = Big8 {
             sign: Sign::Positive,
-            numerator: smallvec![1],
-            denominator,
+            numerator: Ubig::one(),
+            denominator: unsafe { NonZeroUbig::from_inner_unchecked(denominator) },
         };
         assert_eq!(x, expected);
 
@@ -613,22 +625,22 @@ mod test {
         numerator.push(((1 << (52 + 1)) - 1) << bits); // Doesn't overflow, fits exactly in this last word
         let expected = Big8 {
             sign: Sign::Positive,
-            numerator,
-            denominator: smallvec![1],
+            numerator: unsafe { Ubig::from_inner_unchecked(numerator) },
+            denominator: NonZeroUbig::one(),
         };
         assert_eq!(x, expected);
 
         let y = <Big8 as num_traits::FromPrimitive>::from_f64(4f64 / 3f64).unwrap();
-        let z = Big8::new(4, 3);
-        assert!((y - z).abs() < Big8::new(1, 2 << 10));
+        let z = RB!(4, 3);
+        assert!((y - z).abs() < Big8::new(1, 2 << 10).unwrap());
 
         // 2 ** 543
         assert_eq!(
             RB!(28793048285076456849987446449190283896766061557132266451844835664715760516297522370041860391064901485759493828054533728788532902755163518009654497157537048672862208_f64),
             RationalBig {
                 sign: Sign::Positive,
-                numerator: smallvec![0, 0, 0, 0, 0, 0, 0, 0, 1 << 31],
-                denominator: smallvec![1],
+                numerator: unsafe { Ubig::from_inner_unchecked(smallvec![0, 0, 0, 0, 0, 0, 0, 0, 1 << 31]) },
+                denominator: NonZeroUbig::one(),
             }
         );
 
@@ -659,9 +671,9 @@ mod test {
 
     #[test]
     fn test_signed() {
-        assert_eq!(Big::new_signed(Sign::Positive, 1, 2), RB!(1, 2));
-        assert_eq!(Big::new_signed(Sign::Zero, 0, 1), RB!(0));
-        assert_eq!(Big::new_signed(Sign::Negative, 1, 3), RB!(-1, 3));
+        assert_eq!(Big::new_signed(Sign::Positive, 1, 2).unwrap(), RB!(1, 2));
+        assert_eq!(Big::new_signed(Sign::Zero, 0, 1).unwrap(), RB!(0));
+        assert_eq!(Big::new_signed(Sign::Negative, 1, 3).unwrap(), RB!(-1, 3));
     }
 
     #[test]
@@ -708,67 +720,67 @@ mod test {
             Big8::from_str("27670116110564327425"),
             Ok(Big {
                 sign: Sign::Positive,
-                numerator: smallvec![(1 << 63) + (1 << 0), 1],
-                denominator: smallvec![1],
+                numerator: unsafe { Ubig::from_inner_unchecked(smallvec![(1 << 63) + (1 << 0), 1]) },
+                denominator: NonZeroUbig::one(),
             }),
         );
         assert_eq!(
             Big8::from_str("27670116110564327425/2"),
             Ok(Big {
                 sign: Sign::Positive,
-                numerator: smallvec![(1 << 63) + (1 << 0), 1],
-                denominator: smallvec![2],
+                numerator: unsafe { Ubig::from_inner_unchecked(smallvec![(1 << 63) + (1 << 0), 1]) },
+                denominator: NonZeroUbig::new(2).unwrap(),
             }),
         );
         assert_eq!(
             Big8::from_str("27670116110564327425/27670116110564327425"),
             Ok(Big {
                 sign: Sign::Positive,
-                numerator: smallvec![1],
-                denominator: smallvec![1],
+                numerator: Ubig::one(),
+                denominator: NonZeroUbig::one(),
             }),
         );
         assert_eq!(
             Big8::from_str("18446744073709551616/2"),
             Ok(Big {
                 sign: Sign::Positive,
-                numerator: smallvec![1 << 63],
-                denominator: smallvec![1],
+                numerator: unsafe { Ubig::from_inner_unchecked(smallvec![1 << 63]) },
+                denominator: NonZeroUbig::one(),
             }),
         );
         assert_eq!(
             Big8::from_str("-36893488147419103232"),
             Ok(Big {
                 sign: Sign::Negative,
-                numerator: smallvec![0, 2],
-                denominator: smallvec![1],
+                numerator: unsafe { Ubig::from_inner_unchecked(smallvec![0, 2]) },
+                denominator: NonZeroUbig::one(),
             }),
         );
 
-        assert_eq!(int_from_str::<8>("407030945657418069975", 10), Ok(smallvec![1202576035807934423, 22]));
-        assert_eq!(int_from_str::<8>("36893488147419103232", 10), Ok(smallvec![0, 1 << 1]));
-        assert_eq!(int_from_str::<8>("18889465931478580854784", 10), Ok(smallvec![0, 1 << 10]));
-        assert_eq!(int_from_str::<8>("19342813113834066795298816", 10), Ok(smallvec![0, 1 << 20]));
-        assert_eq!(int_from_str::<8>("1208925819614629174706176", 10), Ok(smallvec![0, 1 << (80 - 64)]));
+        assert_eq!(from_str_radix::<10, 8>("407030945657418069975"), Ok(smallvec![1202576035807934423, 22]));
+        assert_eq!(from_str_radix::<10, 8>("36893488147419103232"), Ok(smallvec![0, 1 << 1]));
+        assert_eq!(from_str_radix::<10, 8>("18889465931478580854784"), Ok(smallvec![0, 1 << 10]));
+        assert_eq!(from_str_radix::<10, 8>("19342813113834066795298816"), Ok(smallvec![0, 1 << 20]));
+        assert_eq!(from_str_radix::<10, 8>("1208925819614629174706176"), Ok(smallvec![0, 1 << (80 - 64)]));
 
         assert_eq!(
             Big8::from_str("-1208925819614629174706176/10301051460877537453973547267843"),
             Ok(Big {
                 sign: Sign::Negative,
-                numerator: smallvec![0, 1 << (80 - 64)],
-                denominator: smallvec![0x6b9676a56c7c3703, 0x82047e0eae],
+                numerator: unsafe { Ubig::from_inner_unchecked(smallvec![0, 1 << (80 - 64)]) },
+                denominator: unsafe { NonZeroUbig::from_inner_unchecked(smallvec![0x6b9676a56c7c3703, 0x82047e0eae]) },
             }),
         );
 
         type SV = SmallVec<[usize; 8]>;
 
-        let mut x = int_from_str::<8>("676230147000402641135208532975102322580080121519024130", 10).unwrap();
+        let mut x = from_str_radix::<10, 8>("676230147000402641135208532975102322580080121519024130").unwrap();
         let expected: SV = smallvec![7877410236203542530, 0xe30d7c46c1f853f7, 1987261794136745];
         assert_eq!(x, expected);
-        let mut y = int_from_str::<8>("68468465468464168545346854646", 10).unwrap();
+        let mut y = from_str_radix::<10, 8>("68468465468464168545346854646").unwrap();
         let expected: SV = smallvec![7062882560094707446, 3711682950];
         assert_eq!(y, expected);
-        simplify_fraction_without_info(&mut x, &mut y);
+        unsafe { simplify_fraction_without_info(&mut x, &mut y) };
         let expected: SV = smallvec![13162077154956547073, 17403806869180131835, 993630897068372];
         assert_eq!(x, expected);
         let expected: SV = smallvec![3531441280047353723, 1855841475];
@@ -777,8 +789,8 @@ mod test {
         let z = Big8::from_str("676230147000402641135208532975102322580080121519024130/68468465468464168545346854646");
         assert_eq!(z, Ok(Big {
             sign: Sign::Positive,
-            numerator: x,
-            denominator: y,
+            numerator: unsafe { Ubig::from_inner_unchecked(x) },
+            denominator: unsafe { NonZeroUbig::from_inner_unchecked(y) },
         }));
 
         assert_eq!(
@@ -791,41 +803,40 @@ mod test {
     fn test_to_str() {
         type SV = SmallVec<[usize; 8]>;
 
-        let x: SV = smallvec![];
-        assert_eq!(to_str(&x, 10), "0");
-        let x: SV = smallvec![1];
-        assert_eq!(to_str(&x, 10), "1");
-        let x: SV = smallvec![2];
-        assert_eq!(to_str(&x, 10), "2");
-        let x: SV = smallvec![3];
-        assert_eq!(to_str(&x, 10), "3");
-        let x: SV = smallvec![10];
-        assert_eq!(to_str(&x, 10), "10");
-        let x: SV = smallvec![11];
-        assert_eq!(to_str(&x, 10), "11");
-        let x: SV = smallvec![101];
-        assert_eq!(to_str(&x, 10), "101");
-        let x: SV = smallvec![123];
-        assert_eq!(to_str(&x, 10), "123");
-        let x: SV = smallvec![usize::MAX];
-        assert_eq!(to_str(&x, 10), "18446744073709551615");
-        let x: SV = smallvec![0, 1];
-        assert_eq!(to_str(&x, 10), "18446744073709551616");
-        let x: SV = smallvec![1, 1];
-        assert_eq!(to_str(&x, 10), "18446744073709551617");
-
-        assert_eq!(to_str(&int_from_str::<1>("123", 10).unwrap(), 10), "123");
+        assert_eq!(Ubig::<1>::zero().to_string(), "0");
+        assert_eq!(Ubig::<1>::one().to_string(), "1");
+        assert_eq!(Ubig::<1>::new(2).to_string(), "2");
+        assert_eq!(Ubig::<1>::new(3).to_string(), "3");
+        assert_eq!(Ubig::<1>::new(10).to_string(), "10");
+        assert_eq!(Ubig::<1>::new(11).to_string(), "11");
+        assert_eq!(Ubig::<1>::new(101).to_string(), "101");
+        assert_eq!(Ubig::<1>::new(123).to_string(), "123");
+        assert_eq!(Ubig::<1>::new(usize::MAX).to_string(), "18446744073709551615");
+        assert_eq!(unsafe { Ubig::<1>::from_inner_unchecked(smallvec![0, 1]) }.to_string(), "18446744073709551616");
+        assert_eq!(unsafe { Ubig::<1>::from_inner_unchecked(smallvec![1, 1]) }.to_string(), "18446744073709551617");
 
         for i in 1..100 {
-            let expected: SV = smallvec![i];
-            assert_eq!(int_from_str::<8>(&to_str(&expected, 10), 10), Ok(expected));
+            let expected = unsafe { Ubig::from_inner_unchecked(smallvec![i]) };
+            assert_eq!(Ubig::<8>::from_str(&expected.to_string()), Ok(expected));
         }
 
         let x: SV = smallvec![13284626917187606528, 14353657804625640860, 11366567065457835548, 501247837944];
-        assert_eq!(to_str(&x, 10), "3146383673420971972032023490593198871229613539715389096610302560000000");
+        assert_eq!(
+            unsafe { Ubig::from_inner_unchecked(x) }.to_string(),
+            "3146383673420971972032023490593198871229613539715389096610302560000000",
+        );
         let y: SV = smallvec![10945929334190035713, 13004504757950498814, 9];
-        assert_eq!(to_str(&y, 10), "3302432073363697202172148890923583722241");
+        assert_eq!(unsafe { Ubig::from_inner_unchecked(y) }.to_string(), "3302432073363697202172148890923583722241");
         let y: SV = smallvec![602229295517812052, 3];
-        assert_eq!(to_str(&y, 10), "55942461516646466900");
+        assert_eq!(unsafe { Ubig::from_inner_unchecked(y) }.to_string(), "55942461516646466900");
+    }
+
+    #[test]
+    fn test_debug() {
+        assert_eq!(format!("{:?}", RB!(2, 3)), "2 / 3");
+        assert_eq!(
+            format!("{:?}", RationalBig::from_str("676230147000402641135208532975102322580080121519024130").unwrap()),
+            "[7877410236203542530, 16360869664650712055, 1987261794136745]",
+        );
     }
 }

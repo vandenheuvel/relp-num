@@ -5,7 +5,7 @@ macro_rules! R8 {
         <$crate::Rational8 as $crate::FromPrimitive>::from_f64($value as f64).unwrap()
     };
     ($numer:expr, $denom:expr) => {
-        $crate::Rational8::new($numer, $denom)
+        $crate::Rational8::new($numer, $denom).unwrap()
     };
 }
 
@@ -16,7 +16,7 @@ macro_rules! R16 {
         <$crate::Rational16 as $crate::FromPrimitive>::from_f64($value as f64).unwrap()
     };
     ($numer:expr, $denom:expr) => {
-        $crate::Rational16::new($numer, $denom)
+        $crate::Rational16::new($numer, $denom).unwrap()
     };
 }
 
@@ -27,7 +27,7 @@ macro_rules! R32 {
         <$crate::Rational32 as $crate::FromPrimitive>::from_f64($value as f64).unwrap()
     };
     ($numer:expr, $denom:expr) => {
-        $crate::Rational32::new($numer, $denom)
+        $crate::Rational32::new($numer, $denom).unwrap()
     };
 }
 
@@ -38,7 +38,7 @@ macro_rules! R64 {
         <$crate::Rational64 as $crate::FromPrimitive>::from_f64($value as f64).unwrap()
     };
     ($numer:expr, $denom:expr) => {
-        $crate::Rational64::new($numer, $denom)
+        $crate::Rational64::new($numer, $denom).unwrap()
     };
 }
 
@@ -49,7 +49,7 @@ macro_rules! R128 {
         <$crate::Rational128 as $crate::FromPrimitive>::from_f64($value as f64).unwrap()
     };
     ($numer:expr, $denom:expr) => {
-        $crate::Rational128::new($numer, $denom)
+        $crate::Rational128::new($numer, $denom).unwrap()
     };
 }
 
@@ -60,6 +60,6 @@ macro_rules! RB {
         <$crate::RationalBig as $crate::FromPrimitive>::from_f64($value as f64).unwrap()
     };
     ($numer:expr, $denom:expr) => {
-        $crate::RationalBig::new($numer, $denom)
+        $crate::RationalBig::new($numer, $denom).unwrap()
     };
 }

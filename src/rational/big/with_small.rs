@@ -1,185 +1,13 @@
 //! # Interactions with fixed size ratios
-use std::cmp::Ordering;
 use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
 
-use num_traits::One;
-use smallvec::smallvec;
-
+use crate::NonZeroUbig;
 use crate::rational::{Rational16, Rational32, Rational64, Rational8};
-use crate::rational::big::ops::{add_assign, add_assign_single, mul_assign_single, subtracting_cmp, subtracting_cmp_ne_single};
-use crate::rational::big::ops::building_blocks::{carrying_sub_mut, is_zero, nonzero_is_one, shr_mut};
-use crate::rational::big::ops::div::div_assign_one_word;
-use crate::rational::big::ops::normalize::{gcd_single, prepare_gcd_single, simplify_fraction_gcd};
-use crate::rational::big::ops::normalize::simplify_fraction_gcd_single;
+use crate::rational::big::ops::building_blocks::{add_small, mul_small, SignChange, sub_small};
 use crate::sign::Sign;
+use crate::Ubig;
 
 use super::Big;
-
-impl<const S: usize> Big<S> {
-    #[inline]
-    fn add_small(&mut self, rhs_numerator: usize, rhs_denominator: usize) {
-        debug_assert!(!self.numerator.is_empty());
-
-        if rhs_denominator == self.denominator[0] && self.denominator.len() == 1 {
-            add_assign_single(&mut self.numerator, rhs_numerator);
-
-            // numerator can't be zero
-
-            if self.numerator[0] == self.denominator[0] && self.numerator.len() == 1 {
-                self.numerator[0] = 1;
-                self.denominator[0] = 1;
-            } else {
-                if self.denominator[0] != 1 {
-                    // numerator can't be 1 because two positive things were added
-                    self.denominator[0] = simplify_fraction_gcd_single(&mut self.numerator, self.denominator[0]);
-                }
-            }
-        } else {
-            if rhs_denominator == 1 {
-                let mut right_numerator = self.denominator.clone();
-                mul_assign_single(&mut right_numerator, rhs_numerator);
-                add_assign(&mut self.numerator, &right_numerator);
-            } else if nonzero_is_one(&self.denominator) {
-                mul_assign_single(&mut self.numerator, rhs_denominator);
-                add_assign_single(&mut self.numerator, rhs_numerator);
-                self.denominator.truncate(1);
-                self.denominator[0] = rhs_denominator;
-            } else {
-                let (left, small, bits) = prepare_gcd_single(&self.denominator, rhs_denominator);
-                let gcd = gcd_single(left, small, bits);
-
-                mul_assign_single(&mut self.numerator, rhs_denominator / gcd);
-
-                shr_mut(&mut self.denominator, 0, bits);
-                if gcd >> bits != 1 {
-                    div_assign_one_word(&mut self.denominator, gcd >> bits);
-                }
-
-                let mut c_times = self.denominator.clone();
-                mul_assign_single(&mut c_times, rhs_numerator);
-
-                add_assign(&mut self.numerator, &c_times);
-
-                mul_assign_single(&mut self.denominator, rhs_denominator);
-
-                if !nonzero_is_one(&self.numerator) {
-                    simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
-                }
-            }
-        }
-
-        debug_assert!(self.is_consistent());
-    }
-    #[inline]
-    fn sub_small(&mut self, rhs_numerator: usize, rhs_denominator: usize) {
-        debug_assert!(!self.numerator.is_empty());
-
-        if rhs_denominator == self.denominator[0] && self.denominator.len() == 1 {
-            if self.numerator.len() == 1 {
-                // result might be negative
-                match self.numerator[0].cmp(&rhs_numerator) {
-                    Ordering::Less => {
-                        self.sign = !self.sign;
-                        self.numerator[0] = rhs_numerator - self.numerator[0];
-                    }
-                    Ordering::Equal => {
-                        self.sign = Sign::Zero;
-                        self.numerator.clear();
-                        self.denominator[0] = 1;
-                        return;
-                    },
-                    Ordering::Greater => self.numerator[0] -= rhs_numerator,
-                }
-
-                if self.numerator[0] == self.denominator[0] && self.numerator.len() == 1 {
-                    self.set_one();
-                } else {
-                    if !nonzero_is_one(&self.numerator) && (self.denominator[0] != 1) { // denominator.len() == 1
-                        self.denominator[0] = simplify_fraction_gcd_single(&mut self.numerator, self.denominator[0]);
-                    }
-                }
-            } else {
-                // result won't be negative
-                let mut carry = carrying_sub_mut(&mut self.numerator[0], rhs_numerator, false);
-
-                let mut i = 1;
-                while carry {
-                    carry = carrying_sub_mut(&mut self.numerator[i], 0, true);
-                    i += 1;
-                }
-
-                while let Some(0) = self.numerator.last() {
-                    self.numerator.pop();
-                }
-                
-                if self.denominator[0] != 1 && !nonzero_is_one(&self.numerator) {
-                    self.denominator[0] = simplify_fraction_gcd_single(&mut self.numerator, self.denominator[0]);
-                }
-            }
-        } else {
-            if rhs_denominator == 1 {
-                let mut product = self.denominator.clone();
-                mul_assign_single(&mut product, rhs_numerator);
-                match subtracting_cmp(&mut self.numerator, &product) {
-                    Ordering::Less => self.sign = !self.sign,
-                    Ordering::Greater => {}
-                    Ordering::Equal => panic!(),
-                }
-            } else if nonzero_is_one(&self.denominator) {
-                mul_assign_single(&mut self.numerator, rhs_denominator);
-                match subtracting_cmp_ne_single(&mut self.numerator, rhs_numerator) {
-                    Ordering::Less => self.sign = !self.sign,
-                    Ordering::Greater => {}
-                    Ordering::Equal => panic!(),
-                }
-                self.denominator[0] = rhs_denominator;
-            } else {
-                let (left, small, bits) = prepare_gcd_single(&self.denominator, rhs_denominator);
-                let gcd = gcd_single(left, small, bits);
-
-                mul_assign_single(&mut self.numerator, rhs_denominator / gcd);
-
-                shr_mut(&mut self.denominator, 0, bits);
-                if gcd >> bits > 1 {
-                    div_assign_one_word(&mut self.denominator, gcd >> bits);
-                }
-                let mut c_times = self.denominator.clone();
-                mul_assign_single(&mut c_times, rhs_numerator);
-
-                match subtracting_cmp(&mut self.numerator, &c_times) {
-                    Ordering::Less => self.sign = !self.sign,
-                    Ordering::Greater => {}
-                    Ordering::Equal => panic!(),
-                }
-                mul_assign_single(&mut self.denominator, rhs_denominator);
-
-                if !nonzero_is_one(&self.numerator) {
-                    simplify_fraction_gcd(&mut self.numerator, &mut self.denominator);
-                }
-            }
-        }
-
-        debug_assert!(self.is_consistent());
-    }
-    #[inline]
-    fn mul_small(&mut self, mut rhs_numerator: usize, mut rhs_denominator: usize) {
-        debug_assert!(!is_zero(&self.numerator));
-        debug_assert_ne!(rhs_denominator, 0);
-
-        if rhs_denominator != 1 && !nonzero_is_one(&self.numerator) {
-            rhs_denominator = simplify_fraction_gcd_single(&mut self.numerator, rhs_denominator)
-        }
-
-        if rhs_numerator != 1 && !nonzero_is_one(&self.denominator) {
-            rhs_numerator = simplify_fraction_gcd_single(&mut self.denominator, rhs_numerator)
-        }
-
-        mul_assign_single(&mut self.numerator, rhs_numerator);
-        mul_assign_single(&mut self.denominator, rhs_denominator);
-
-        debug_assert!(self.is_consistent());
-    }
-}
 
 macro_rules! define_interations {
     ($small:ident, $module_name:ident) => {
@@ -195,8 +23,11 @@ macro_rules! define_interations {
                     fn from(value: $small) -> Self {
                         Self {
                             sign: value.sign,
-                            numerator: smallvec![value.numerator as usize],
-                            denominator: smallvec![value.denominator as usize],
+                            numerator: Ubig::new(value.numerator as usize),
+                            denominator: unsafe {
+                                // SAFETY: Input denominator is nonzero
+                                NonZeroUbig::new_unchecked(value.denominator as usize)
+                            },
                         }
                     }
                 }
@@ -207,8 +38,11 @@ macro_rules! define_interations {
                     fn from(value: &$small) -> Self {
                         Self {
                             sign: value.sign,
-                            numerator: smallvec![value.numerator as usize],
-                            denominator: smallvec![value.denominator as usize],
+                            numerator: Ubig::new(value.numerator as usize),
+                            denominator: unsafe {
+                                // SAFETY: Input denominator is nonzero
+                                NonZeroUbig::new_unchecked(value.denominator as usize)
+                            },
                         }
                     }
                 }
@@ -222,7 +56,7 @@ macro_rules! define_interations {
                     fn eq(&self, other: &$small) -> bool {
                         // Compare first with the denominator, we don't have to do a bounds check
                         // and the probability that its equal is small
-                        self.denominator[0] == other.denominator as usize &&
+                        *self.denominator.first() == other.denominator as usize &&
                             match self.sign {
                                 Sign::Zero => other.sign == Sign::Zero,
                                 Sign::Positive | Sign::Negative => {
@@ -318,19 +152,46 @@ macro_rules! define_interations {
                         fn add_assign(&mut self, rhs: &$small) {
                             match (self.sign, rhs.sign) {
                                 (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => {
-                                    self.add_small(rhs.numerator as usize, rhs.denominator as usize);
+                                    unsafe {
+                                        // SAFETY: The numbers are non zero
+                                        add_small(
+                                            self.numerator.inner_mut(),
+                                            self.denominator.inner_mut(),
+                                            rhs.numerator as usize,
+                                            rhs.denominator as usize,
+                                        );
+                                    }
                                 },
                                 (Sign::Negative, Sign::Positive) | (Sign::Positive, Sign::Negative) => {
-                                    self.sub_small(rhs.numerator as usize, rhs.denominator as usize);
+                                    unsafe {
+                                        // SAFETY: The numbers are non zero
+                                        let sign_change = sub_small(
+                                            self.numerator.inner_mut(),
+                                            self.denominator.inner_mut(),
+                                            rhs.numerator as usize,
+                                            rhs.denominator as usize,
+                                        );
+                                        match sign_change {
+                                            SignChange::None => {}
+                                            SignChange::Flip => self.sign = !self.sign,
+                                            SignChange::Zero => self.sign = Sign::Zero,
+                                        }
+                                    }
                                 }
                                 (_, Sign::Zero) => {}
                                 (Sign::Zero, _) => {
                                     self.sign = rhs.sign;
                                     debug_assert_eq!(self.numerator.len(), 0);
-                                    self.numerator.push(rhs.numerator as usize);
+                                    unsafe {
+                                        // SAFETY: Value was empty before and rhs.numerator is non zero
+                                        self.numerator.inner_mut().push(rhs.numerator as usize);
+                                    }
                                     debug_assert_eq!(self.denominator.len(), 1);
                                     debug_assert_eq!(self.denominator[0], 1);
-                                    self.denominator[0] = rhs.denominator as usize;
+                                    unsafe {
+                                        // SAFETY: Value was one before and rhs.denominator is non zero
+                                        *self.denominator.first_mut() = rhs.denominator as usize;
+                                    }
                                 }
                             }
                         }
@@ -415,19 +276,46 @@ macro_rules! define_interations {
                         fn sub_assign(&mut self, rhs: &$small) {
                             match (self.sign, rhs.sign) {
                                 (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => {
-                                    self.sub_small(rhs.numerator as usize, rhs.denominator as usize);
-                                },
+                                    unsafe {
+                                        // SAFETY: The numbers are non zero
+                                        let sign_change = sub_small(
+                                            self.numerator.inner_mut(),
+                                            self.denominator.inner_mut(),
+                                            rhs.numerator as usize,
+                                            rhs.denominator as usize,
+                                        );
+                                        match sign_change {
+                                            SignChange::None => {}
+                                            SignChange::Flip => self.sign = !self.sign,
+                                            SignChange::Zero => self.sign = Sign::Zero,
+                                        }
+                                    }
+                                }
                                 (Sign::Negative, Sign::Positive) | (Sign::Positive, Sign::Negative) => {
-                                    self.add_small(rhs.numerator as usize, rhs.denominator as usize);
+                                    unsafe {
+                                        // SAFETY: The numbers are non zero
+                                        add_small(
+                                            self.numerator.inner_mut(),
+                                            self.denominator.inner_mut(),
+                                            rhs.numerator as usize,
+                                            rhs.denominator as usize,
+                                        );
+                                    }
                                 }
                                 (_, Sign::Zero) => {}
                                 (Sign::Zero, _) => {
                                     self.sign = -rhs.sign;
                                     debug_assert_eq!(self.numerator.len(), 0);
-                                    self.numerator.push(rhs.numerator as usize);
+                                    unsafe {
+                                        // SAFETY: The rhs numerator is not zero
+                                        self.numerator.inner_mut().push(rhs.numerator as usize)
+                                    };
                                     debug_assert_eq!(self.denominator.len(), 1);
                                     debug_assert_eq!(self.denominator[0], 1);
-                                    self.denominator[0] = rhs.denominator as usize;
+                                    unsafe {
+                                        // SAFETY: The rhs denominator is not zero
+                                        *self.denominator.first_mut() = rhs.denominator as usize;
+                                    }
                                 }
                             }
                         }
@@ -456,7 +344,14 @@ macro_rules! define_interations {
                             match (self.sign, rhs.sign) {
                                 (Sign::Positive | Sign::Negative, Sign::Positive | Sign::Negative) => {
                                     self.sign *= rhs.sign;
-                                    self.mul_small(rhs.numerator as usize, rhs.denominator as usize);
+                                    unsafe {
+                                        mul_small(
+                                            self.numerator.inner_mut(),
+                                            self.denominator.inner_mut(),
+                                            rhs.numerator as usize,
+                                            rhs.denominator as usize,
+                                        )
+                                    }
                                 }
                                 (Sign::Positive | Sign::Negative, Sign::Zero) => {
                                     <Self as num_traits::Zero>::set_zero(&mut self);
@@ -523,7 +418,14 @@ macro_rules! define_interations {
                             match (self.sign, rhs.sign) {
                                 (Sign::Positive | Sign::Negative, Sign::Positive | Sign::Negative) => {
                                     self.sign *= rhs.sign;
-                                    self.mul_small(rhs.denominator as usize, rhs.numerator as usize);
+                                    unsafe {
+                                        mul_small(
+                                            self.numerator.inner_mut(),
+                                            self.denominator.inner_mut(),
+                                            rhs.denominator as usize,
+                                            rhs.numerator as usize,
+                                        );
+                                    }
                                 }
                                 (Sign::Positive | Sign::Negative, Sign::Zero) => panic!(),
                                 (Sign::Zero, _) => {}
@@ -545,9 +447,11 @@ define_interations!(Rational64, rational64);
 
 #[cfg(test)]
 mod test {
+    use num_traits::One;
     use smallvec::smallvec;
 
-    use crate::{R16, R32, R64, R8, RationalBig, RB, Sign};
+    use crate::{R16, R32, R64, R8, RationalBig, RB, Sign, Ubig};
+    use crate::integer::big::NonZeroUbig;
 
     #[test]
     fn test_eq() {
@@ -575,8 +479,16 @@ mod test {
         assert_eq!(RB!(-7, 2) + R8!(5, 2), RB!(-1));
         assert_eq!(RB!(-7, 2) - R8!(5, 2), RB!(-6));
         assert_eq!(
-            RationalBig { sign: Sign::Positive, numerator: smallvec![1, 1], denominator: smallvec![2] } + R8!(1, 2),
-            RationalBig { sign: Sign::Positive, numerator: smallvec![(1 << 63) + 1], denominator: smallvec![1] },
+            RationalBig {
+                sign: Sign::Positive,
+                numerator: unsafe { Ubig::from_inner_unchecked(smallvec![1, 1]) },
+                denominator: unsafe { NonZeroUbig::from_inner_unchecked(smallvec![2]) },
+            } + R8!(1, 2),
+            RationalBig {
+                sign: Sign::Positive,
+                numerator: unsafe { Ubig::from_inner_unchecked(smallvec![(1 << 63) + 1]) },
+                denominator: NonZeroUbig::one(),
+            },
         );
 
         assert_eq!(RB!(2, 3) + R8!(8, 1), RB!(8 * 3 + 2, 3));
@@ -585,8 +497,16 @@ mod test {
 
         assert_eq!(RB!(5) - R32!(7), RB!(-2));
         assert_eq!(
-            RationalBig { sign: Sign::Positive, numerator: smallvec![1, 1], denominator: smallvec![2] } - R8!(1, 2),
-            RationalBig { sign: Sign::Positive, numerator: smallvec![1 << 63], denominator: smallvec![1] },
+            RationalBig {
+                sign: Sign::Positive,
+                numerator: unsafe { Ubig::from_inner_unchecked(smallvec![1, 1]) },
+                denominator: unsafe { NonZeroUbig::from_inner_unchecked(smallvec![2]) },
+            } - R8!(1, 2),
+            RationalBig {
+                sign: Sign::Positive,
+                numerator: unsafe { Ubig::from_inner_unchecked(smallvec![1 << 63]) },
+                denominator: NonZeroUbig::one(),
+            },
         );
         assert_eq!(RB!(5, 2) - R8!(2), RB!(1, 2));
         assert_eq!(RB!(3) - R8!(1, 2), RB!(5, 2));

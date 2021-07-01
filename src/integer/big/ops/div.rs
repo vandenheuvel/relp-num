@@ -3,12 +3,14 @@ use std::ptr::copy;
 
 use smallvec::{smallvec, SmallVec};
 
-use crate::rational::big::ops::{BITS_PER_WORD, cmp, is_well_formed};
-use crate::rational::big::ops::building_blocks::{add_2, add_assign_slice, mul, nonzero_is_one, shl, shl_mut, shl_mut_overflowing, shr, sub_2, sub_assign_slice, submul_slice};
-use crate::rational::big::ops::normalize::trailing_zeros;
+use crate::integer::big::BITS_PER_WORD;
+use crate::integer::big::ops::building_blocks::{add_2, add_assign_slice, is_well_formed, sub_2, sub_assign_slice, submul_slice, widening_mul};
+use crate::integer::big::ops::non_zero::{is_one_non_zero, shl, shl_mut, shl_mut_overflowing, shr};
+use crate::integer::big::ops::normalize::trailing_zeros;
+use crate::integer::big::properties::cmp;
 
 #[inline]
-pub fn div_assign_double<const S: usize>(
+pub unsafe fn div_assign_double<const S: usize>(
     values_one: &mut SmallVec<[usize; S]>,
     values_two: &mut SmallVec<[usize; S]>,
     rhs: SmallVec<[usize; S]>,
@@ -41,7 +43,7 @@ pub fn div_assign_double<const S: usize>(
 }
 
 #[inline]
-pub fn div_assign_n_words_double<const S: usize>(
+pub unsafe fn div_assign_n_words_double<const S: usize>(
     values_one: &mut SmallVec<[usize; S]>,
     values_two: &mut SmallVec<[usize; S]>,
     mut rhs: SmallVec<[usize; S]>,
@@ -62,7 +64,7 @@ pub fn div_assign_n_words_double<const S: usize>(
         shl_mut(values_one, 0, leading_zeros);
         shl_mut(values_two, 0, leading_zeros);
 
-        unsafe { shl_mut_overflowing(&mut rhs, leading_zeros); }
+        shl_mut_overflowing(&mut rhs, leading_zeros);
     }
     debug_assert!(values_one.len() > rhs.len());
     debug_assert!(values_two.len() > rhs.len());
@@ -75,19 +77,19 @@ pub fn div_assign_n_words_double<const S: usize>(
 }
 
 #[inline]
-pub fn div<const S: usize>(
-    values: &SmallVec<[usize; S]>,
-    rhs: &SmallVec<[usize; S]>,
+pub unsafe fn div<const S: usize>(
+    values: &[usize],
+    rhs: &[usize],
 ) -> SmallVec<[usize; S]> {
     // Assume that the do divide without remainder
     debug_assert_eq!(cmp(values, rhs), Ordering::Greater);
 
-    let (zero_words, zero_bits) = unsafe { trailing_zeros(&rhs) };
+    let (zero_words, zero_bits) = trailing_zeros(&rhs);
     let mut left = shr(values, zero_words, zero_bits);
     let right = shr(rhs, zero_words, zero_bits);
 
     // right is odd now
-    if !nonzero_is_one(&right) {
+    if !is_one_non_zero(&right) {
         div_assign_by_odd(&mut left, &right);
     }
 
@@ -102,7 +104,7 @@ pub fn div<const S: usize>(
 ///
 /// * `values`: A nonzero, >1
 #[inline]
-pub fn div_assign_by_odd<const S: usize>(
+pub unsafe fn div_assign_by_odd<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
     rhs: &SmallVec<[usize; S]>,
 ) {
@@ -118,7 +120,7 @@ pub fn div_assign_by_odd<const S: usize>(
     // We assume that values % rhs == 0
 
     match rhs.len() {
-        1 => div_assign_one_word(values, rhs[0]),
+        1 => { div_assign_one_word(values, rhs[0]); },
         2 => div_assign_two_words(values, rhs[1], rhs[0]),
         _ => {
             // rhs.len() > 2
@@ -127,16 +129,18 @@ pub fn div_assign_by_odd<const S: usize>(
     }
 }
 
+/// Returns the remainder.
 #[inline]
-pub fn div_assign_one_word<const S: usize>(values: &mut SmallVec<[usize; S]>, rhs: usize) {
+pub unsafe fn div_assign_one_word<const S: usize>(values: &mut SmallVec<[usize; S]>, rhs: usize) -> usize {
     debug_assert!(is_well_formed(values));
     debug_assert!(!values.is_empty());
     debug_assert_eq!(rhs % 2, 1);
     // We assume that values % rhs == 0
 
     if values.len() == 1 {
+        let remainder = values[0] % rhs;
         values[0] /= rhs;
-        return
+        return remainder;
     }
 
     let divisor_zeros = rhs.leading_zeros();
@@ -161,7 +165,7 @@ pub fn div_assign_one_word<const S: usize>(values: &mut SmallVec<[usize; S]>, rh
                 values[i] = quotient;
             }
 
-            // The last remainder is a valid value
+            remainder
         }
         _ => {
             // rhs <= usize::MAX / 2
@@ -192,17 +196,17 @@ pub fn div_assign_one_word<const S: usize>(values: &mut SmallVec<[usize; S]>, rh
             }
 
             let shifted = edit_higher << divisor_zeros;
-            let (q, _remainder) = div_preinv(remainder, shifted, divisor, divisor_inverse);
+            let (q, final_remainder) = div_preinv(remainder, shifted, divisor, divisor_inverse);
             values[0] = q;
 
-            // The last remainder is a valid value
+            final_remainder
         }
     }
 }
 
 #[inline]
 pub fn div_preinv(high: usize, low: usize, divisor: usize, divisor_inverted: usize) -> (usize, usize) {
-    let (quotient_high, quotient_low) = mul(divisor_inverted, high);
+    let (quotient_high, quotient_low) = widening_mul(divisor_inverted, high);
     let (mut quotient_high, quotient_low) = add_2(quotient_high, quotient_low, high + 1, low);
 
     let mut remainder = low.wrapping_sub(quotient_high.wrapping_mul(divisor));
@@ -325,7 +329,7 @@ unsafe fn div_assign_two_words_helper<const S: usize>(
 }
 
 #[inline]
-pub fn div_assign_n_words<const S: usize>(
+pub unsafe fn div_assign_n_words<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
     rhs: &SmallVec<[usize; S]>,
 ) {
@@ -347,7 +351,7 @@ pub fn div_assign_n_words<const S: usize>(
 }
 
 #[inline]
-fn create_divisor_inverse_and_divide<const S: usize>(
+unsafe fn create_divisor_inverse_and_divide<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
     divisor: &SmallVec<[usize; S]>,
 ) {
@@ -361,7 +365,7 @@ fn create_divisor_inverse_and_divide<const S: usize>(
 }
 
 #[inline]
-pub fn div_assign_n_words_helper<const S: usize>(
+pub unsafe fn div_assign_n_words_helper<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
     divisor: &SmallVec<[usize; S]>,
     divisor_inverse: usize,
@@ -375,7 +379,7 @@ pub fn div_assign_n_words_helper<const S: usize>(
     let max_word = match cmp(&values[length_difference..], divisor) {
         Ordering::Less => 0,
         Ordering::Equal | Ordering::Greater => {
-            unsafe { sub_assign_slice(&mut values[length_difference..], divisor) };
+            sub_assign_slice(&mut values[length_difference..], divisor);
             1
         },
     };
@@ -389,9 +393,7 @@ pub fn div_assign_n_words_helper<const S: usize>(
         let value_low = values[i + divisor.len() - 2];
 
         let q = if value_high == divisor_high && value_middle == divisor_low {
-            unsafe {
-                submul_slice(&mut values[i..(i + divisor.len())], divisor, !0);
-            }
+            submul_slice(&mut values[i..(i + divisor.len())], divisor, !0);
             value_high = values[i + divisor.len() - 1];
             !0
         } else {
@@ -400,9 +402,11 @@ pub fn div_assign_n_words_helper<const S: usize>(
                 divisor_high, divisor_low, divisor_inverse,
             );
 
-            let carry = unsafe {
-                submul_slice(&mut values[i..(i + (divisor.len() - 2))], &divisor[..(divisor.len() - 2)], q)
-            };
+            let carry = submul_slice(
+                &mut values[i..(i + (divisor.len() - 2))],
+                &divisor[..(divisor.len() - 2)],
+                q,
+            );
 
             value_high = remainder_high;
 
@@ -415,12 +419,10 @@ pub fn div_assign_n_words_helper<const S: usize>(
             values[i + divisor.len() - 2] = remainder_low;
 
             if carry {
-                let carry = unsafe {
-                    add_assign_slice(
-                        &mut values[i..(i + divisor.len() - 1)],
-                        &divisor[..(divisor.len() - 1)],
-                    )
-                };
+                let carry = add_assign_slice(
+                    &mut values[i..(i + divisor.len() - 1)],
+                    &divisor[..(divisor.len() - 1)],
+                );
                 value_high = divisor_high.wrapping_add(value_high).wrapping_add(carry as usize);
                 q - 1
             } else {
@@ -431,9 +433,7 @@ pub fn div_assign_n_words_helper<const S: usize>(
         values[i + divisor.len() - 1] = q; // the lowest index that will not be read from again
     }
 
-    unsafe {
-        copy(values[(divisor.len() - 1)..].as_ptr(), values.as_mut_ptr(), length_difference);
-    }
+    copy(values[(divisor.len() - 1)..].as_ptr(), values.as_mut_ptr(), length_difference);
     values.truncate(length_difference);
 
     if max_word > 0 {
@@ -454,7 +454,7 @@ pub fn invert_pi(high: usize, low: usize) -> usize {
         result = result.wrapping_sub(mask & high);
     }
 
-    let (result_high, _result_low) = mul(low, inverse);
+    let (result_high, _result_low) = widening_mul(low, inverse);
     result = result.wrapping_add(result_high);
 
     if result < result_high {
@@ -473,12 +473,12 @@ pub fn divrem_3by2(
     divisor_high: usize, divisor_low: usize,
     divisor_inverse: usize,
 ) -> (usize, usize, usize) {
-    let (quotient_high, quotient_low) = mul(numerator_high, divisor_inverse);
+    let (quotient_high, quotient_low) = widening_mul(numerator_high, divisor_inverse);
     let (quotient_high, quotient_low) = add_2(quotient_high, quotient_low, numerator_high, numerator_middle);
 
     let remainder_high = numerator_middle.wrapping_sub(divisor_high.wrapping_mul(quotient_high));
     let (remainder_high, remainder_low) = sub_2(remainder_high, numerator_low, divisor_high, divisor_low);
-    let (result_high, result_low) = mul(divisor_low, quotient_high);
+    let (result_high, result_low) = widening_mul(divisor_low, quotient_high);
     let (remainder_high, remainder_low) = sub_2(remainder_high, remainder_low, result_high, result_low);
 
     let quotient_high = quotient_high.wrapping_add(1);
@@ -497,18 +497,16 @@ pub fn divrem_3by2(
 
 #[cfg(test)]
 mod test {
-    use smallvec::smallvec;
+    use smallvec::{smallvec, SmallVec};
 
-    use crate::rational::big::creation::int_from_str;
-    use crate::rational::big::ops::div::{div, div_assign_n_words, div_assign_one_word, div_assign_two_words, div_preinv, invert};
-    use crate::rational::big::ops::test::SV;
+    use crate::integer::big::creation::from_str_radix;
+    use crate::integer::big::ops::div::{div as div_by_odd_or_even, div_assign_n_words, div_assign_one_word, div_assign_two_words, div_preinv, invert};
 
     #[test]
     fn test_div() {
-        let x: SV = int_from_str("321087754339295587229459593581818565100", 10).unwrap();
-        let y: SV = smallvec![13985615379161616725];
-        let expected: SV = int_from_str("22958428759431789116", 10).unwrap();
-        assert_eq!(div(&x, &y), expected);
+        let x = from_str_radix::<10, 8>("321087754339295587229459593581818565100").unwrap();
+        let expected = from_str_radix::<10, 8>("22958428759431789116").unwrap();
+        assert_eq!(unsafe { div_by_odd_or_even::<8>(&x, &[13985615379161616725]) }, expected);
     }
 
     #[test]
@@ -538,44 +536,56 @@ mod test {
 
     #[test]
     fn test_div_assign_one_word() {
-        let mut x: SV = smallvec![(1 << 63) + 3, 1];
-        div_assign_one_word(&mut x, (1 << 63) + 1);
-        let expected: SV = smallvec![3];
-        assert_eq!(x, expected);
+        type SV = SmallVec<[usize; 8]>;
 
-        let mut x: SV = smallvec![7, 5];
-        div_assign_one_word(&mut x, 3);
-        let expected: SV = smallvec![0b10101010_10101010_10101010_10101010_10101010_10101010_10101010_10101101, 1];
-        assert_eq!(x, expected);
+        unsafe {
+            let mut x: SV = smallvec![(1 << 63) + 3, 1];
+            div_assign_one_word(&mut x, (1 << 63) + 1);
+            let expected: SV = smallvec![3];
+            assert_eq!(x, expected);
 
-        let mut x: SV = smallvec![10, 5];
-        div_assign_one_word(&mut x, 3);
-        let expected: SV = smallvec![0b10101010_10101010_10101010_10101010_10101010_10101010_10101010_10101110, 1];
-        assert_eq!(x, expected);
+            let mut x: SV = smallvec![7, 5];
+            div_assign_one_word(&mut x, 3);
+            let expected: SV = smallvec![0b10101010_10101010_10101010_10101010_10101010_10101010_10101010_10101101, 1];
+            assert_eq!(x, expected);
 
-        let mut x: SV = smallvec![13, 5];
-        div_assign_one_word(&mut x, 3);
-        let expected: SV = smallvec![0b10101010_10101010_10101010_10101010_10101010_10101010_10101010_10101111, 1];
-        assert_eq!(x, expected);
+            let mut x: SV = smallvec![10, 5];
+            div_assign_one_word(&mut x, 3);
+            let expected: SV = smallvec![0b10101010_10101010_10101010_10101010_10101010_10101010_10101010_10101110, 1];
+            assert_eq!(x, expected);
 
-        let mut x = int_from_str::<4>("96149135622564868513332764767713630331755573676701733681721499377985831780603", 10).unwrap();
-        div_assign_one_word(&mut x, 3);
-        let expected = int_from_str::<4>("32049711874188289504444254922571210110585191225567244560573833125995277260201", 10).unwrap();
-        assert_eq!(x, expected);
+            let mut x: SV = smallvec![13, 5];
+            div_assign_one_word(&mut x, 3);
+            let expected: SV = smallvec![0b10101010_10101010_10101010_10101010_10101010_10101010_10101010_10101111, 1];
+            assert_eq!(x, expected);
 
-        let mut x = int_from_str::<4>("99939187751827453177194542570098438266282603262618044779272964070464092694778", 10).unwrap();
-        div_assign_one_word(&mut x, 3);
-        let expected = int_from_str::<4>("33313062583942484392398180856699479422094201087539348259757654690154697564926", 10).unwrap();
-        assert_eq!(x, expected);
+            let mut x = from_str_radix::<10, 4>("96149135622564868513332764767713630331755573676701733681721499377985831780603").unwrap();
+            div_assign_one_word(&mut x, 3);
+            let expected = from_str_radix::<10, 4>("32049711874188289504444254922571210110585191225567244560573833125995277260201").unwrap();
+            assert_eq!(x, expected);
 
-        let mut x: SV = int_from_str("321087754339295587229459593581818565100", 10).unwrap();
-        div_assign_one_word(&mut x, 13985615379161616725);
-        let expected: SV = int_from_str("22958428759431789116", 10).unwrap();
-        assert_eq!(x, expected);
+            let mut x = from_str_radix::<10, 4>("99939187751827453177194542570098438266282603262618044779272964070464092694778").unwrap();
+            div_assign_one_word(&mut x, 3);
+            let expected = from_str_radix::<10, 4>("33313062583942484392398180856699479422094201087539348259757654690154697564926").unwrap();
+            assert_eq!(x, expected);
+
+            let mut x = from_str_radix::<10, 8>("321087754339295587229459593581818565100").unwrap();
+            div_assign_one_word(&mut x, 13985615379161616725);
+            let expected: SV = from_str_radix::<10, 8>("22958428759431789116").unwrap();
+            assert_eq!(x, expected);
+
+            let mut x: SV = from_str_radix::<10, 8>("350456851838033882157830312697310132807078125").unwrap();
+            let remainder = div_assign_one_word(&mut x, 3);
+            let expected: SV = from_str_radix::<10, 8>("116818950612677960719276770899103377602359375").unwrap();
+            assert_eq!(x, expected);
+            assert_eq!(remainder, 0);
+        }
     }
 
     #[test]
     fn test_div_assign_two_words() {
+        type SV = SmallVec<[usize; 8]>;
+
         let mut x: SV = smallvec![0xc71b661b8e833636, 0x89ef44975a72d747, 0xbe134785635c9c];
         div_assign_two_words(&mut x, 0xdbc78074cfd441a, 0x436471cb87f32d37);
         let expected: SV = smallvec![0xdd669098c22a67a];
@@ -673,76 +683,80 @@ mod test {
 
     #[test]
     fn test_div_assign_n_words() {
-        let mut x: SV = smallvec![3, 3, 3];
-        let divisor: SV = smallvec![1, 1, 1];
-        div_assign_n_words(&mut x, &divisor);
-        let expected: SV = smallvec![3];
-        assert_eq!(x, expected);
+        type SV = SmallVec<[usize; 8]>;
 
-        let mut x: SV = smallvec![3, 3, 3, 3];
-        let divisor: SV = smallvec![1, 1, 1, 1];
-        div_assign_n_words(&mut x, &divisor);
-        let expected: SV = smallvec![3];
-        assert_eq!(x, expected);
+        unsafe {
+            let mut x: SV = smallvec![3, 3, 3];
+            let divisor: SV = smallvec![1, 1, 1];
+            div_assign_n_words(&mut x, &divisor);
+            let expected: SV = smallvec![3];
+            assert_eq!(x, expected);
 
-        let mut x: SV = smallvec![1, 2, 2, 1];
-        let divisor: SV = smallvec![1, 1, 1];
-        div_assign_n_words(&mut x, &divisor);
-        let expected: SV = smallvec![1, 1];
-        assert_eq!(x, expected);
+            let mut x: SV = smallvec![3, 3, 3, 3];
+            let divisor: SV = smallvec![1, 1, 1, 1];
+            div_assign_n_words(&mut x, &divisor);
+            let expected: SV = smallvec![3];
+            assert_eq!(x, expected);
 
-        let mut x: SV = smallvec![
-            0x426c694a49d8e6e8,
-            0xf7110260b98b2714,
-            0xd77eaaba0c9edebb,
-            0x1ebf6edad66a22f9,
-            0xec91987b2f52425e,
-            0x7146b08a5e154,
-        ];
-        let divisor: SV = smallvec![0x2090b6d374079b2f, 0xd14fd230f03d41d8, 0x2cd0de4066];
-        div_assign_n_words(&mut x, &divisor);
-        let expected: SV = smallvec![
-            0xf1ca2432006aad98,
-            0x249ebfb74debc642,
-            0x00a2b24c5fc31f96,
-            0x2871,
-        ];
-        assert_eq!(x, expected);
+            let mut x: SV = smallvec![1, 2, 2, 1];
+            let divisor: SV = smallvec![1, 1, 1];
+            div_assign_n_words(&mut x, &divisor);
+            let expected: SV = smallvec![1, 1];
+            assert_eq!(x, expected);
 
-        let x: SV = int_from_str("2100747828964386654022762515454422286805338141171597526655", 10).unwrap();
-        let mut y: SV = int_from_str("124377463735788844355638570961811809408491806453579232883516419455719409995386620545746110707430", 10).unwrap();
-        div_assign_n_words(&mut y, &x);
-        let expected: SV = int_from_str("59206279792802955257475021319389524506", 10).unwrap();
-        assert_eq!(y, expected);
+            let mut x: SV = smallvec![
+                0x426c694a49d8e6e8,
+                0xf7110260b98b2714,
+                0xd77eaaba0c9edebb,
+                0x1ebf6edad66a22f9,
+                0xec91987b2f52425e,
+                0x7146b08a5e154,
+            ];
+            let divisor: SV = smallvec![0x2090b6d374079b2f, 0xd14fd230f03d41d8, 0x2cd0de4066];
+            div_assign_n_words(&mut x, &divisor);
+            let expected: SV = smallvec![
+                0xf1ca2432006aad98,
+                0x249ebfb74debc642,
+                0x00a2b24c5fc31f96,
+                0x2871,
+            ];
+            assert_eq!(x, expected);
 
-        let x: SV = int_from_str("66340974319576186580673555932821260803918451439617771793405532796007979955997", 10).unwrap();
-        let mut y: SV = int_from_str("5531556390977325409108902596274363253464159901861086117212994122508796415587214298074682227873376596111793924413829607429725414276024416782319480969361066", 10).unwrap();
-        div_assign_n_words(&mut y, &x);
-        let expected: SV = int_from_str("83380692667111604543192945476909633909781675647518842166405860848280411868978", 10).unwrap();
-        assert_eq!(y, expected);
+            let x = from_str_radix::<10, 8>("2100747828964386654022762515454422286805338141171597526655").unwrap();
+            let mut y = from_str_radix::<10, 8>("124377463735788844355638570961811809408491806453579232883516419455719409995386620545746110707430").unwrap();
+            div_assign_n_words(&mut y, &x);
+            let expected = from_str_radix::<10, 8>("59206279792802955257475021319389524506").unwrap();
+            assert_eq!(y, expected);
 
-        let x = int_from_str::<16>("1992347045243990842449503776502064971948536211918448267119003695060591740014400435359593740256083", 10).unwrap();
-        let mut y = int_from_str::<16>("3654499318250474693172757739649291715653635067262981937422840725088822515776175998634633525786306916583726172000458682141069104127802225878006025815303036452910827291022357044090986756049186271", 10).unwrap();
-        div_assign_n_words(&mut y, &x);
-        let expected = int_from_str::<16>("1834268445838425699471498583098436069780105278538375398579173558288199179079540034875203482666437", 10).unwrap();
-        assert_eq!(y, expected);
+            let x = from_str_radix::<10, 8>("66340974319576186580673555932821260803918451439617771793405532796007979955997").unwrap();
+            let mut y = from_str_radix::<10, 8>("5531556390977325409108902596274363253464159901861086117212994122508796415587214298074682227873376596111793924413829607429725414276024416782319480969361066").unwrap();
+            div_assign_n_words(&mut y, &x);
+            let expected = from_str_radix::<10, 8>("83380692667111604543192945476909633909781675647518842166405860848280411868978").unwrap();
+            assert_eq!(y, expected);
 
-        let x: SV = int_from_str("142268729087956461502980096562052278567181056771418896921355439878811379239371082592244702276923529066641805027456993866599187652312415401581689633076835619997349902283496866883934518180147780692572220001134905589078138942372904801461834736487227807153399879253875716622257676142963030220069542386846904083013", 10).unwrap();
-        let mut y: SV = int_from_str("7252456712823082542212585366658045326494860607776262852944310011256910113263957063330696718656414605824457239823175193650356457591331064369542847573375007257686284704853458633888565094996322221068283521171280483607120531697151774167084766416806591259535467438714921314021025665937603239468423422410620688117774930154636386606936656901663624871303617480835679579711869190375935696156571040222578860571381388759403807462491128517722779457196431083409666231495318213348827271991515601699351996944570738462943384327888574733153892507856624971047531620359262786242782133454648428176863725230945440923123104182754630675480", 10).unwrap();
-        div_assign_n_words(&mut y, &x);
-        let expected: SV = int_from_str("50977166657187970981301386474604976537069699305338641324851240518727660517573501274819146798100207436562444606589188614868795146045164658432364718026938110714567759476174190690212709288295103108635657622955244936842045087509129539879176516350950354697324349397455737947404894532171357256869229319195873691960", 10).unwrap();
-        assert_eq!(y, expected);
+            let x = from_str_radix::<10, 16>("1992347045243990842449503776502064971948536211918448267119003695060591740014400435359593740256083").unwrap();
+            let mut y = from_str_radix::<10, 16>("3654499318250474693172757739649291715653635067262981937422840725088822515776175998634633525786306916583726172000458682141069104127802225878006025815303036452910827291022357044090986756049186271").unwrap();
+            div_assign_n_words(&mut y, &x);
+            let expected = from_str_radix::<10, 16>("1834268445838425699471498583098436069780105278538375398579173558288199179079540034875203482666437").unwrap();
+            assert_eq!(y, expected);
 
-        let x: SV = int_from_str("24706988736548547364612883218523922197159394885583212169224942104064013913210286893141360630507397731352833232219041", 10).unwrap();
-        let mut y: SV = int_from_str("45368133537041234648674954054977183524748234400138397585868892868938195954109790513190079637903300546258649431623015017480111206508314126488071014462560267771588450920340284132409380836507386083707657561702555758", 10).unwrap();
-        div_assign_n_words(&mut y, &x);
-        let expected: SV = int_from_str("1836246983426558769656208362027557556985243474218104389708000130056939216565584522486351663864238", 10).unwrap();
-        assert_eq!(y, expected);
+            let x = from_str_radix::<10, 8>("142268729087956461502980096562052278567181056771418896921355439878811379239371082592244702276923529066641805027456993866599187652312415401581689633076835619997349902283496866883934518180147780692572220001134905589078138942372904801461834736487227807153399879253875716622257676142963030220069542386846904083013").unwrap();
+            let mut y = from_str_radix::<10, 8>("7252456712823082542212585366658045326494860607776262852944310011256910113263957063330696718656414605824457239823175193650356457591331064369542847573375007257686284704853458633888565094996322221068283521171280483607120531697151774167084766416806591259535467438714921314021025665937603239468423422410620688117774930154636386606936656901663624871303617480835679579711869190375935696156571040222578860571381388759403807462491128517722779457196431083409666231495318213348827271991515601699351996944570738462943384327888574733153892507856624971047531620359262786242782133454648428176863725230945440923123104182754630675480").unwrap();
+            div_assign_n_words(&mut y, &x);
+            let expected = from_str_radix::<10, 8>("50977166657187970981301386474604976537069699305338641324851240518727660517573501274819146798100207436562444606589188614868795146045164658432364718026938110714567759476174190690212709288295103108635657622955244936842045087509129539879176516350950354697324349397455737947404894532171357256869229319195873691960").unwrap();
+            assert_eq!(y, expected);
 
-        let x: SV = int_from_str("82991827507931334051864300791578801450571102014085263148173602366636977594557", 10).unwrap();
-        let mut y: SV = int_from_str("61060309798889868014077100802497148468561512692425559954910235802350114397858493596422472723116050496081085430947562656270740618299118061128994357736218037512854403413961708", 10).unwrap();
-        div_assign_n_words(&mut y, &x);
-        let expected: SV = int_from_str("735738826730312422682248866495569766911262046946938858983516260451028363751515777406730177431644", 10).unwrap();
-        assert_eq!(y, expected);
+            let x = from_str_radix::<10, 8>("24706988736548547364612883218523922197159394885583212169224942104064013913210286893141360630507397731352833232219041").unwrap();
+            let mut y = from_str_radix::<10, 8>("45368133537041234648674954054977183524748234400138397585868892868938195954109790513190079637903300546258649431623015017480111206508314126488071014462560267771588450920340284132409380836507386083707657561702555758").unwrap();
+            div_assign_n_words(&mut y, &x);
+            let expected = from_str_radix::<10, 8>("1836246983426558769656208362027557556985243474218104389708000130056939216565584522486351663864238").unwrap();
+            assert_eq!(y, expected);
+
+            let x = from_str_radix::<10, 8>("82991827507931334051864300791578801450571102014085263148173602366636977594557").unwrap();
+            let mut y = from_str_radix::<10, 8>("61060309798889868014077100802497148468561512692425559954910235802350114397858493596422472723116050496081085430947562656270740618299118061128994357736218037512854403413961708").unwrap();
+            div_assign_n_words(&mut y, &x);
+            let expected = from_str_radix::<10, 8>("735738826730312422682248866495569766911262046946938858983516260451028363751515777406730177431644").unwrap();
+            assert_eq!(y, expected);
+        }
     }
 }

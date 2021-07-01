@@ -9,6 +9,7 @@ use std::fmt;
 use std::ops::{Mul, MulAssign, Neg, Not};
 
 use crate::non_zero::NonZeroSign;
+use crate::NonZero;
 
 /// # Signed numbers
 ///
@@ -28,6 +29,8 @@ pub trait Signed {
 macro_rules! unsigned {
     ($type:ty) => {
         impl Signed for $type {
+            #[must_use]
+            #[inline]
             fn signum(&self) -> Sign {
                 if *self == 0 {
                     Sign::Zero
@@ -49,6 +52,8 @@ unsigned!(usize);
 macro_rules! signed {
     ($type:ty) => {
         impl Signed for $type {
+            #[must_use]
+            #[inline]
             fn signum(&self) -> Sign {
                 match self.cmp(&0) {
                     Ordering::Less => Sign::Negative,
@@ -70,14 +75,24 @@ signed!(isize);
 /// Sign with a zero variant.
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub enum Sign {
-    Positive,
-    Zero,
-    Negative,
+    Positive = 1,
+    Zero = 0,
+    Negative = -1,
+}
+
+impl NonZero for Sign {
+    #[must_use]
+    #[inline]
+    fn is_not_zero(&self) -> bool {
+        *self != Sign::Zero
+    }
 }
 
 impl Neg for Sign {
     type Output = Self;
 
+    #[must_use]
+    #[inline]
     fn neg(self) -> Self::Output {
         match self {
             Sign::Positive => Sign::Negative,
@@ -90,6 +105,8 @@ impl Neg for Sign {
 impl Not for Sign {
     type Output = Self;
 
+    #[must_use]
+    #[inline]
     fn not(self) -> Self::Output {
         match self {
             Sign::Positive => Sign::Negative,
@@ -100,6 +117,7 @@ impl Not for Sign {
 }
 
 impl MulAssign for Sign {
+    #[inline]
     fn mul_assign(&mut self, rhs: Self) {
         *self = match (&self, rhs) {
             (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => Sign::Positive,
@@ -112,6 +130,8 @@ impl MulAssign for Sign {
 impl Mul for Sign {
     type Output = Self;
 
+    #[must_use]
+    #[inline]
     fn mul(mut self, rhs: Self) -> Self::Output {
         self *= rhs;
         self
@@ -119,6 +139,8 @@ impl Mul for Sign {
 }
 
 impl PartialOrd for Sign {
+    #[must_use]
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
             (Sign::Negative, Sign::Zero | Sign::Positive) | (Sign::Zero, Sign::Positive) => Some(Ordering::Less),
@@ -130,6 +152,8 @@ impl PartialOrd for Sign {
 }
 
 impl From<NonZeroSign> for Sign {
+    #[must_use]
+    #[inline]
     fn from(sign: NonZeroSign) -> Self {
         match sign {
             NonZeroSign::Positive => Sign::Positive,
@@ -191,6 +215,7 @@ mod test {
         assert_eq!(Sign::Zero == Sign::Zero, true);
         assert_eq!(Sign::Negative < Sign::Positive, true);
         assert_eq!(Sign::Negative < Sign::Zero, true);
+        assert_eq!(Sign::Negative < Sign::Negative, false);
     }
 
     #[test]
@@ -211,11 +236,5 @@ mod test {
         assert_eq!(RB!(-1).signum() * RB!(-1).signum(), Sign::Positive);
         assert_eq!(RB!(1).signum() * RB!(1).signum(), Sign::Positive);
         assert_eq!(RB!(-1).signum() * RB!(1).signum(), Sign::Negative);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_sign_conversion_reverse() {
-        let _: crate::NonZeroSign = Sign::Zero.into();
     }
 }
