@@ -11,6 +11,7 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssi
 use crate::non_zero::NonZeroSigned;
 
 pub mod factorization;
+mod signed_unsigned;
 
 /// The simplex algorithm is defined over the ordered fields.
 ///

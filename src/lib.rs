@@ -8,6 +8,9 @@
 #![feature(result_flattening)]
 #![feature(unchecked_math)]
 #![feature(core_intrinsics)]
+#![feature(nonzero_ops)]
+#![feature(const_generics)]
+#![feature(const_evaluatable_checked)]
 
 mod binary;
 pub use binary::Binary;
@@ -20,6 +23,8 @@ pub use one::One;
 
 mod integer;
 pub use integer::factorization::prime::Prime;
+pub use integer::big::Ubig;
+pub use integer::big::NonZeroUbig;
 
 mod non_zero;
 pub use non_zero::NonZero;
@@ -33,6 +38,12 @@ pub use rational::Rational64;
 pub use rational::Rational32;
 pub use rational::Rational16;
 pub use rational::Rational8;
+pub use rational::NonZeroRationalBig;
+pub use rational::NonZeroRational128;
+pub use rational::NonZeroRational64;
+pub use rational::NonZeroRational32;
+pub use rational::NonZeroRational16;
+pub use rational::NonZeroRational8;
 
 mod sign;
 pub use sign::Sign;

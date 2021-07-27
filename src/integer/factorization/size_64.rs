@@ -1,121 +1,154 @@
+use std::intrinsics::assume;
+use std::num::NonZeroU64;
+
 use gcd::Gcd;
 
-use crate::{NonZeroFactorizable, NonZeroFactorization, NonZeroSign, NonZeroSigned, Prime};
 use crate::integer::factorization::prime::primes::SMALL_ODD_PRIMES;
-use std::intrinsics::assume;
+use crate::integer::factorization::start;
+use crate::Prime;
 
-impl NonZeroFactorizable for i64 {
-    type Factor = u64;
-    type Power = u8;
+/// Approximately factorize a number.
+///
+/// This factorization is not necessarily exact; large factors might be missing, depending on the
+/// parameters chosen.
+///
+/// # Arguments
+///
+/// * `NR_SMALL_PRIMES`: The number of odd small primes to do trial division with.
+/// * `TRIAL_DIVISION_LIMIT`: Largest odd number to do trial division with after small primes are
+/// exhausted. If it is zero, this method is not used.
+/// * `RHO_BASE_LIMIT`: Number of rounds to use with Pollard's rho method. If it is zero, this
+/// method is not used.
+/// * `KEEP_RESIDUAL`: Whether the (potentially non-prime) remainder after the previous three
+/// methods should be added as a factor.
+pub fn factorize<
+    const NR_SMALL_PRIMES: usize,
+    const TRIAL_DIVISION_LIMIT: u64,
+    const RHO_BASE_LIMIT: u64,
+    const KEEP_RESIDUAL: bool,
+>(value: NonZeroU64) -> Vec<(u64, u32)> {
+    let mut x = value.get();
 
-    fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power> {
-        let sign = NonZeroSigned::signum(self);
-        let NonZeroFactorization {
-            factors, ..
-        } = self.unsigned_abs().factorize();
-        NonZeroFactorization { sign, factors }
+    // Product of the first 16 primes is larger than 2 ** 64
+    let mut factors = Vec::with_capacity(15);
+
+    // Powers of two
+    let two_powers = x.trailing_zeros();
+    if two_powers > 0 {
+        x >>= two_powers;
+        factors.push((2, two_powers));
     }
-}
 
-// TODO(PERFORMANCE): How far should this loop go?
-const TRIAL_DIVISION_LIMIT: u64 = 1_000;
+    'odd: {
+        // smallest
+        for divisor in &SMALL_ODD_PRIMES[..NR_SMALL_PRIMES] {
+            let divisor = *divisor as u64;
+            unsafe { assume(divisor != 0); }
 
-impl NonZeroFactorizable for u64 {
-    type Factor = u64;
-    type Power = u8;
+            let mut counter = 0;
+            while x % divisor == 0 {
+                x /= divisor;
+                counter += 1;
+            }
 
-    fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power> {
-        debug_assert_ne!(*self, 0);
+            if counter > 0 {
+                factors.push((divisor, counter));
+            }
 
-        let mut x = *self;
-        // Product of the first 16 primes is larger than 2 ** 64
-        let mut factors = Vec::with_capacity(15);
-
-        // Trial division
-        // 2
-        let two_powers = x.trailing_zeros();
-        if two_powers > 0 {
-            x >>= two_powers;
-            factors.push((2, two_powers as u8));
+            if x == 1 {
+                break 'odd;
+            }
         }
 
-        'odd: {
-            // smallest
-            for divisor in SMALL_ODD_PRIMES {
-                let divisor = divisor as u64;
-                unsafe { assume(divisor != 0); }
+        if TRIAL_DIVISION_LIMIT != 0 {
+            let start = start(NR_SMALL_PRIMES) as u64;
+            x = trial_division::<TRIAL_DIVISION_LIMIT>(x, start, &mut factors);
 
-                let mut counter = 0;
-                while x % divisor == 0 {
-                    x /= divisor;
-                    counter += 1;
-                }
-
-                if counter > 0 {
-                    factors.push((divisor, counter));
-                }
-
-                if x == 1 {
-                    break 'odd;
-                }
+            if x == 1 {
+                break 'odd;
             }
-            // small
-            let mut divisor = *SMALL_ODD_PRIMES.last().unwrap() as u64 + 2;
-            let mut sqrt = ((x as f64).sqrt() + 2_f64) as u64;
-            while x > 1 && divisor < TRIAL_DIVISION_LIMIT && divisor <= sqrt && !x.is_prime() {
-                let mut counter = 0;
-                while x % divisor == 0 {
-                    x /= divisor;
-                    counter += 1;
-                }
+        }
 
-                if counter > 0 {
-                    factors.push((divisor, counter));
-                    sqrt = ((x as f64).sqrt() + 2_f64) as u64;
-                }
-
-                divisor += 2;
-            }
-
-            if x > 1 && x.is_prime() {
+        if KEEP_RESIDUAL {
+            if x.is_prime() {
                 factors.push((x, 1));
                 break 'odd;
             }
-
-            // Prime test and Pollard's rho
-            let mut unsorted_factors = Vec::new();
-            rho_loop(x, &mut unsorted_factors);
-
-            // Sort and aggregate the factors
-            unsorted_factors.sort_unstable();
-            let mut iter = unsorted_factors.into_iter();
-            let mut factor = iter.next().unwrap();
-            let mut counter = 1;
-            for new_factor in iter {
-                if new_factor == factor {
-                    counter += 1;
-                } else {
-                    factors.push((factor, counter));
-                    factor = new_factor;
-                    counter = 1;
-                }
-            }
-            factors.push((factor, counter));
         }
 
-        NonZeroFactorization { sign: NonZeroSign::Positive, factors }
+        if RHO_BASE_LIMIT != 0 {
+            x = pollards_rho::<RHO_BASE_LIMIT>(x, &mut factors);
+        }
+
+        if KEEP_RESIDUAL {
+            if x > 1 {
+                factors.push((x, 1));
+            }
+        }
     }
+
+    factors
 }
 
-// TODO(PERFORMANCE): How long should this be tried?
-const RHO_BASE_LIMIT: u64 = 20;
+// TODO(PERFORMANCE): Make `start` a const parameter
+fn trial_division<const END: u64>(mut x: u64, start: u64, factors: &mut Vec<(u64, u32)>) -> u64 {
+    let mut divisor = start;
+    let mut sqrt = ((x as f64).sqrt() + 2_f64) as u64;
+    while x > 1 && divisor < END && divisor <= sqrt && !x.is_prime() {
+        unsafe {
+            assume(divisor != 0);
+        }
 
-fn rho_loop(mut x: u64, factors: &mut Vec<u64>) {
+        let mut counter = 0;
+        while x % divisor == 0 {
+            x /= divisor;
+            counter += 1;
+        }
+
+        if counter > 0 {
+            factors.push((divisor, counter));
+            sqrt = ((x as f64).sqrt() + 2_f64) as u64;
+        }
+
+        divisor += 2;
+    }
+
+    x
+}
+
+fn pollards_rho<const BASE_LIMIT: u64>(mut x: u64, factors: &mut Vec<(u64, u32)>) -> u64 {
+    // Prime test and Pollard's rho
+    let mut unsorted_factors = Vec::new();
+    rho_loop::<BASE_LIMIT>(x, &mut unsorted_factors);
+
+    // Sort and aggregate the factors
+    unsorted_factors.sort_unstable();
+    let mut iter = unsorted_factors.into_iter();
+    let mut factor = iter.next().unwrap();
+    let mut counter = 1;
+    for new_factor in iter {
+        x /= new_factor;
+
+        if new_factor == factor {
+            counter += 1;
+        } else {
+            factors.push((factor, counter));
+            factor = new_factor;
+            counter = 1;
+        }
+    }
+    factors.push((factor, counter));
+    x /= factor;
+
+    x
+}
+
+fn rho_loop<const LIMIT: u64>(mut x: u64, factors: &mut Vec<u64>) {
     debug_assert_ne!(x, 0);
 
     let mut e = 2;
     while x > 1 {
-        if x.is_prime() || e == RHO_BASE_LIMIT {
+        if x.is_prime() || e == LIMIT {
             factors.push(x);
             break;
         }
@@ -130,7 +163,7 @@ fn rho_loop(mut x: u64, factors: &mut Vec<u64>) {
                     factors.push(factor);
                 } else {
                     // TODO(PERFORMANCE): Should the `e` variable be passed to the inner call?
-                    rho_loop(factor, factors);
+                    rho_loop::<LIMIT>(factor, factors);
                 }
                 x /= factor;
             }
@@ -204,4 +237,30 @@ pub fn rho(value: u64, entropy: u64) -> Option<u64> {
     }
 
     Some(factor)
+}
+
+#[cfg(test)]
+mod test {
+    use std::num::NonZeroU64;
+
+    use crate::integer::factorization::size_64::factorize;
+
+    #[test]
+    fn test_composite() {
+        let composite = NonZeroU64::new(2_u64.pow(36) - 7).unwrap();
+        assert_eq!(
+            factorize::<256, 10_000, 20, true>(composite),
+            vec![(3, 1), (22906492243, 1)],
+        );
+        let composite = NonZeroU64::new(2_u64.pow(60) - 95).unwrap();
+        assert_eq!(
+            factorize::<256, 10_000, 20, true>(composite),
+            vec![(3457, 1), (6203, 1), (53764867411, 1)],
+        );
+        let composite = NonZeroU64::new(2_u64.pow(53) - 113).unwrap();
+        assert_eq!(
+            factorize::<256, 10_000, 20, true>(composite),
+            vec![(3, 2), (43, 1), (642739, 1), (36211303, 1)],
+        );
+    }
 }

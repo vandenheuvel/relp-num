@@ -1,6 +1,8 @@
+use std::num::NonZeroU64;
+
+use crate::integer::factorization::prime::primes::SMALL_ODD_PRIMES_16;
 use crate::non_zero::NonZeroSign;
 use crate::traits::factorization::{NonZeroFactorizable, NonZeroFactorization};
-use crate::integer::factorization::prime::primes::SMALL_ODD_PRIMES_16;
 
 macro_rules! shared {
     ($mod_name:ident, $ity:ty, $uty:ty) => {
@@ -115,17 +117,17 @@ fn test_factorize_large_prime() {
     let prime = 2_u64.pow(36) - 5;
     assert_eq!(
         prime.factorize(),
-        NonZeroFactorization { sign: NonZeroSign::Positive, factors: vec![(prime, 1)] },
+        NonZeroFactorization { sign: NonZeroSign::Positive, factors: vec![] },
     );
     let prime = 2_u64.pow(60) - 93;
     assert_eq!(
         prime.factorize(),
-        NonZeroFactorization { sign: NonZeroSign::Positive, factors: vec![(prime, 1)] },
+        NonZeroFactorization { sign: NonZeroSign::Positive, factors: vec![] },
     );
     let prime = 2_u64.pow(53) - 111;
     assert_eq!(
         prime.factorize(),
-        NonZeroFactorization { sign: NonZeroSign::Positive, factors: vec![(prime, 1)] },
+        NonZeroFactorization { sign: NonZeroSign::Positive, factors: vec![] },
     );
 }
 
@@ -149,16 +151,25 @@ fn test_factorize_large_composite() {
     let composite = 2_u64.pow(36) - 7;
     assert_eq!(
         composite.factorize(),
-        NonZeroFactorization { sign: NonZeroSign::Positive, factors: vec![(3, 1), (22906492243, 1)] },
+        // [(3, 1), (22906492243, 1)]
+        NonZeroFactorization { sign: NonZeroSign::Positive, factors: vec![(3, 1)] },
     );
     let composite = 2_u64.pow(60) - 95;
     assert_eq!(
         composite.factorize(),
-        NonZeroFactorization { sign: NonZeroSign::Positive, factors: vec![(3457, 1), (6203, 1), (53764867411, 1)] },
+        // [(3457, 1), (6203, 1), (53764867411, 1)]
+        NonZeroFactorization { sign: NonZeroSign::Positive, factors: vec![] },
     );
     let composite = 2_u64.pow(53) - 113;
     assert_eq!(
         composite.factorize(),
-        NonZeroFactorization { sign: NonZeroSign::Positive, factors: vec![(3, 2), (43, 1), (642739, 1), (36211303, 1)] },
+        // [(3, 2), (43, 1), (642739, 1), (36211303, 1)]
+        NonZeroFactorization { sign: NonZeroSign::Positive, factors: vec![(3, 2), (43, 1)] },
+    );
+    let composite = NonZeroU64::new(2_u64.pow(53) - 113).unwrap();
+    assert_eq!(
+        composite.factorize(),
+        // [(3, 2), (43, 1), (642739, 1), (36211303, 1)]
+        NonZeroFactorization { sign: NonZeroSign::Positive, factors: vec![(3, 2), (43, 1)] },
     );
 }
