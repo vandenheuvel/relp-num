@@ -17,7 +17,7 @@ impl<const S: usize> Sum for Big<S> {
         match first {
             None => <Self as num_traits::Zero>::zero(),
             Some(mut total) => {
-                while let Some(next_value) = iter.next() {
+                for next_value in iter {
                     total += next_value;
                 }
 

@@ -250,11 +250,11 @@ unsafe fn mul_assign_int<const S: usize>(
     left_numerator: &mut SmallVec<[usize; S]>, left_denominator: &mut SmallVec<[usize; S]>,
     right: &[usize],
 ) {
-    debug_assert!(is_well_formed_non_zero(&left_numerator));
-    debug_assert!(is_well_formed_non_zero(&left_denominator));
-    debug_assert!(is_well_formed_non_zero(&right));
+    debug_assert!(is_well_formed_non_zero(left_numerator));
+    debug_assert!(is_well_formed_non_zero(left_denominator));
+    debug_assert!(is_well_formed_non_zero(right));
 
-    *left_numerator = mul_non_zero(left_numerator, &right);
+    *left_numerator = mul_non_zero(left_numerator, right);
     simplify_fraction_without_info(left_numerator, left_denominator);
 }
 
@@ -263,8 +263,8 @@ unsafe fn mul_assign_int_owning<const S: usize>(
     left_numerator: &mut SmallVec<[usize; S]>, left_denominator: &mut SmallVec<[usize; S]>,
     mut right: SmallVec<[usize; S]>,
 ) {
-    debug_assert!(is_well_formed_non_zero(&left_numerator));
-    debug_assert!(is_well_formed_non_zero(&left_denominator));
+    debug_assert!(is_well_formed_non_zero(left_numerator));
+    debug_assert!(is_well_formed_non_zero(left_denominator));
     debug_assert!(is_well_formed_non_zero(&right));
 
     simplify_fraction_without_info(left_denominator, &mut right);
@@ -384,8 +384,8 @@ unsafe fn mul_assign_usize<const S: usize>(
     left_numerator: &mut SmallVec<[usize; S]>, left_denominator: &mut SmallVec<[usize; S]>,
     mut rhs: usize,
 ) {
-    debug_assert!(is_well_formed_non_zero(&left_numerator));
-    debug_assert!(is_well_formed_non_zero(&left_denominator));
+    debug_assert!(is_well_formed_non_zero(left_numerator));
+    debug_assert!(is_well_formed_non_zero(left_denominator));
     debug_assert_ne!(rhs, 0);
 
     if rhs != 1 {

@@ -102,6 +102,7 @@ rational!(Rational128, i128, u128);
 
 macro_rules! rational_non_zero {
     ($name:ident, $ity:ty, $uty:ty) => {
+        /// Non zero rational number.
         pub type $name = Ratio<NonZeroSign, $uty, $uty>;
 
         impl PartialEq for $name {

@@ -14,6 +14,7 @@ pub mod primes;
 
 /// Determining whether a number is a prime.
 pub trait Prime: NonZero {
+    /// Whether this number is prime.
     fn is_prime(&self) -> bool;
 }
 
@@ -40,7 +41,7 @@ impl Prime for u64 {
         let hash = hash_function_64(*self);
         let basis = BUCKETS_64[hash];
 
-        return self.is_probable_prime((basis & 4095) as u64) && self.is_probable_prime((basis >> 12) as u64);
+        self.is_probable_prime((basis & 4095) as u64) && self.is_probable_prime((basis >> 12) as u64)
     }
 }
 
@@ -51,7 +52,7 @@ fn hash_function_64(mut hash: u64) -> usize {
     hash = (hash >> 32) ^ hash;
     hash &= 0b0000_0000_0000_0000_0011_1111_1111_1111;
 
-    return hash as usize
+    hash as usize
 }
 
 
@@ -79,7 +80,7 @@ fn safe_exp(mut base: u64, exponent: u64, n: u64) -> u64 {
         power <<= 1;
     }
 
-    return result;
+    result
 }
 
 impl Prime for u32 {
@@ -99,7 +100,7 @@ impl Prime for u32 {
 
         let basis_index = hash_function_32(*self as u64);
 
-        return self.is_probable_prime(BUCKETS_32[basis_index] as u32);
+        self.is_probable_prime(BUCKETS_32[basis_index] as u32)
     }
 }
 
@@ -142,7 +143,7 @@ impl ProbablePrime for u32 {
             current = (current * current) % *self as u64;
         }
 
-        return false;
+        false
     }
 }
 
@@ -175,7 +176,7 @@ impl ProbablePrime for u64 {
             current = safe_mul(current, current, *self);
         }
 
-        return false;
+        false
     }
 }
 
@@ -187,7 +188,7 @@ fn hash_function_32(mut hash: u64) -> usize {
     }
     hash = ((hash >> 16) ^ hash) & 0b0000_0000_0000_0000_0000_0000_1111_1111;
 
-    return hash as usize
+    hash as usize
 }
 
 #[cfg(test)]

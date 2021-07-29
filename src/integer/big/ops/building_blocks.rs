@@ -96,7 +96,7 @@ pub unsafe fn add_n(target: &mut [usize], left: &[usize], right: &[usize], size:
 
     debug_assert!(size >= 1);
 
-    return ramp_add_n(target.as_mut_ptr(), left.as_ptr(), right.as_ptr(), size);
+    ramp_add_n(target.as_mut_ptr(), left.as_ptr(), right.as_ptr(), size)
 }
 
 /// Copying subtraction (not necessarily in place)
@@ -108,7 +108,7 @@ pub unsafe fn sub_n(wp: &mut [usize], xp: &[usize], yp: &[usize], n: i32) -> usi
 
     debug_assert!(n >= 1);
 
-    return ramp_sub_n(wp.as_mut_ptr(), xp.as_ptr(), yp.as_ptr(), n);
+    ramp_sub_n(wp.as_mut_ptr(), xp.as_ptr(), yp.as_ptr(), n)
 }
 
 #[inline]

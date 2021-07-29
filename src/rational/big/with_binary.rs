@@ -1,7 +1,5 @@
 use std::ops::{Add, AddAssign, Mul};
 
-use num_traits;
-
 use crate::binary::Binary;
 use crate::one::One;
 use crate::rational::big::Big;

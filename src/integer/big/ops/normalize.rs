@@ -12,8 +12,8 @@ use crate::integer::big::properties::cmp;
 
 #[must_use]
 pub unsafe fn is_coprime_non_zero(left: &[usize], right: &[usize]) -> bool {
-    debug_assert!(is_well_formed_non_zero(&left));
-    debug_assert!(is_well_formed_non_zero(&right));
+    debug_assert!(is_well_formed_non_zero(left));
+    debug_assert!(is_well_formed_non_zero(right));
 
     const S: usize = 8;
 
@@ -58,7 +58,7 @@ pub fn prepare_gcd_single<const S: usize>(
     let large_shifted = shr(left,0, left_zero_bits);
     right >>= right_zero_bits;
 
-    return (large_shifted, right, zero_bits)
+    (large_shifted, right, zero_bits)
 }
 
 #[inline]
@@ -72,7 +72,7 @@ pub fn prepare_gcd_single_mut<const S: usize>(
     shr_mut(left,0, zero_bits);
     right >>= zero_bits;
 
-    return (right, left_zero_bits - zero_bits, right_zero_bits - zero_bits, zero_bits)
+    (right, left_zero_bits - zero_bits, right_zero_bits - zero_bits, zero_bits)
 }
 
 #[inline]

@@ -2,8 +2,10 @@ use std::mem;
 
 use smallvec::SmallVec;
 
+/// Unsigned big integer.
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
 pub struct Ubig<const S: usize>(SmallVec<[usize; S]>);
+/// Non zero unsigned big integer.
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
 pub struct NonZeroUbig<const S: usize>(SmallVec<[usize; S]>);
 

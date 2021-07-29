@@ -20,9 +20,8 @@ pub type Big<const S: usize> = Ratio<Sign, Ubig<S>, NonZeroUbig<S>>;
 pub type NonZeroBig<const S: usize> = Ratio<NonZeroSign, NonZeroUbig<S>, NonZeroUbig<S>>;
 
 /// An arbitrary precision type.
-///
-/// Represents any rational number with a sign, numerator and denominator.
 pub type Big8 = Big<8>;
+/// A non zero arbitrary precision type.
 pub type NonZeroBig8 = NonZeroBig<8>;
 
 #[cfg(test)]

@@ -328,7 +328,7 @@ pub unsafe fn add_small<const S: usize>(
             add_assign_single_non_zero(left_numerator, right_numerator);
             *left_denominator.get_unchecked_mut(0) = right_denominator;
         } else {
-            let (left, small, bits) = prepare_gcd_single::<S>(&left_denominator, right_denominator);
+            let (left, small, bits) = prepare_gcd_single::<S>(left_denominator, right_denominator);
             let gcd = gcd_single(left, small, bits);
 
             mul_assign_single_non_zero(left_numerator, right_denominator / gcd);
@@ -346,7 +346,7 @@ pub unsafe fn add_small<const S: usize>(
 
             mul_assign_single_non_zero(left_denominator, right_denominator);
 
-            if !is_one_non_zero(&left_numerator) {
+            if !is_one_non_zero(left_numerator) {
                 simplify_fraction_gcd(left_numerator, left_denominator);
             }
         }
@@ -388,7 +388,7 @@ pub unsafe fn sub_small<const S: usize>(
                 left_numerator[0] = 1;
                 left_denominator[0] = 1;
             } else {
-                if !is_one_non_zero(&left_numerator) && *denominator != 1 { // denominator.len() == 1
+                if !is_one_non_zero(left_numerator) && *denominator != 1 { // denominator.len() == 1
                     *denominator = simplify_fraction_gcd_single(left_numerator, *denominator);
                 }
             }
@@ -408,7 +408,7 @@ pub unsafe fn sub_small<const S: usize>(
                 left_numerator.pop();
             }
 
-            if *denominator != 1 && !is_one_non_zero(&left_numerator) {
+            if *denominator != 1 && !is_one_non_zero(left_numerator) {
                 *denominator = simplify_fraction_gcd_single(left_numerator, *denominator);
             }
 
@@ -423,7 +423,7 @@ pub unsafe fn sub_small<const S: usize>(
                 Ordering::Greater => SignChange::None,
                 Ordering::Equal => panic!(),
             }
-        } else if is_one_non_zero(&left_denominator) {
+        } else if is_one_non_zero(left_denominator) {
             mul_assign_single_non_zero(left_numerator, right_denominator);
             *left_denominator.first_mut().unwrap() = right_denominator;
             match subtracting_cmp_ne_single(left_numerator, right_numerator) {
@@ -432,7 +432,7 @@ pub unsafe fn sub_small<const S: usize>(
                 Ordering::Equal => panic!(),
             }
         } else {
-            let (left, small, bits) = prepare_gcd_single::<S>(&left_denominator, right_denominator);
+            let (left, small, bits) = prepare_gcd_single::<S>(left_denominator, right_denominator);
             let gcd = gcd_single(left, small, bits);
 
             mul_assign_single_non_zero(left_numerator, right_denominator / gcd);
@@ -451,7 +451,7 @@ pub unsafe fn sub_small<const S: usize>(
             };
             mul_assign_single_non_zero(left_denominator, right_denominator);
 
-            if !is_one_non_zero(&left_numerator) {
+            if !is_one_non_zero(left_numerator) {
                 simplify_fraction_gcd(left_numerator, left_denominator);
             }
 
@@ -472,11 +472,11 @@ pub unsafe fn mul_small<const S: usize>(
     debug_assert!(is_well_formed_fraction_non_zero(left_numerator, left_denominator));
     debug_assert!(is_well_formed_fraction_small(right_numerator, right_denominator));
 
-    if right_denominator != 1 && !is_one_non_zero(&left_numerator) {
+    if right_denominator != 1 && !is_one_non_zero(left_numerator) {
         right_denominator = simplify_fraction_gcd_single(left_numerator, right_denominator)
     }
 
-    if right_numerator != 1 && !is_one_non_zero(&left_denominator) {
+    if right_numerator != 1 && !is_one_non_zero(left_denominator) {
         right_numerator = simplify_fraction_gcd_single(left_denominator, right_numerator)
     }
 

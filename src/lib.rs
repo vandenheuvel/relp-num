@@ -1,6 +1,8 @@
 //! # relp-num
 //!
 //! Number types for the [RELP](https://crates.io/crates/relp) crate.
+#![warn(missing_docs)]
+
 #![feature(asm)]
 #![feature(min_specialization)]
 #![feature(label_break_value)]
@@ -9,8 +11,6 @@
 #![feature(unchecked_math)]
 #![feature(core_intrinsics)]
 #![feature(nonzero_ops)]
-#![feature(const_generics)]
-#![feature(const_evaluatable_checked)]
 
 mod binary;
 pub use binary::Binary;

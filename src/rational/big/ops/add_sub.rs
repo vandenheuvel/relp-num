@@ -97,7 +97,6 @@ impl<const S: usize> Add for &Big<S> {
 }
 
 impl<const S: usize> AddAssign for Big<S> {
-    #[must_use]
     #[inline]
     fn add_assign(&mut self, rhs: Big<S>) {
         AddAssign::add_assign(self, &rhs);
@@ -105,7 +104,6 @@ impl<const S: usize> AddAssign for Big<S> {
 }
 
 impl<const S: usize> AddAssign<&Big<S>> for Big<S> {
-    #[must_use]
     #[inline]
     fn add_assign(&mut self, rhs: &Big<S>) {
         match (self.sign, rhs.sign) {
@@ -123,7 +121,7 @@ impl<const S: usize> AddAssign<&Big<S>> for Big<S> {
             (Sign::Positive, Sign::Negative) | (Sign::Negative, Sign::Positive) => {
                 unsafe {
                     // SAFETY: All values are non zero
-                    self.sub_assign_update_sign(&rhs);
+                    self.sub_assign_update_sign(rhs);
                 }
             },
             (_, Sign::Zero) => {},
@@ -200,7 +198,6 @@ impl<const S: usize> Sub for &Big<S> {
 }
 
 impl<const S: usize> SubAssign<Big<S>> for Big<S> {
-    #[must_use]
     #[inline]
     fn sub_assign(&mut self, rhs: Big<S>) {
         SubAssign::sub_assign(self, &rhs);
@@ -208,14 +205,13 @@ impl<const S: usize> SubAssign<Big<S>> for Big<S> {
 }
 
 impl<const S: usize> SubAssign<&Big<S>> for Big<S> {
-    #[must_use]
     #[inline]
     fn sub_assign(&mut self, rhs: &Big<S>) {
         match (self.sign, rhs.sign) {
             (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => {
                 unsafe {
                     // SAFETY: All values are non zero
-                    self.sub_assign_update_sign(&rhs);
+                    self.sub_assign_update_sign(rhs);
                 }
             },
             (Sign::Positive, Sign::Negative) | (Sign::Negative, Sign::Positive) => unsafe {
