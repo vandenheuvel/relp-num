@@ -26,8 +26,6 @@ pub(crate) mod big;
 mod factorization;
 mod macros;
 
-mod utilities;
-
 /// Ratio between two numbers.
 #[derive(Copy, Clone)]
 pub struct Ratio<S, N, D: NonZero> {

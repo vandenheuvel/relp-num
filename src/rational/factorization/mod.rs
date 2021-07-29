@@ -1,12 +1,12 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
+use index_utils::merge_sparse_indices;
 use num_traits::One;
 
 use crate::non_zero::NonZero;
 use crate::NonZeroSign;
 use crate::rational::Ratio;
-use crate::rational::utilities::merge_sparse_indices;
 use crate::Sign;
 use crate::traits::factorization::{NonZeroFactorizable, NonZeroFactorization};
 
@@ -38,6 +38,7 @@ macro_rules! impl_with_sign {
                     n_factors.into_iter(), d_factors.into_iter(),
                     |left, right| left as i32 - right as i32,
                     |x| x as i32, |x| -(x as i32),
+                    NonZero::is_not_zero,
                 );
 
                 NonZeroFactorization { sign: NonZeroSign::from(self.sign) * n_sign * d_sign, factors }
