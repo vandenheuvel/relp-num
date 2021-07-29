@@ -109,11 +109,12 @@ impl<const S: usize> Mul for NonZeroUbig<S> {
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
+    use num_traits::One;
     use smallvec::smallvec;
 
-    use crate::{Ubig, NonZeroUbig};
-    use std::str::FromStr;
-    use num_traits::One;
+    use crate::{NonZeroUbig, Ubig};
 
     #[test]
     fn test_add() {
