@@ -84,7 +84,7 @@ pub unsafe fn div<const S: usize>(
     // Assume that the do divide without remainder
     debug_assert_eq!(cmp(values, rhs), Ordering::Greater);
 
-    let (zero_words, zero_bits) = trailing_zeros(&rhs);
+    let (zero_words, zero_bits) = trailing_zeros(rhs);
     let mut left = shr(values, zero_words, zero_bits);
     let right = shr(rhs, zero_words, zero_bits);
 
@@ -361,7 +361,7 @@ unsafe fn create_divisor_inverse_and_divide<const S: usize>(
     let length_difference = values.len() - divisor.len();
     debug_assert!(length_difference > 0);
 
-    div_assign_n_words_helper(values, &divisor, divisor_inverse);
+    div_assign_n_words_helper(values, divisor, divisor_inverse);
 }
 
 #[inline]

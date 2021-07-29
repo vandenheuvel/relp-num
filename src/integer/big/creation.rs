@@ -14,6 +14,7 @@ use crate::integer::big::ops::building_blocks::is_well_formed;
 use crate::integer::big::ops::non_zero::{add_assign_single_non_zero, mul_assign_single_non_zero, shr_mut};
 
 impl<const S: usize> Ubig<S> {
+    /// Creates a new unsigned integer with the small specified value.
     #[must_use]
     #[inline]
     pub fn new(value: usize) -> Self {
@@ -21,16 +22,7 @@ impl<const S: usize> Ubig<S> {
     }
     #[must_use]
     #[inline]
-    pub fn from_inner(values: SmallVec<[usize; S]>) -> Option<Self> {
-        if is_well_formed(&values) {
-            Some(Self(values))
-        } else {
-            None
-        }
-    }
-    #[must_use]
-    #[inline]
-    pub unsafe fn from_inner_unchecked(values: SmallVec<[usize; S]>) -> Self {
+    pub(crate) unsafe fn from_inner_unchecked(values: SmallVec<[usize; S]>) -> Self {
         debug_assert!(is_well_formed(&values));
 
         Self(values)
@@ -38,6 +30,9 @@ impl<const S: usize> Ubig<S> {
 }
 
 impl<const S: usize> NonZeroUbig<S> {
+    /// Creates a new unsigned integer with the small specified value.
+    ///
+    /// If the specified value is non zero, this succeeds, otherwise, returns `None`.
     #[must_use]
     pub fn new(n: usize) -> Option<Self> {
         if n != 0 {
@@ -48,21 +43,12 @@ impl<const S: usize> NonZeroUbig<S> {
     }
     #[must_use]
     #[inline]
-    pub unsafe fn new_unchecked(value: usize) -> Self {
+    pub(crate) unsafe fn new_unchecked(value: usize) -> Self {
         NonZeroUbig(smallvec![value])
     }
     #[must_use]
     #[inline]
-    pub fn from_inner(values: SmallVec<[usize; S]>) -> Option<Self> {
-        if is_well_formed(&values) && !values.is_empty() {
-            Some(Self(values))
-        } else {
-            None
-        }
-    }
-    #[must_use]
-    #[inline]
-    pub unsafe fn from_inner_unchecked(values: SmallVec<[usize; S]>) -> Self {
+    pub(crate) unsafe fn from_inner_unchecked(values: SmallVec<[usize; S]>) -> Self {
         debug_assert!(is_well_formed(&values));
 
         Self(values)
@@ -201,14 +187,14 @@ impl<const S: usize> FromStr for NonZeroUbig<S> {
 
 impl<const S: usize> fmt::Display for Ubig<S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&to_str_radix::<10>(&self))
+        f.write_str(&to_str_radix::<10>(self))
     }
 }
 
 impl<const S: usize> fmt::Display for NonZeroUbig<S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // TODO(PERFORMANCE): Skip zero case
-        f.write_str(&to_str_radix::<10>(&self))
+        f.write_str(&to_str_radix::<10>(self))
     }
 }
 

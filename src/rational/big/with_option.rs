@@ -4,8 +4,6 @@
 use std::ops::Add;
 use std::ops::Mul;
 
-use num_traits;
-
 use crate::rational::big::Big;
 
 impl<const S: usize> Add<Option<&Big<S>>> for Big<S> {

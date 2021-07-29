@@ -15,11 +15,14 @@ use crate::NonZero;
 ///
 /// A number that is positive, negative or zero.
 pub trait Signed {
+    /// Returns the sign of the number.
     fn signum(&self) -> Sign;
+    /// Whether the number is (strictly) greater than zero.
     #[inline]
     fn is_positive(&self) -> bool {
         self.signum() == Sign::Positive
     }
+    /// Whether the number is (strictly) smaller than zero.
     #[inline]
     fn is_negative(&self) -> bool {
         self.signum() == Sign::Negative
@@ -75,8 +78,11 @@ signed!(isize);
 /// Sign with a zero variant.
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub enum Sign {
+    /// x > 0
     Positive = 1,
+    /// x == 0
     Zero = 0,
+    /// x < 0
     Negative = -1,
 }
 

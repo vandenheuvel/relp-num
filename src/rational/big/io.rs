@@ -5,7 +5,6 @@ use std::iter::repeat;
 use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
 use std::str::FromStr;
 
-use num_traits;
 use num_traits::{One, Zero};
 use smallvec::{smallvec, SmallVec};
 
@@ -252,9 +251,9 @@ impl<const S: usize> num_traits::FromPrimitive for Big<S> {
 
     fn from_f32(n: f32) -> Option<Self> {
         let n = n.to_bits();
-        let sign     = (n & 0b10000000_00000000_00000000_00000000) >> (32 - 1);
-        let exponent = (n & 0b01111111_10000000_00000000_00000000) >> (32 - 1 - 8);
-        let fraction =  n & 0b00000000_01111111_11111111_11111111;
+        let sign     = (n & 0b1000_0000_0000_0000_0000_0000_0000_0000) >> (32 - 1);
+        let exponent = (n & 0b0111_1111_1000_0000_0000_0000_0000_0000) >> (32 - 1 - 8);
+        let fraction =  n & 0b0000_0000_0111_1111_1111_1111_1111_1111;
 
         match (exponent, fraction) {
             (0, 0) => Some(<Self as num_traits::Zero>::zero()),
@@ -280,9 +279,9 @@ impl<const S: usize> num_traits::FromPrimitive for Big<S> {
 
     fn from_f64(n: f64) -> Option<Self> {
         let n = n.to_bits();
-        let sign     = (n & 0b10000000_00000000_00000000_00000000_00000000_00000000_00000000_00000000) >> (64 - 1);
-        let exponent = (n & 0b01111111_11110000_00000000_00000000_00000000_00000000_00000000_00000000) >> (64 - 1 - 11);
-        let fraction =  n & 0b00000000_00001111_11111111_11111111_11111111_11111111_11111111_11111111;
+        let sign     = (n & 0b1000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000) >> (64 - 1);
+        let exponent = (n & 0b0111_1111_1111_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000) >> (64 - 1 - 11);
+        let fraction =  n & 0b0000_0000_0000_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111;
 
         assert_eq!(mem::size_of::<usize>(), mem::size_of::<u64>());
 
@@ -482,7 +481,7 @@ impl<const S: usize> FromStr for Big<S> {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let _radix = 10;
 
-        if s.contains(".") || s.contains(",") {
+        if s.contains('.') || s.contains(',') {
             return Err("Decimal separators are not supported");
         }
 
@@ -492,10 +491,10 @@ impl<const S: usize> FromStr for Big<S> {
                 let (sign, s) = match &s[..1] {
                     "+" => (Sign::Positive, &s[1..]),
                     "-" => (Sign::Negative, &s[1..]),
-                    _ => (Sign::Positive, &s[..]),
+                    _   => (Sign::Positive, &s[..] ),
                 };
 
-                match s.find("/") {
+                match s.find('/') {
                     None => {
                         let numerator = Ubig::from_str(s)?;
 

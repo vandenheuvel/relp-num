@@ -88,15 +88,13 @@ fn factorize64(value: NonZeroU64) -> Vec<(u64, u32)> {
 forwards!(NonZeroI64, NonZeroU64, i64, u64, factorize64);
 
 pub const fn start(nr_small_primes: usize) -> u16 {
-    let next_candidate = if nr_small_primes < SMALL_ODD_PRIMES.len() {
+    if nr_small_primes < SMALL_ODD_PRIMES.len() {
         // Get next prime
         SMALL_ODD_PRIMES[nr_small_primes]
     } else {
         // Largest prime + 2
         SMALL_ODD_PRIMES[nr_small_primes - 1] + 2
-    };
-
-    next_candidate
+    }
 }
 
 #[cfg(test)]

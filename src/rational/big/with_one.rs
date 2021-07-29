@@ -51,7 +51,7 @@ impl<const S: usize> AddAssign<&One> for Big<S> {
                 self.sign = Sign::Positive;
                 debug_assert!(self.numerator.is_zero());
                 num_traits::One::set_one(&mut self.numerator);
-                debug_assert!(num_traits::One::is_one(&mut self.denominator));
+                debug_assert!(num_traits::One::is_one(&self.denominator));
             }
             Sign::Negative => {
                 let both_not_one = unsafe {
@@ -100,7 +100,7 @@ impl<const S: usize> SubAssign<One> for Big<S> {
     fn sub_assign(&mut self, _: One) {
         match self.sign {
             Sign::Positive => {
-                let numerator_is_one = unsafe { is_one_non_zero(&self.numerator.inner_mut()) };
+                let numerator_is_one = unsafe { is_one_non_zero(self.numerator.inner()) };
                 if !numerator_is_one || !num_traits::One::is_one(&self.denominator) {
                     match unsafe { subtracting_cmp(self.numerator.inner_mut(), self.denominator.inner()) } {
                         Ordering::Less => self.sign = !self.sign,

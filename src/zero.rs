@@ -5,8 +5,6 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::ops::{Add, AddAssign, Mul, Neg};
 
-use num_traits;
-
 use crate::{Sign, Signed};
 
 /// # Zero

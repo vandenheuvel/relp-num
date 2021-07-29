@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::intrinsics::assume;
 use std::num::NonZeroU64;
 
@@ -225,14 +226,14 @@ pub fn rho(value: u64, entropy: u64) -> Option<u64> {
     while factor == value || factor <= 1 {
         y_old = f(y_old);
 
-        if x > y_old {
-            factor = Gcd::gcd(x - y_old, value);
-        } else if x < y_old {
-            factor = Gcd::gcd(y_old - x, value);
-        } else {
-            // the algorithm has failed for this entropy,
-            // return the factor as-is
-            return None;
+        match x.cmp(&y_old) {
+            Ordering::Less => factor = Gcd::gcd(y_old - x, value),
+            Ordering::Equal => {
+                // the algorithm has failed for this entropy,
+                // return the factor as-is
+                return None;
+            }
+            Ordering::Greater => factor = Gcd::gcd(x - y_old, value),
         }
     }
 
