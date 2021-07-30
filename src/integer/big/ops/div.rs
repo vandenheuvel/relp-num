@@ -86,7 +86,7 @@ pub unsafe fn div<const S: usize>(
 
     let (zero_words, zero_bits) = trailing_zeros(rhs);
     let mut left = shr(values, zero_words, zero_bits);
-    let right = shr(rhs, zero_words, zero_bits);
+    let right = shr::<S>(rhs, zero_words, zero_bits);
 
     // right is odd now
     if !is_one_non_zero(&right) {
@@ -106,14 +106,13 @@ pub unsafe fn div<const S: usize>(
 #[inline]
 pub unsafe fn div_assign_by_odd<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
-    rhs: &SmallVec<[usize; S]>,
+    rhs: &[usize],
 ) {
     debug_assert!(is_well_formed(values));
     debug_assert!(!values.is_empty());
     debug_assert!(is_well_formed(rhs));
     debug_assert!(!rhs.is_empty());
-    let one: SmallVec<[usize; S]> = smallvec![1];
-    debug_assert_ne!(rhs, &one);
+    debug_assert_ne!(rhs, &[1]);
     debug_assert_eq!(rhs[0] % 2, 1);
     debug_assert_eq!(cmp(values, rhs), Ordering::Greater);
 
@@ -331,7 +330,7 @@ unsafe fn div_assign_two_words_helper<const S: usize>(
 #[inline]
 pub unsafe fn div_assign_n_words<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
-    rhs: &SmallVec<[usize; S]>,
+    rhs: &[usize],
 ) {
     debug_assert!(is_well_formed(values));
     debug_assert!(values.len() > 2);
@@ -344,7 +343,7 @@ pub unsafe fn div_assign_n_words<const S: usize>(
         leading_zeros => {
             shl_mut(values, 0, leading_zeros);
             // TODO(PERFORMANCE): Are there situations where we can mutate the divisor?
-            let divisor = shl(rhs, leading_zeros);
+            let divisor = shl::<S>(rhs, leading_zeros);
             create_divisor_inverse_and_divide(values, &divisor);
         }
     }
@@ -353,7 +352,7 @@ pub unsafe fn div_assign_n_words<const S: usize>(
 #[inline]
 unsafe fn create_divisor_inverse_and_divide<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
-    divisor: &SmallVec<[usize; S]>,
+    divisor: &[usize],
 ) {
     let divisor_length = divisor.len();
     let divisor_inverse = invert_pi(divisor[divisor_length - 1], divisor[divisor_length - 2]);
@@ -367,7 +366,7 @@ unsafe fn create_divisor_inverse_and_divide<const S: usize>(
 #[inline]
 pub unsafe fn div_assign_n_words_helper<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
-    divisor: &SmallVec<[usize; S]>,
+    divisor: &[usize],
     divisor_inverse: usize,
 ) {
     debug_assert!(*divisor.last().unwrap() > usize::MAX / 2);

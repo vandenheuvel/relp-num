@@ -250,124 +250,160 @@ impl<const S: usize> num_traits::FromPrimitive for Big<S> {
     }
 
     fn from_f32(n: f32) -> Option<Self> {
-        let n = n.to_bits();
-        let sign     = (n & 0b1000_0000_0000_0000_0000_0000_0000_0000) >> (32 - 1);
-        let exponent = (n & 0b0111_1111_1000_0000_0000_0000_0000_0000) >> (32 - 1 - 8);
-        let fraction =  n & 0b0000_0000_0111_1111_1111_1111_1111_1111;
-
-        match (exponent, fraction) {
-            (0, 0) => Some(<Self as num_traits::Zero>::zero()),
-            (0, _) => {
-                let non_zero_fraction = unsafe {
-                    // SAFETY: Zero would have matched earlier branch
-                    NonZeroU64::new_unchecked(fraction as u64)
-                };
-                Some(Self::from_float(sign as u64, 1 - 127 - 23, non_zero_fraction))
-            }, // subnormals
-            (ONES_32, 0) => None, // infinity
-            (ONES_32, _) => None, // NaN
-            _ => {
-                let non_zero_fraction = unsafe {
-                    // SAFETY: A constant is always added
-                    NonZeroU64::new_unchecked((fraction + (1 << 23)) as u64)
-                    // SAFETY: A constant is always added
-                };
-                Some(Self::from_float(sign as u64, exponent as i32 - 127 - 23, non_zero_fraction))
-            },
-        }
+        Self::from_float_kind(f32_kind(n))
     }
 
     fn from_f64(n: f64) -> Option<Self> {
-        let n = n.to_bits();
-        let sign     = (n & 0b1000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000) >> (64 - 1);
-        let exponent = (n & 0b0111_1111_1111_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000) >> (64 - 1 - 11);
-        let fraction =  n & 0b0000_0000_0000_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111;
+        Self::from_float_kind(f64_kind(n))
+    }
+}
 
-        assert_eq!(mem::size_of::<usize>(), mem::size_of::<u64>());
+pub enum FloatKind {
+    Zero,
+    Subnormal(FloatAsRatio),
+    Infinity,
+    NaN,
+    Normal(FloatAsRatio),
+}
 
-        match (exponent, fraction) {
-            (0, 0) => Some(<Self as num_traits::Zero>::zero()),
-            (0, _) => {
-                let non_zero_fraction = unsafe {
-                    // SAFETY: Zero would have matched earlier branch
-                    NonZeroU64::new_unchecked(fraction)
-                };
-                Some(Self::from_float(sign, 1 - 1023 - 52, non_zero_fraction))
-            }, // subnormals
-            (ONES_64, 0) => None, // infinity
-            (ONES_64, _) => None, // NaN
-            _ => {
-                let non_zero_fraction = unsafe {
-                    // SAFETY: A constant is always added
-                    NonZeroU64::new_unchecked(fraction + (1 << 52))
-                };
-                Some(Self::from_float(sign, exponent as i32 - 1023 - 52, non_zero_fraction))
+pub struct FloatAsRatio {
+    pub sign: u64,
+    pub exponent: i32,
+    pub fraction: NonZeroU64,
+}
+
+pub fn f32_kind(n: f32) -> FloatKind {
+    let n = n.to_bits();
+    let sign     = (n & 0b1000_0000_0000_0000_0000_0000_0000_0000) >> (32 - 1);
+    let exponent = (n & 0b0111_1111_1000_0000_0000_0000_0000_0000) >> (32 - 1 - 8);
+    let fraction =  n & 0b0000_0000_0111_1111_1111_1111_1111_1111;
+
+    match (exponent, fraction) {
+        (0, 0) => FloatKind::Zero,
+        (0, _) => FloatKind::Subnormal(FloatAsRatio {
+            sign: sign as u64,
+            exponent: 1 - 127 - 23,
+            fraction: unsafe {
+                // SAFETY: Zero would have matched earlier branch
+                NonZeroU64::new_unchecked(fraction as u64)
+            }
+        }),
+        (ONES_32, 0) => FloatKind::Infinity,
+        (ONES_32, _) => FloatKind::NaN,
+        _ => FloatKind::Normal(FloatAsRatio {
+            sign: sign as u64,
+            exponent: exponent as i32 - 127 - 23,
+            fraction: unsafe {
+                // SAFETY: A constant is always added
+                NonZeroU64::new_unchecked((fraction + (1 << 23)) as u64)
+                // SAFETY: A constant is always added
+            }
+        }),
+    }
+}
+
+pub fn f64_kind(n: f64) -> FloatKind {
+    let n = n.to_bits();
+    let sign     = (n & 0b1000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000) >> (64 - 1);
+    let exponent = (n & 0b0111_1111_1111_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000) >> (64 - 1 - 11);
+    let fraction =  n & 0b0000_0000_0000_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111;
+
+    assert_eq!(mem::size_of::<usize>(), mem::size_of::<u64>());
+
+    match (exponent, fraction) {
+        (0, 0) => FloatKind::Zero,
+        (0, _) => FloatKind::Subnormal(FloatAsRatio {
+            sign,
+            exponent: 1 - 1023 - 52,
+            fraction: unsafe {
+                // SAFETY: Zero would have matched earlier branch
+                NonZeroU64::new_unchecked(fraction)
             },
-        }
+        }),
+        (ONES_64, 0) => FloatKind::Infinity,
+        (ONES_64, _) => FloatKind::NaN,
+        _ => FloatKind::Normal(FloatAsRatio {
+            sign,
+            exponent: exponent as i32 - 1023 - 52,
+            fraction: unsafe {
+                // SAFETY: A constant is always added
+                NonZeroU64::new_unchecked(fraction + (1 << 52))
+            },
+        }),
     }
 }
 
 impl<const S: usize> Big<S> {
-    fn from_float(sign: u64, power: i32, fraction: NonZeroU64) -> Self {
-        let (numerator, denominator) = match power.cmp(&0) {
-            Ordering::Less => {
-                let numerator_zeros = fraction.trailing_zeros();
-                let shift = power.unsigned_abs();
+    fn from_float_kind(kind: FloatKind) -> Option<Self> {
+        match kind  {
+            FloatKind::Subnormal(as_ratio) | FloatKind::Normal(as_ratio) => {
+                let (numerator, denominator) = from_float_helper(as_ratio.exponent, as_ratio.fraction);
 
-                let numerator_shift = min(numerator_zeros, shift);
-                let denominator_shift = shift - numerator_shift;
-
-                let words_shift = denominator_shift / BITS_PER_WORD;
-                let bits_shift = denominator_shift % BITS_PER_WORD;
-                let size = words_shift + 1;
-                let mut denominator = SmallVec::with_capacity(size as usize);
-
-                denominator.extend(repeat(0).take(words_shift as usize));
-                denominator.push(1 << bits_shift);
-
-                let numerator = unsafe {
-                    // SAFETY: Fraction is non zero
-                    Ubig::from_inner_unchecked(smallvec![fraction.get() as usize >> numerator_shift])
-                };
-
-                (numerator, unsafe { NonZeroUbig::from_inner_unchecked(denominator) })
-            }
-            Ordering::Equal => {
-                (unsafe {
-                    // SAFETY: Fraction is non zero
-                    Ubig::from_inner_unchecked(smallvec![fraction.get() as usize])
-                }, NonZeroUbig::one())
+                Some(Self {
+                    sign: if as_ratio.sign > 0 { Sign::Negative } else { Sign::Positive },
+                    numerator,
+                    denominator,
+                })
             },
-            Ordering::Greater => {
-                let shift = power.unsigned_abs();
-                let words_shift = shift / BITS_PER_WORD;
-                let bits_shift = shift % BITS_PER_WORD;
+            FloatKind::Zero => Some(Self::zero()),
+            _ => None,
+        }
+    }
+}
 
-                let overflows = fraction.leading_zeros() < bits_shift;
-                let size = 1 + words_shift + if overflows { 1 } else { 0 };
-                let mut numerator = SmallVec::with_capacity(size as usize);
+pub fn from_float_helper<const S: usize>(power: i32, fraction: NonZeroU64) -> (Ubig<S>, NonZeroUbig<S>) {
+    match power.cmp(&0) {
+        Ordering::Less => {
+            let numerator_zeros = fraction.trailing_zeros();
+            let shift = power.unsigned_abs();
 
-                numerator.extend(repeat(0).take(words_shift as usize));
+            let numerator_shift = min(numerator_zeros, shift);
+            let denominator_shift = shift - numerator_shift;
 
-                numerator.push((fraction.get() as usize) << bits_shift);
-                if overflows {
-                    numerator.push(fraction.get() as usize >> (BITS_PER_WORD - bits_shift));
-                }
+            let words_shift = denominator_shift / BITS_PER_WORD;
+            let bits_shift = denominator_shift % BITS_PER_WORD;
+            let size = words_shift + 1;
+            let mut denominator = SmallVec::with_capacity(size as usize);
 
-                (
-                    unsafe {
-                        // SAFETY: last value is not zero
-                        Ubig::from_inner_unchecked(numerator)
-                    },
-                    NonZeroUbig::one(),
-                )
+            denominator.extend(repeat(0).take(words_shift as usize));
+            denominator.push(1 << bits_shift);
+
+            let numerator = unsafe {
+                // SAFETY: Fraction is non zero
+                Ubig::from_inner_unchecked(smallvec![fraction.get() as usize >> numerator_shift])
+            };
+
+            (numerator, unsafe { NonZeroUbig::from_inner_unchecked(denominator) })
+        }
+        Ordering::Equal => {
+            (unsafe {
+                // SAFETY: Fraction is non zero
+                Ubig::from_inner_unchecked(smallvec![fraction.get() as usize])
+            }, NonZeroUbig::one())
+        },
+        Ordering::Greater => {
+            let shift = power.unsigned_abs();
+            let words_shift = shift / BITS_PER_WORD;
+            let bits_shift = shift % BITS_PER_WORD;
+
+            let overflows = fraction.leading_zeros() < bits_shift;
+            let size = 1 + words_shift + if overflows { 1 } else { 0 };
+            let mut numerator = SmallVec::with_capacity(size as usize);
+
+            numerator.extend(repeat(0).take(words_shift as usize));
+
+            numerator.push((fraction.get() as usize) << bits_shift);
+            if overflows {
+                numerator.push(fraction.get() as usize >> (BITS_PER_WORD - bits_shift));
             }
-        };
 
-        Self {
-            sign: if sign > 0 { Sign::Negative } else { Sign::Positive },
-            numerator,
-            denominator,
+            (
+                unsafe {
+                    // SAFETY: last value is not zero
+                    Ubig::from_inner_unchecked(numerator)
+                },
+                NonZeroUbig::one(),
+            )
         }
     }
 }

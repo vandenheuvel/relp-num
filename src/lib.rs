@@ -11,6 +11,7 @@
 #![feature(unchecked_math)]
 #![feature(core_intrinsics)]
 #![feature(nonzero_ops)]
+#![feature(half_open_range_patterns)]
 
 mod binary;
 pub use binary::Binary;

@@ -5,6 +5,7 @@
 //! Using rational numbers with large numerator and denominator is the way arbitrary precision
 //! computation is done.
 pub use big::Big8 as RationalBig;
+pub use big::io::{f32_kind, f64_kind};
 pub use big::NonZeroBig8 as NonZeroRationalBig;
 pub use small::NonZeroRational128 as NonZeroRational128;
 pub use small::NonZeroRational16 as NonZeroRational16;
