@@ -497,7 +497,7 @@ mod test {
     use smallvec::{smallvec, SmallVec};
 
     use crate::integer::big::BITS_PER_WORD;
-    use crate::integer::big::creation::from_str_radix;
+    use crate::integer::big::io::from_str_radix;
     use crate::integer::big::ops::non_zero::{both_not_one_non_zero, shl_mut, shl_mut_overflowing, shr, shr_mut};
 
     #[test]

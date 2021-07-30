@@ -565,7 +565,7 @@ mod test {
 
     use crate::{Abs, Rational64, RationalBig, Sign, Ubig};
     use crate::integer::big::{BITS_PER_WORD, NonZeroUbig};
-    use crate::integer::big::creation::from_str_radix;
+    use crate::integer::big::io::from_str_radix;
     use crate::integer::big::ops::normalize::simplify_fraction_without_info;
     use crate::rational::big::{Big, Big8};
     use crate::RB;

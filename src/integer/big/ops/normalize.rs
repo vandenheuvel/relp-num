@@ -435,7 +435,7 @@ mod test {
 
     use smallvec::{smallvec, SmallVec};
 
-    use crate::integer::big::creation::from_str_radix;
+    use crate::integer::big::io::from_str_radix;
     use crate::integer::big::ops::normalize::{binary_gcd, gcd_scalar, gcd_single, remove_shared_two_factors_mut, simplify_fraction_gcd, simplify_fraction_gcd_single, simplify_fraction_without_info, trailing_zeros, WhichOdd};
     use crate::integer::big::ops::normalize::gcd;
     use crate::Ubig;

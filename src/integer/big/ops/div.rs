@@ -499,7 +499,7 @@ pub fn divrem_3by2(
 mod test {
     use smallvec::{smallvec, SmallVec};
 
-    use crate::integer::big::creation::from_str_radix;
+    use crate::integer::big::io::from_str_radix;
     use crate::integer::big::ops::div::{div as div_by_odd_or_even, div_assign_n_words, div_assign_one_word, div_assign_two_words, div_preinv, invert};
 
     #[test]
