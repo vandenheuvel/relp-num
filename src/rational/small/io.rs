@@ -1,7 +1,9 @@
+use std::convert::TryInto;
 use std::fmt;
 use std::str::FromStr;
 
 use num_traits::{One, Zero};
+use num_traits::ToPrimitive;
 
 use crate::non_zero::NonZeroSign;
 use crate::NonZero;
@@ -11,6 +13,47 @@ use crate::rational::small::{NonZeroRational128, NonZeroRational16, NonZeroRatio
 use crate::rational::small::gcd_scalar;
 use crate::rational::small::ops::building_blocks::{simplify128, simplify16, simplify32, simplify64, simplify8};
 use crate::sign::{Sign, Signed};
+
+macro_rules! signed_floor {
+    ($value:expr, $target:ty) => {
+        {
+            let floor = $value.numerator / $value.denominator;
+            floor.try_into().ok()
+                .map(|value: $target| match $value.sign {
+                    Sign::Zero | Sign::Positive => value,
+                    Sign::Negative => -value,
+                })
+        }
+    }
+}
+
+macro_rules! unsigned_floor {
+    ($value:expr) => {
+        {
+            match $value.sign {
+                Sign::Zero | Sign::Positive => {
+                    let floor = $value.numerator / $value.denominator;
+                    floor.try_into().ok()
+                }
+                Sign::Negative => None,
+            }
+        }
+    }
+}
+
+macro_rules! float {
+    ($value:expr, $target:ty) => {
+        {
+            let ratio = $value.numerator as $target / $value.denominator as $target;
+            let signed_ratio = match $value.sign {
+                Sign::Zero | Sign::Positive => ratio,
+                Sign::Negative => -ratio,
+            };
+
+            Some(signed_ratio)
+        }
+    }
+}
 
 macro_rules! creation {
     ($name:ident, $ity:ty, $uty:ty, $gcd_name:ident, $simplify_name:ident) => {
@@ -131,6 +174,64 @@ macro_rules! creation {
             }
         }
 
+        impl ToPrimitive for $name {
+            fn to_isize(&self) -> Option<isize> {
+                signed_floor!(self, isize)
+            }
+
+            fn to_i8(&self) -> Option<i8> {
+                signed_floor!(self, i8)
+            }
+
+            fn to_i16(&self) -> Option<i16> {
+                signed_floor!(self, i16)
+            }
+
+            fn to_i32(&self) -> Option<i32> {
+                signed_floor!(self, i32)
+            }
+
+            fn to_i64(&self) -> Option<i64> {
+                signed_floor!(self, i64)
+            }
+
+            fn to_i128(&self) -> Option<i128> {
+                signed_floor!(self, i128)
+            }
+
+            fn to_usize(&self) -> Option<usize> {
+                unsigned_floor!(self)
+            }
+
+            fn to_u8(&self) -> Option<u8> {
+                unsigned_floor!(self)
+            }
+
+            fn to_u16(&self) -> Option<u16> {
+                unsigned_floor!(self)
+            }
+
+            fn to_u32(&self) -> Option<u32> {
+                unsigned_floor!(self)
+            }
+
+            fn to_u64(&self) -> Option<u64> {
+                unsigned_floor!(self)
+            }
+
+            fn to_u128(&self) -> Option<u128> {
+                unsigned_floor!(self)
+            }
+
+            fn to_f32(&self) -> Option<f32> {
+                float!(self, f32)
+            }
+
+            fn to_f64(&self) -> Option<f64> {
+                float!(self, f64)
+            }
+        }
+
         impl FromStr for $name {
             type Err = &'static str;
 
@@ -161,42 +262,6 @@ macro_rules! creation {
                 }
 
                 None
-            }
-        }
-
-        impl num_traits::ToPrimitive for $name {
-            fn to_i64(&self) -> Option<i64> {
-                if self.denominator == 1 && self.numerator as u128 <= i64::MAX as u128 {
-                    Some(match self.sign {
-                        Sign::Positive => self.numerator as i64,
-                        Sign::Zero => 0,
-                        Sign::Negative => -(self.numerator as i64),
-                    })
-                } else { None }
-            }
-
-            fn to_u64(&self) -> Option<u64> {
-                match self.sign {
-                    Sign::Positive => {
-                        if self.denominator == 1 {
-                            if self.numerator as u128 <= u64::MAX as u128 {
-                                Some(self.numerator as u64)
-                            } else { None }
-                        } else {
-                            None
-                        }
-                    }
-                    Sign::Zero => Some(0),
-                    Sign::Negative => None,
-                }
-            }
-
-            fn to_f64(&self) -> Option<f64> {
-                Some(match self.sign {
-                    Sign::Positive => self.numerator as f64 / self.denominator as f64,
-                    Sign::Zero => 0_f64,
-                    Sign::Negative => -(self.numerator as f64 / self.denominator as f64),
-                })
             }
         }
 
@@ -425,7 +490,9 @@ size_dependent_signed!(Rational128, u128, i128, simplify128);
 
 #[cfg(test)]
 mod test {
-    use crate::{R16, R8, Rational16, Rational32, Rational8};
+    use num_traits::ToPrimitive;
+
+    use crate::{R16, R32, R64, R8, Rational16, Rational32, Rational8};
 
     #[test]
     fn test_debug() {
@@ -444,6 +511,33 @@ mod test {
         assert_eq!(Rational16::from(&-4_i8), R16!(-4));
         assert_eq!(Rational16::from((-4_i8, 2_i8)), R16!(-2));
         assert_eq!(Rational16::from((4_u8, 2_u8)), R16!(2));
+    }
+
+    #[test]
+    fn test_to_primitive() {
+        assert_eq!(R8!(0).to_u8(), Some(0));
+        assert_eq!(R8!(1, 2).to_u8(), Some(0));
+        assert_eq!(R8!(3, 4).to_i8(), Some(0));
+        assert_eq!(R8!(3, 2).to_i8(), Some(1));
+        assert_eq!(R8!(-0).to_i8(), Some(0));
+        assert_eq!(R8!(-1, 2).to_i8(), Some(0));
+        assert_eq!(R8!(-3, 4).to_i8(), Some(0));
+        assert_eq!(R8!(-3, 2).to_i8(), Some(-1));
+
+        assert_eq!(Rational8::new(1, 1).unwrap().to_i32(), Some(1));
+        assert_eq!(R8!(-10).to_i32(), Some(-10));
+        assert_eq!(R8!(-11).to_u16(), None);
+        assert_eq!(R64!(2_u64.pow(63) + 2_u64.pow(20)).to_i64(), None);
+        assert_eq!(R8!(0).to_i64(), Some(0));
+        assert_eq!(R8!(0).to_u64(), Some(0));
+        assert_eq!(R8!(1, 2).to_u64(), Some(0));
+        assert_eq!(R8!(8).to_u64(), Some(8));
+
+        assert_eq!(R8!(0).to_f64(), Some(0_f64));
+        assert_eq!(R32!(-156, 99).to_f64(), Some(-156_f64 / 99_f64));
+        assert_eq!(R8!(3, 2).to_f64(), Some(1.5_f64));
+        assert_eq!(R8!(-0).to_f64(), Some(0_f64));
+        assert_eq!(R8!(-3, 2).to_f64(), Some(-1.5_f64));
     }
 
     #[test]
