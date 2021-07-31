@@ -9,7 +9,7 @@ pub struct Ubig<const S: usize>(SmallVec<[usize; S]>);
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
 pub struct NonZeroUbig<const S: usize>(SmallVec<[usize; S]>);
 
-pub mod creation;
+pub mod io;
 pub mod ops;
 pub mod properties;
 

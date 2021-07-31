@@ -7,7 +7,7 @@ use crate::{NonZeroSign, Sign, Ubig};
 use crate::integer::big::NonZeroUbig;
 use crate::rational::Ratio;
 
-mod io;
+pub (crate) mod io;
 pub(crate) mod properties;
 pub mod ops;
 mod with_small;

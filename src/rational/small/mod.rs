@@ -126,7 +126,7 @@ mod test {
     use std::cmp::Ordering;
     use std::str::FromStr;
 
-    use num_traits::{FromPrimitive, One, ToPrimitive, Zero};
+    use num_traits::{FromPrimitive, One, Zero};
 
     use crate::{NonZero, NonZeroSign, NonZeroSigned, Rational128};
     use crate::{R16, R32, R64, R8};
@@ -162,20 +162,6 @@ mod test {
         assert_eq!(<Rational32 as FromPrimitive>::from_i64(i64::MAX), None);
 
         assert_eq!(Rational64::from((-1, 2)), R64!(-1, 2));
-    }
-
-    #[test]
-    fn test_to() {
-        assert_eq!(Rational8::new(1, 1).unwrap().to_i32(), Some(1));
-        assert_eq!(R8!(-10).to_i32(), Some(-10));
-        assert_eq!(R8!(-11).to_u16(), None);
-        assert_eq!(R32!(-156, 99).to_f64(), Some(-156_f64 / 99_f64));
-        assert_eq!(R64!(2_u64.pow(63) + 2_u64.pow(20)).to_i64(), None);
-        assert_eq!(R8!(0).to_i64(), Some(0));
-        assert_eq!(R8!(0).to_u64(), Some(0));
-        assert_eq!(R8!(1, 2).to_u64(), None);
-        assert_eq!(R8!(8).to_u64(), Some(8));
-        assert_eq!(R8!(0).to_f64(), Some(0_f64));
     }
 
     #[test]

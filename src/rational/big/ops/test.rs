@@ -5,7 +5,7 @@ use num_traits::Zero;
 use smallvec::{smallvec, SmallVec};
 
 use crate::{RB, Sign};
-use crate::integer::big::creation::from_str_radix;
+use crate::integer::big::io::from_str_radix;
 use crate::integer::big::ops::non_zero::{add_assign, add_assign_single_non_zero, mul_assign_single_non_zero, mul_non_zero, sub, sub_assign_result_positive, subtracting_cmp};
 use crate::rational::big::Big8;
 
