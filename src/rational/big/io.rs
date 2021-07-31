@@ -1,16 +1,20 @@
 use std::{fmt, mem};
 use std::cmp::{min, Ordering};
 use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::iter::repeat;
 use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
 use std::str::FromStr;
 
-use num_traits::{One, Zero};
+use num_traits::{FromPrimitive, One, ToPrimitive, Zero};
 use smallvec::{smallvec, SmallVec};
 
 use crate::{NonZero, NonZeroSign, Ubig};
 use crate::integer::big::{BITS_PER_WORD, NonZeroUbig};
+use crate::integer::big::ops::div::div;
+use crate::integer::big::ops::non_zero::is_one_non_zero;
 use crate::integer::big::ops::normalize::{gcd_scalar, simplify_fraction_without_info};
+use crate::integer::big::properties::cmp;
 use crate::rational::big::{Big, NonZeroBig};
 use crate::rational::Ratio;
 use crate::rational::small::ops::building_blocks::{simplify128, simplify16, simplify32, simplify64, simplify8};
@@ -232,7 +236,7 @@ impl_from_ratio!(isize, NonZeroUsize, usize);
 const ONES_32: u32 = (1 << 8) - 1;
 const ONES_64: u64 = (1 << 11) - 1;
 
-impl<const S: usize> num_traits::FromPrimitive for Big<S> {
+impl<const S: usize> FromPrimitive for Big<S> {
     fn from_i64(n: i64) -> Option<Self> {
         Some(Self {
             sign: Signed::signum(&n),
@@ -274,9 +278,9 @@ pub struct FloatAsRatio {
 
 pub fn f32_kind(n: f32) -> FloatKind {
     let n = n.to_bits();
-    let sign     = (n & 0b1000_0000_0000_0000_0000_0000_0000_0000) >> (32 - 1);
+    let sign = (n & 0b1000_0000_0000_0000_0000_0000_0000_0000) >> (32 - 1);
     let exponent = (n & 0b0111_1111_1000_0000_0000_0000_0000_0000) >> (32 - 1 - 8);
-    let fraction =  n & 0b0000_0000_0111_1111_1111_1111_1111_1111;
+    let fraction = n & 0b0000_0000_0111_1111_1111_1111_1111_1111;
 
     match (exponent, fraction) {
         (0, 0) => FloatKind::Zero,
@@ -286,7 +290,7 @@ pub fn f32_kind(n: f32) -> FloatKind {
             fraction: unsafe {
                 // SAFETY: Zero would have matched earlier branch
                 NonZeroU64::new_unchecked(fraction as u64)
-            }
+            },
         }),
         (ONES_32, 0) => FloatKind::Infinity,
         (ONES_32, _) => FloatKind::NaN,
@@ -297,16 +301,16 @@ pub fn f32_kind(n: f32) -> FloatKind {
                 // SAFETY: A constant is always added
                 NonZeroU64::new_unchecked((fraction + (1 << 23)) as u64)
                 // SAFETY: A constant is always added
-            }
+            },
         }),
     }
 }
 
 pub fn f64_kind(n: f64) -> FloatKind {
     let n = n.to_bits();
-    let sign     = (n & 0b1000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000) >> (64 - 1);
+    let sign = (n & 0b1000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000) >> (64 - 1);
     let exponent = (n & 0b0111_1111_1111_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000) >> (64 - 1 - 11);
-    let fraction =  n & 0b0000_0000_0000_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111;
+    let fraction = n & 0b0000_0000_0000_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111_1111;
 
     assert_eq!(mem::size_of::<usize>(), mem::size_of::<u64>());
 
@@ -335,7 +339,7 @@ pub fn f64_kind(n: f64) -> FloatKind {
 
 impl<const S: usize> Big<S> {
     fn from_float_kind(kind: FloatKind) -> Option<Self> {
-        match kind  {
+        match kind {
             FloatKind::Subnormal(as_ratio) | FloatKind::Normal(as_ratio) => {
                 let (numerator, denominator) = from_float_helper(as_ratio.exponent, as_ratio.fraction);
 
@@ -344,7 +348,7 @@ impl<const S: usize> Big<S> {
                     numerator,
                     denominator,
                 })
-            },
+            }
             FloatKind::Zero => Some(Self::zero()),
             _ => None,
         }
@@ -380,7 +384,7 @@ pub fn from_float_helper<const S: usize>(power: i32, fraction: NonZeroU64) -> (U
                 // SAFETY: Fraction is non zero
                 Ubig::from_inner_unchecked(smallvec![fraction.get() as usize])
             }, NonZeroUbig::one())
-        },
+        }
         Ordering::Greater => {
             let shift = power.unsigned_abs();
             let words_shift = shift / BITS_PER_WORD;
@@ -527,7 +531,7 @@ impl<const S: usize> FromStr for Big<S> {
                 let (sign, s) = match &s[..1] {
                     "+" => (Sign::Positive, &s[1..]),
                     "-" => (Sign::Negative, &s[1..]),
-                    _   => (Sign::Positive, &s[..] ),
+                    _ => (Sign::Positive, &s[..]),
                 };
 
                 match s.find('/') {
@@ -592,11 +596,139 @@ impl<const S: usize> fmt::Display for Big<S> {
     }
 }
 
+macro_rules! signed_small {
+    ($value:expr, $target:ident) => {
+        if $value.sign == Sign::Zero {
+            Some(0)
+        } else {
+            let result = if unsafe { !is_one_non_zero(&$value.denominator) } {
+                match cmp(&$value.numerator, &$value.denominator) {
+                    Ordering::Less => Some(0),
+                    Ordering::Equal => Some(1),
+                    Ordering::Greater => {
+                        let maybe_large_result = unsafe {
+                            // SAFETY: Denominator is not zero
+                            div::<S>(&$value.numerator, &$value.denominator)
+                        };
+                        match maybe_large_result.len() {
+                            0 => Some(0),
+                            1 => maybe_large_result[0].try_into().ok(),
+                            _ => None,
+                        }
+                    }
+                }
+            } else {
+                $value.numerator.$target()
+            };
+
+            result.map(|value| if $value.sign == Sign::Negative {
+                -value
+            } else {
+                value
+            })
+        }
+    }
+}
+
+macro_rules! unsigned_small {
+    ($value:expr, $target:ident) => {
+        match $value.sign {
+            Sign::Positive => {
+                if unsafe { !is_one_non_zero(&$value.denominator) } {
+                    match cmp(&$value.numerator, &$value.denominator) {
+                        Ordering::Less => Some(0),
+                        Ordering::Equal => Some(1),
+                        Ordering::Greater => {
+                            let result = unsafe {
+                                // SAFETY: Denominator is not zero
+                                div::<S>(&$value.numerator, &$value.denominator)
+                            };
+                            match result.len() {
+                                0 => Some(0),
+                                1 => result[0].try_into().ok(),
+                                _ => None,
+                            }}
+                    }
+                } else {
+                    $value.numerator.$target()
+                }
+            }
+            Sign::Zero => Some(0),
+            Sign::Negative => None,
+        }
+    }
+}
+impl<const S: usize> ToPrimitive for Big<S> {
+    fn to_isize(&self) -> Option<isize> {
+        signed_small!(self, to_isize)
+    }
+
+    fn to_i8(&self) -> Option<i8> {
+        signed_small!(self, to_i8)
+    }
+
+    fn to_i16(&self) -> Option<i16> {
+        signed_small!(self, to_i16)
+    }
+
+    fn to_i32(&self) -> Option<i32> {
+        signed_small!(self, to_i32)
+    }
+
+    fn to_i64(&self) -> Option<i64> {
+        signed_small!(self, to_i64)
+    }
+
+    fn to_i128(&self) -> Option<i128> {
+        todo!()
+    }
+
+    fn to_usize(&self) -> Option<usize> {
+        unsigned_small!(self, to_usize)
+    }
+
+    fn to_u8(&self) -> Option<u8> {
+        unsigned_small!(self, to_u8)
+    }
+
+    fn to_u16(&self) -> Option<u16> {
+        unsigned_small!(self, to_u16)
+    }
+
+    fn to_u32(&self) -> Option<u32> {
+        unsigned_small!(self, to_u32)
+    }
+
+    fn to_u64(&self) -> Option<u64> {
+        unsigned_small!(self, to_u64)
+    }
+
+    fn to_u128(&self) -> Option<u128> {
+        todo!()
+    }
+
+    fn to_f32(&self) -> Option<f32> {
+        Some(match self.sign {
+            Sign::Positive => self.numerator.to_f32().unwrap() / self.denominator.to_f32().unwrap(),
+            Sign::Zero => 0_f32,
+            Sign::Negative => -self.numerator.to_f32().unwrap() / self.denominator.to_f32().unwrap(),
+        })
+    }
+
+    fn to_f64(&self) -> Option<f64> {
+        Some(match self.sign {
+            Sign::Positive => self.numerator.to_f64().unwrap() / self.denominator.to_f64().unwrap(),
+            Sign::Zero => 0_f64,
+            Sign::Negative => -self.numerator.to_f64().unwrap() / self.denominator.to_f64().unwrap(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::str::FromStr;
 
-    use num_traits::{One, Zero};
+    use num_traits::{One, ToPrimitive, Zero};
     use smallvec::{smallvec, SmallVec};
 
     use crate::{Abs, Rational64, RationalBig, Sign, Ubig};
@@ -656,7 +788,7 @@ mod test {
         let x = <Big8 as num_traits::FromPrimitive>::from_f64(f64::MAX).unwrap();
         let total_shift = (1 << (11 - 1)) - 1 - 52;
         let (words, bits) = (total_shift / BITS_PER_WORD, total_shift % BITS_PER_WORD);
-        let mut numerator= smallvec![0; words as usize];
+        let mut numerator = smallvec![0; words as usize];
         numerator.push(((1 << (52 + 1)) - 1) << bits); // Doesn't overflow, fits exactly in this last word
         let expected = Big8 {
             sign: Sign::Positive,
@@ -873,5 +1005,26 @@ mod test {
             format!("{:?}", RationalBig::from_str("676230147000402641135208532975102322580080121519024130").unwrap()),
             "[7877410236203542530, 16360869664650712055, 1987261794136745]",
         );
+    }
+
+    #[test]
+    fn test_to_primitive() {
+        assert_eq!(RB!(1, 2).to_u64(), Some(0));
+        assert_eq!(RB!(1, 1).to_u64(), Some(1));
+        assert_eq!(RB!(2, 1).to_u64(), Some(2));
+        assert_eq!(RB!(-1, 2).to_u64(), None);
+        assert_eq!(RB!(1, 2).to_i8(), Some(0));
+        assert_eq!(RB!(1, 1).to_i8(), Some(1));
+        assert_eq!(RB!(2, 1).to_i8(), Some(2));
+        assert_eq!(RB!(-1, 2).to_i8(), Some(0));
+        assert_eq!(RB!(-1, 1).to_i8(), Some(-1));
+
+        assert_eq!(RB!(1, 2).to_f32(), Some(0.5_f32));
+        assert_eq!(RB!(1, 2).to_f64(), Some(0.5_f64));
+        assert_eq!(RB!(-1, 2).to_f64(), Some(-0.5_f64));
+        assert_eq!(RB!(123456789, 1).to_f64(), Some(123456789_f64));
+        assert_eq!(RB!(9_007_199_254_740_992, 1).to_f64(), Some(9_007_199_254_740_992_f64));
+        assert_eq!(RB!(9_007_199_254_740_993, 1).to_f64(), Some(9_007_199_254_740_993_f64));
+        assert_eq!(RB!(9_007_199_254_740_994, 1).to_f64(), Some(9_007_199_254_740_994_f64));
     }
 }

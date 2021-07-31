@@ -83,6 +83,7 @@ pub unsafe fn div<const S: usize>(
 ) -> SmallVec<[usize; S]> {
     // Assume that the do divide without remainder
     debug_assert_eq!(cmp(values, rhs), Ordering::Greater);
+    debug_assert_ne!(rhs, &[1]);
 
     let (zero_words, zero_bits) = trailing_zeros(rhs);
     let mut left = shr(values, zero_words, zero_bits);
