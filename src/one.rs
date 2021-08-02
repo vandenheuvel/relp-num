@@ -2,6 +2,7 @@
 use std::fmt;
 use std::ops::{Add, AddAssign, Div, };
 use std::ops::Mul;
+use crate::NonZero;
 
 /// A type representing the value `1`.
 ///
@@ -13,6 +14,8 @@ use std::ops::Mul;
 pub struct One;
 
 impl num_traits::One for One {
+    #[inline]
+    #[must_use]
     fn one() -> Self {
         Self
     }
@@ -21,8 +24,18 @@ impl num_traits::One for One {
 impl Mul<One> for One {
     type Output = Self;
 
+    #[inline]
+    #[must_use]
     fn mul(self, _rhs: One) -> Self::Output {
         Self
+    }
+}
+
+impl NonZero for One {
+    #[inline]
+    #[must_use]
+    fn is_not_zero(&self) -> bool {
+        true
     }
 }
 
