@@ -8,12 +8,16 @@ use crate::integer::big::ops::non_zero::{add_assign, both_not_one_non_zero, is_o
 use crate::rational::big::Big;
 
 impl<const S: usize> From<One> for Big<S> {
+    #[inline]
+    #[must_use]
     fn from(_: One) -> Self {
         num_traits::One::one()
     }
 }
 
 impl<const S: usize> From<&One> for Big<S> {
+    #[inline]
+    #[must_use]
     fn from(_: &One) -> Self {
         num_traits::One::one()
     }
@@ -23,6 +27,7 @@ impl<const S: usize> Add<One> for Big<S> {
     type Output = Self;
 
     #[inline]
+    #[must_use]
     fn add(mut self, _: One) -> Self::Output {
         <Self as AddAssign<One>>::add_assign(&mut self, One);
         self
@@ -33,6 +38,7 @@ impl<const S: usize> Add<&One> for Big<S> {
     type Output = Self;
 
     #[inline]
+    #[must_use]
     fn add(mut self, _: &One) -> Self::Output {
         <Self as AddAssign<&One>>::add_assign(&mut self, &One);
         self
@@ -63,10 +69,8 @@ impl<const S: usize> AddAssign<&One> for Big<S> {
                         let sign_change = subtracting_cmp(
                             self.numerator.inner_mut(), self.denominator.inner(),
                         );
-                        match sign_change {
-                            Ordering::Less => self.sign = !self.sign,
-                            Ordering::Greater => {}
-                            Ordering::Equal => panic!(),
+                        if sign_change == Ordering::Less {
+                            self.sign = Sign::Positive;
                         }
                     }
                 } else {
@@ -90,7 +94,18 @@ impl<const S: usize> Sub<One> for Big<S> {
     #[must_use]
     #[inline]
     fn sub(mut self, _: One) -> Self::Output {
-        <Self as SubAssign<One>>::sub_assign(&mut self, One);
+        SubAssign::sub_assign(&mut self, One);
+        self
+    }
+}
+
+impl<const S: usize> Sub<&One> for Big<S> {
+    type Output = Self;
+
+    #[must_use]
+    #[inline]
+    fn sub(mut self, _: &One) -> Self::Output {
+        SubAssign::sub_assign(&mut self, One);
         self
     }
 }
@@ -102,10 +117,11 @@ impl<const S: usize> SubAssign<One> for Big<S> {
             Sign::Positive => {
                 let numerator_is_one = unsafe { is_one_non_zero(self.numerator.inner()) };
                 if !numerator_is_one || !num_traits::One::is_one(&self.denominator) {
-                    match unsafe { subtracting_cmp(self.numerator.inner_mut(), self.denominator.inner()) } {
-                        Ordering::Less => self.sign = !self.sign,
-                        Ordering::Greater => {}
-                        Ordering::Equal => {}
+                    let direction = unsafe {
+                        subtracting_cmp(self.numerator.inner_mut(), self.denominator.inner())
+                    };
+                    if direction == Ordering::Less {
+                        self.sign = Sign::Negative;
                     }
                 } else {
                     self.set_zero();
@@ -129,12 +145,53 @@ impl<const S: usize> SubAssign<One> for Big<S> {
     }
 }
 
+impl<const S: usize> Mul<One> for Big<S> {
+    type Output = Self;
+
+    #[inline]
+    #[must_use]
+    fn mul(self, _: One) -> Self::Output {
+        self
+    }
+}
+
+impl<const S: usize> Mul<&One> for Big<S> {
+    type Output = Self;
+
+    #[inline]
+    #[must_use]
+    fn mul(self, _: &One) -> Self::Output {
+        self
+    }
+}
+
 impl<const S: usize> Mul<&One> for &Big<S> {
     type Output = Big<S>;
 
     #[inline]
+    #[must_use]
     fn mul(self, _: &One) -> Self::Output {
         self.clone()
+    }
+}
+
+impl<const S: usize> Mul<One> for &Big<S> {
+    type Output = Big<S>;
+
+    #[inline]
+    #[must_use]
+    fn mul(self, _: One) -> Self::Output {
+        self.clone()
+    }
+}
+
+impl<const S: usize> Div<One> for Big<S> {
+    type Output = Self;
+
+    #[inline]
+    #[must_use]
+    fn div(self, _: One) -> Self::Output {
+        self
     }
 }
 
@@ -142,7 +199,28 @@ impl<const S: usize> Div<&One> for Big<S> {
     type Output = Self;
 
     #[inline]
+    #[must_use]
     fn div(self, _: &One) -> Self::Output {
         self
+    }
+}
+
+impl<const S: usize> Div<&One> for &Big<S> {
+    type Output = Big<S>;
+
+    #[inline]
+    #[must_use]
+    fn div(self, _: &One) -> Self::Output {
+        self.clone()
+    }
+}
+
+impl<const S: usize> Div<One> for &Big<S> {
+    type Output = Big<S>;
+
+    #[inline]
+    #[must_use]
+    fn div(self, _: One) -> Self::Output {
+        self.clone()
     }
 }
