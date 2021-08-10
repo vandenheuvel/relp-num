@@ -4,9 +4,9 @@ use std::fmt::Display;
 use std::ops::Neg;
 
 use crate::integer::big::ops::normalize::gcd_scalar;
-use crate::non_zero::{NonZero, NonZeroSign, NonZeroSigned};
+use crate::non_zero::{NonZeroSign};
 use crate::rational::Ratio;
-use crate::sign::{Sign, Signed};
+use crate::sign::{Sign};
 
 mod io;
 pub(crate) mod ops;
@@ -15,22 +15,6 @@ macro_rules! rational {
     ($name:ident, $ity:ty, $uty:ty) => {
         /// A signed ratio between two small integers.
         pub type $name = Ratio<Sign, $uty, $uty>;
-
-        impl Signed for $name {
-            fn signum(&self) -> Sign {
-                self.sign
-            }
-        }
-
-        impl NonZeroSigned for $name {
-            #[must_use]
-            #[inline]
-            fn signum(&self) -> NonZeroSign {
-                debug_assert!(self.is_not_zero());
-
-                self.sign.into()
-            }
-        }
 
         impl Neg for $name {
             type Output = Self;
@@ -169,13 +153,13 @@ mod test {
         assert!(!Rational8::zero().is_not_zero());
         assert_eq!(Rational16::zero().is_zero(), !Rational16::zero().is_not_zero());
 
-        assert_eq!(R8!(1).signum(), NonZeroSign::Positive);
+        assert_eq!(R8!(1).non_zero_signum(), NonZeroSign::Positive);
     }
 
     #[test]
     #[should_panic]
     fn test_sign_panic() {
-        R8!(0).signum();
+        R8!(0).non_zero_signum();
     }
 
     #[test]

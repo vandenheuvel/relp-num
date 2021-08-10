@@ -6,7 +6,6 @@ use num_traits::{One, Zero};
 use num_traits::ToPrimitive;
 
 use crate::non_zero::NonZeroSign;
-use crate::NonZero;
 use crate::rational::big::Big;
 use crate::rational::small::{Rational128, Rational16, Rational32, Rational64, Rational8};
 use crate::rational::small::{NonZeroRational128, NonZeroRational16, NonZeroRational32, NonZeroRational64, NonZeroRational8};
@@ -279,14 +278,6 @@ macro_rules! creation {
             }
         }
 
-        impl NonZero for $name {
-            #[must_use]
-            #[inline]
-            fn is_not_zero(&self) -> bool {
-                self.numerator != 0
-            }
-        }
-
         impl num_traits::Zero for $name {
             #[must_use]
             #[inline]
@@ -319,25 +310,6 @@ creation!(Rational16, i16, u16, gcd16, simplify16);
 creation!(Rational32, i32, u32, gcd32, simplify32);
 creation!(Rational64, i64, u64, gcd64, simplify64);
 creation!(Rational128, i128, u128, gcd128, simplify128);
-
-
-macro_rules! creation_non_zero {
-    ($name:ident, $ity:ty, $uty:ty, $gcd_name:ident, $simplify_name:ident) => {
-        impl NonZero for $name {
-            #[must_use]
-            #[inline]
-            fn is_not_zero(&self) -> bool {
-                true
-            }
-        }
-    }
-}
-
-creation_non_zero!(NonZeroRational8, i8, u8, gcd8, simplify8);
-creation_non_zero!(NonZeroRational16, i16, u16, gcd16, simplify16);
-creation_non_zero!(NonZeroRational32, i32, u32, gcd32, simplify32);
-creation_non_zero!(NonZeroRational64, i64, u64, gcd64, simplify64);
-creation_non_zero!(NonZeroRational128, i128, u128, gcd128, simplify128);
 
 macro_rules! impl_one {
     ($name:ident, $sign:ident) => {

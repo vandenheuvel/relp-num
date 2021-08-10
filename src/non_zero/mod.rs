@@ -11,14 +11,14 @@ pub mod sign;
 
 /// # Nonzero values
 ///
-/// Implementors should not be zero.
+/// In contexts where this trait is required, implementors should not have value zero.
 ///
 /// This trait is used for debug asserts. Values in sparse data structures should never be zero, and
-/// requiring that they implement `num_traits::Zero` prohibits writing number types that can't represent
-/// the value 0.
+/// requiring that they implement `num_traits::Zero` prohibits writing number types that can't
+/// represent the value 0.
 ///
-/// The `num_traits::Zero` trait is for types that can be zero, this trait is for types that can be a value
-/// other than zero. They may or may not be able to represent zero.
+/// The `num_traits::Zero` trait is for types that can be zero, this trait is for types that can be
+/// a value other than zero. They may or may not be able to represent zero.
 pub trait NonZero {
     /// Whether the value is not equal to zero.
     ///

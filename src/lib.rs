@@ -49,6 +49,7 @@ pub use rational::NonZeroRational8;
 mod sign;
 pub use sign::Sign;
 pub use sign::Signed;
+pub use sign::Negateable;
 
 mod traits;
 pub use traits::Abs;

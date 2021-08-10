@@ -32,7 +32,7 @@ macro_rules! forwards {
 
             #[must_use]
             fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power> {
-                let sign = NonZeroSigned::signum(self);
+                let sign = self.non_zero_signum();
                 let factors = $method_name(self.unsigned_abs());
 
                 NonZeroFactorization { sign, factors }

@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use num_traits::{One, Zero};
 
-use crate::{NonZero, NonZeroSign, NonZeroSigned, Sign, Signed};
+use crate::{NonZero, NonZeroSign, Sign};
 use crate::integer::big::ops::non_zero::mul_non_zero;
 use crate::integer::big::ops::normalize::simplify_fraction_without_info;
 use crate::integer::big::properties::cmp;
@@ -37,32 +37,6 @@ impl<const S: usize> Big<S> {
                 n_clone == self.numerator && d_clone == self.denominator
             }
         }
-    }
-}
-
-impl<const S: usize> Signed for Big<S> {
-    fn signum(&self) -> Sign {
-        self.sign
-    }
-}
-
-impl<const S: usize> Signed for NonZeroBig<S> {
-    fn signum(&self) -> Sign {
-        self.sign.into()
-    }
-}
-
-impl<const S: usize> NonZeroSigned for Big<S> {
-    fn signum(&self) -> NonZeroSign {
-        debug_assert!(self.is_not_zero());
-
-        self.sign.into()
-    }
-}
-
-impl<const S: usize> NonZeroSigned for NonZeroBig<S> {
-    fn signum(&self) -> NonZeroSign {
-        self.sign
     }
 }
 

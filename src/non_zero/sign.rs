@@ -2,24 +2,25 @@
 //!
 //! Usual sign implementations have a sign for zero, the implementation in this module does not.
 use std::cmp::Ordering;
-use std::ops::{Mul, MulAssign, Not};
+use std::ops::{Mul, MulAssign, Not, Neg};
 
 use crate::non_zero::NonZero;
 use crate::sign::Sign;
+use crate::Signed;
 
 /// A signed number that can have a nonzero value.
-pub trait NonZeroSigned: NonZero + Clone {
+pub trait NonZeroSigned: NonZero + Signed {
     /// Whether the value is positive or negative.
-    fn signum(&self) -> NonZeroSign;
+    fn non_zero_signum(&self) -> NonZeroSign;
     /// Whether `x > 0`.
     #[inline]
-    fn is_positive(&self) -> bool {
-        self.signum() == NonZeroSign::Positive
+    fn non_zero_is_positive(&self) -> bool {
+        self.non_zero_signum() == NonZeroSign::Positive
     }
     /// Whether `x < 0`.
     #[inline]
-    fn is_negative(&self) -> bool {
-        self.signum() == NonZeroSign::Negative
+    fn non_zero_is_negative(&self) -> bool {
+        self.non_zero_signum() == NonZeroSign::Negative
     }
 }
 
@@ -35,6 +36,26 @@ pub enum NonZeroSign {
     Negative = -1,
 }
 
+impl<T: NonZero + Signed> NonZeroSigned for T {
+    #[inline]
+    fn non_zero_signum(&self) -> NonZeroSign {
+        match self.signum() {
+            Sign::Positive => NonZeroSign::Positive,
+            Sign::Zero => panic!("attempt to convert a zero sign into a non zero sign"),
+            Sign::Negative => NonZeroSign::Negative,
+        }
+    }
+}
+
+impl Signed for NonZeroSign {
+    fn signum(&self) -> Sign {
+        match self {
+            NonZeroSign::Positive => Sign::Positive,
+            NonZeroSign::Negative => Sign::Negative,
+        }
+    }
+}
+
 impl NonZero for NonZeroSign {
     fn is_not_zero(&self) -> bool {
         true
@@ -45,6 +66,17 @@ impl Not for NonZeroSign {
     type Output = Self;
 
     fn not(self) -> Self::Output {
+        match self {
+            NonZeroSign::Positive => NonZeroSign::Negative,
+            NonZeroSign::Negative => NonZeroSign::Positive,
+        }
+    }
+}
+
+impl Neg for NonZeroSign {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
         match self {
             NonZeroSign::Positive => NonZeroSign::Negative,
             NonZeroSign::Negative => NonZeroSign::Positive,
@@ -115,31 +147,31 @@ mod test {
         use crate::Signed;
         assert_eq!(Signed::signum(&RB!(1)), Sign::Positive);
         assert_eq!(Signed::signum(&RB!(-1)), Sign::Negative);
-        assert!(NonZeroSigned::is_positive(&RB!(1)));
-        assert!(NonZeroSigned::is_negative(&RB!(-1)));
+        assert!(RB!(1).is_positive());
+        assert!(RB!(-1).is_negative());
     }
 
     #[test]
     fn test_numbers_non_zero() {
-        assert_eq!(NonZeroSigned::signum(&1), NonZeroSign::Positive);
-        assert_eq!(NonZeroSigned::signum(&(-1)), NonZeroSign::Negative);
+        assert_eq!(1.non_zero_signum(), NonZeroSign::Positive);
+        assert_eq!((-1).non_zero_signum(), NonZeroSign::Negative);
 
-        assert_eq!(NonZeroSigned::signum(&RB!(-1)) * NonZeroSigned::signum(&RB!(-1)), NonZeroSign::Positive);
-        assert_eq!(NonZeroSigned::signum(&RB!(1)) * NonZeroSigned::signum(&RB!(1)), NonZeroSign::Positive);
+        assert_eq!(RB!(-1).non_zero_signum() * RB!(-1).non_zero_signum(), NonZeroSign::Positive);
+        assert_eq!(RB!(1).non_zero_signum() * RB!(1).non_zero_signum(), NonZeroSign::Positive);
 
-        assert_eq!(RB!(-1).signum() * RB!(1).signum(), NonZeroSign::Negative);
+        assert_eq!(RB!(-1).non_zero_signum() * RB!(1).non_zero_signum(), NonZeroSign::Negative);
 
-        assert_eq!(R64!(1).signum(), NonZeroSign::Positive);
-        assert_eq!(R64!(-1).signum(), NonZeroSign::Negative);
+        assert_eq!(R64!(1).non_zero_signum(), NonZeroSign::Positive);
+        assert_eq!(R64!(-1).non_zero_signum(), NonZeroSign::Negative);
 
-        assert_eq!(R64!(-1).signum() * R64!(-1).signum(), NonZeroSign::Positive);
-        assert_eq!(R64!(1).signum() * R64!(1).signum(), NonZeroSign::Positive);
-        assert_eq!(R64!(-1).signum() * R64!(1).signum(), NonZeroSign::Negative);
+        assert_eq!(R64!(-1).non_zero_signum() * R64!(-1).non_zero_signum(), NonZeroSign::Positive);
+        assert_eq!(R64!(1).non_zero_signum() * R64!(1).non_zero_signum(), NonZeroSign::Positive);
+        assert_eq!(R64!(-1).non_zero_signum() * R64!(1).non_zero_signum(), NonZeroSign::Negative);
     }
 
     #[test]
     #[should_panic]
     fn test_zero() {
-        NonZeroSigned::signum(&RB!(0));
+        RB!(0).non_zero_signum();
     }
 }

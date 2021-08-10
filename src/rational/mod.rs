@@ -19,8 +19,9 @@ pub use small::Rational64 as Rational64;
 pub use small::Rational8 as Rational8;
 
 use crate::non_zero::NonZero;
-use crate::NonZeroSign;
+use crate::{Negateable};
 use crate::sign::Sign;
+use crate::Signed;
 
 mod small;
 pub(crate) mod big;
@@ -35,21 +36,21 @@ pub struct Ratio<S, N, D: NonZero> {
     denominator: D,
 }
 
-impl<N: NonZero, D: NonZero> NonZero for Ratio<Sign, N, D> {
-    #[must_use]
-    #[inline]
-    default fn is_not_zero(&self) -> bool {
-        debug_assert!(self.denominator.is_not_zero());
-
-        self.sign.is_not_zero()
+impl<S: Signed, N, D: NonZero> Signed for Ratio<S, N, D> {
+    fn signum(&self) -> Sign {
+        self.sign.signum()
     }
 }
 
-impl<N: NonZero, D: NonZero> NonZero for Ratio<NonZeroSign, N, D> {
-    #[must_use]
-    #[inline]
-    default fn is_not_zero(&self) -> bool {
-        debug_assert!(self.denominator.is_not_zero());
+impl<S: Negateable, N, D: NonZero> Negateable for Ratio<S, N, D> {
+    fn negate(&mut self) {
+        self.sign.negate();
+    }
+}
+
+impl<S: NonZero, N: NonZero, D: NonZero> NonZero for Ratio<S, N, D> {
+    fn is_not_zero(&self) -> bool {
+        debug_assert_eq!(self.sign.is_not_zero(), self.numerator.is_not_zero());
 
         self.sign.is_not_zero()
     }

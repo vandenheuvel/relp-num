@@ -29,51 +29,11 @@ pub trait Signed {
     }
 }
 
-macro_rules! unsigned {
-    ($type:ty) => {
-        impl Signed for $type {
-            #[must_use]
-            #[inline]
-            fn signum(&self) -> Sign {
-                if *self == 0 {
-                    Sign::Zero
-                } else {
-                    Sign::Positive
-                }
-            }
-        }
-    }
+/// A number that can be negated, that is, who's sign can be flipped.
+pub trait Negateable: Signed {
+    /// Negate the number, e.g. go from 1 to -1.
+    fn negate(&mut self);
 }
-
-unsigned!(u8);
-unsigned!(u16);
-unsigned!(u32);
-unsigned!(u64);
-unsigned!(u128);
-unsigned!(usize);
-
-macro_rules! signed {
-    ($type:ty) => {
-        impl Signed for $type {
-            #[must_use]
-            #[inline]
-            fn signum(&self) -> Sign {
-                match self.cmp(&0) {
-                    Ordering::Less => Sign::Negative,
-                    Ordering::Equal => Sign::Zero,
-                    Ordering::Greater => Sign::Positive,
-                }
-            }
-        }
-    }
-}
-
-signed!(i8);
-signed!(i16);
-signed!(i32);
-signed!(i64);
-signed!(i128);
-signed!(isize);
 
 /// Sign with a zero variant.
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
@@ -86,11 +46,31 @@ pub enum Sign {
     Negative = -1,
 }
 
-impl NonZero for Sign {
-    #[must_use]
+impl Signed for Sign {
     #[inline]
-    fn is_not_zero(&self) -> bool {
-        *self != Sign::Zero
+    fn signum(&self) -> Sign {
+        *self
+    }
+
+    #[inline]
+    fn is_positive(&self) -> bool {
+        *self == Sign::Positive
+    }
+
+    #[inline]
+    fn is_negative(&self) -> bool {
+        *self == Sign::Negative
+    }
+}
+
+impl Negateable for Sign {
+    #[inline]
+    fn negate(&mut self) {
+        match self {
+            Sign::Positive => *self = Sign::Negative,
+            Sign::Zero => {}
+            Sign::Negative => *self = Sign::Positive,
+        }
     }
 }
 
@@ -119,6 +99,14 @@ impl Not for Sign {
             Sign::Zero => Sign::Zero,
             Sign::Negative => Sign::Positive,
         }
+    }
+}
+
+impl NonZero for Sign {
+    #[must_use]
+    #[inline]
+    fn is_not_zero(&self) -> bool {
+        *self != Sign::Zero
     }
 }
 

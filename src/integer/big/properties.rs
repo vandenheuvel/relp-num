@@ -1,9 +1,10 @@
 use std::cmp::Ordering;
 use std::ops::Deref;
 
-use crate::{NonZero, NonZeroSign, NonZeroSigned, Ubig};
+use crate::{NonZero, Sign, Ubig};
 use crate::integer::big::NonZeroUbig;
 use crate::integer::big::ops::building_blocks::is_well_formed;
+use crate::Signed;
 
 impl<const S: usize> NonZero for Ubig<S> {
     #[must_use]
@@ -37,29 +38,23 @@ impl<const S: usize> Deref for NonZeroUbig<S> {
     }
 }
 
-impl<const S: usize> NonZeroSigned for Ubig<S> {
-    fn signum(&self) -> NonZeroSign {
-        debug_assert!(!self.is_empty());
-
-        NonZeroSign::Positive
+impl<const S: usize> Signed for Ubig<S> {
+    fn signum(&self) -> Sign {
+        Sign::Positive
     }
 
     fn is_positive(&self) -> bool {
-        debug_assert!(!self.is_empty());
-
         true
     }
 
     fn is_negative(&self) -> bool {
-        debug_assert!(!self.is_empty());
-
         false
     }
 }
 
-impl<const S: usize> NonZeroSigned for NonZeroUbig<S> {
-    fn signum(&self) -> NonZeroSign {
-        NonZeroSign::Positive
+impl<const S: usize> Signed for NonZeroUbig<S> {
+    fn signum(&self) -> Sign {
+        Sign::Positive
     }
 
     fn is_positive(&self) -> bool {

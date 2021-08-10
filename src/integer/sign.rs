@@ -3,92 +3,112 @@ use std::cmp::Ordering;
 use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8};
 use std::num::{NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8};
 
-use crate::non_zero::NonZeroSign;
-use crate::non_zero::NonZeroSigned;
+use crate::Negateable;
+use crate::Sign;
+use crate::Signed;
 
-macro_rules! define_u {
+macro_rules! unsigned {
     ($ty:ty) => {
-        impl NonZeroSigned for $ty {
+        impl Signed for $ty {
             #[must_use]
             #[inline]
-            fn signum(&self) -> NonZeroSign {
-                if *self > 0 {
-                    NonZeroSign::Positive
+            fn signum(&self) -> Sign {
+                if *self == 0 {
+                    Sign::Zero
                 } else {
-                    panic!("attempt to take a non zero sign of a zero value")
+                    Sign::Positive
                 }
             }
         }
     }
 }
 
-define_u!(u8);
-define_u!(u16);
-define_u!(u32);
-define_u!(u64);
-define_u!(u128);
+unsigned!(u8);
+unsigned!(u16);
+unsigned!(u32);
+unsigned!(u64);
+unsigned!(u128);
+unsigned!(usize);
 
-macro_rules! define {
+macro_rules! signed {
     ($ty:ty) => {
-        impl NonZeroSigned for $ty {
+        impl Signed for $ty {
             #[must_use]
             #[inline]
-            fn signum(&self) -> NonZeroSign {
+            fn signum(&self) -> Sign {
                 match self.cmp(&0) {
-                    Ordering::Less => NonZeroSign::Negative,
-                    Ordering::Equal => panic!("attempt to take a non zero sign of a zero value"),
-                    Ordering::Greater => NonZeroSign::Positive,
+                    Ordering::Less => Sign::Negative,
+                    Ordering::Equal => Sign::Zero,
+                    Ordering::Greater => Sign::Positive,
                 }
             }
         }
-    }
-}
 
-define!(i8);
-define!(i16);
-define!(i32);
-define!(i64);
-define!(i128);
-
-macro_rules! define_non_zero_u {
-    ($ty:ty) => {
-        impl NonZeroSigned for $ty {
-            #[must_use]
+        impl Negateable for $ty {
             #[inline]
-            fn signum(&self) -> NonZeroSign {
-                NonZeroSign::Positive
+            fn negate(&mut self) {
+                *self = -*self;
             }
         }
     }
 }
 
-define_non_zero_u!(NonZeroU8);
-define_non_zero_u!(NonZeroU16);
-define_non_zero_u!(NonZeroU32);
-define_non_zero_u!(NonZeroU64);
-define_non_zero_u!(NonZeroU128);
+signed!(i8);
+signed!(i16);
+signed!(i32);
+signed!(i64);
+signed!(i128);
+signed!(isize);
 
-macro_rules! define_non_zero {
+macro_rules! non_zero_unsigned {
     ($ty:ty) => {
-        impl NonZeroSigned for $ty {
+        impl Signed for $ty {
             #[must_use]
             #[inline]
-            fn signum(&self) -> NonZeroSign {
+            fn signum(&self) -> Sign {
+                Sign::Positive
+            }
+        }
+    }
+}
+
+non_zero_unsigned!(NonZeroU8);
+non_zero_unsigned!(NonZeroU16);
+non_zero_unsigned!(NonZeroU32);
+non_zero_unsigned!(NonZeroU64);
+non_zero_unsigned!(NonZeroU128);
+
+macro_rules! non_zero_signed {
+    ($ty:ty) => {
+        impl Signed for $ty {
+            #[must_use]
+            #[inline]
+            fn signum(&self) -> Sign {
                 if self.get() > 0 {
-                    NonZeroSign::Positive
+                    Sign::Positive
                 } else {
-                    NonZeroSign::Negative
+                    Sign::Negative
                 }
+            }
+        }
+
+        impl Negateable for $ty {
+            #[inline]
+            fn negate(&mut self) {
+                *self = unsafe {
+                    // SAFETY: Was non zero before, only sign gets flipped.
+                    <$ty>::new_unchecked(-self.get())
+                };
             }
         }
     }
 }
 
-define_non_zero!(NonZeroI8);
-define_non_zero!(NonZeroI16);
-define_non_zero!(NonZeroI32);
-define_non_zero!(NonZeroI64);
-define_non_zero!(NonZeroI128);
+non_zero_signed!(NonZeroI8);
+non_zero_signed!(NonZeroI16);
+non_zero_signed!(NonZeroI32);
+non_zero_signed!(NonZeroI64);
+non_zero_signed!(NonZeroI128);
 
 #[cfg(test)]
 mod test {
@@ -98,23 +118,23 @@ mod test {
 
     #[test]
     fn test_zero_sign() {
-        assert_eq!(NonZeroSigned::signum(&1_u32), NonZeroSign::Positive);
-        assert_eq!(NonZeroSigned::signum(&-1_i32), NonZeroSign::Negative);
+        assert_eq!(1_u32.non_zero_signum(), NonZeroSign::Positive);
+        assert_eq!(-1_u32.non_zero_signum(), NonZeroSign::Negative);
 
-        assert_eq!(NonZeroSigned::signum(&NonZeroU8::new(1).unwrap()), NonZeroSign::Positive);
-        assert_eq!(NonZeroSigned::signum(&NonZeroI8::new(1).unwrap()), NonZeroSign::Positive);
-        assert_eq!(NonZeroSigned::signum(&NonZeroI8::new(-1).unwrap()), NonZeroSign::Negative);
+        assert_eq!(NonZeroU8::new(1).unwrap().non_zero_signum(), NonZeroSign::Positive);
+        assert_eq!(NonZeroI8::new(1).unwrap().non_zero_signum(), NonZeroSign::Positive);
+        assert_eq!(NonZeroI8::new(-1).unwrap().non_zero_signum(), NonZeroSign::Negative);
     }
 
     #[test]
     #[should_panic]
     fn test_non_zero_on_zero() {
-        NonZeroSigned::signum(&0_u32);
+        0_u32.non_zero_signum();
     }
 
     #[test]
     #[should_panic]
     fn test_non_zero_on_zero_signed() {
-        NonZeroSigned::signum(&0_i8);
+        0_i8.non_zero_signum();
     }
 }
