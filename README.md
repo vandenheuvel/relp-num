@@ -12,14 +12,14 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-relp-num = "0.1.2"
+relp-num = "0.1.6"
 ```
 
 You can now use the crate, for example to compute `2 + 2`:
 
 ```rust
 fn main() {
-    println!("{}", relp::RB!(2) + relp::R64!(2));
+    println!("{}", relp_num::RB!(2) + relp_num::R64!(2));
 }
 ```
 
