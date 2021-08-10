@@ -27,6 +27,12 @@ impl num_traits::Zero for Zero {
     }
 }
 
+impl Default for Zero {
+    fn default() -> Self {
+        Zero
+    }
+}
+
 impl Add for Zero {
     type Output = Self;
 

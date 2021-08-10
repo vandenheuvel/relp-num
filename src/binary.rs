@@ -45,6 +45,12 @@ impl num_traits::One for Binary {
     }
 }
 
+impl Default for Binary {
+    fn default() -> Self {
+        Self::Zero
+    }
+}
+
 impl fmt::Display for Binary {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {

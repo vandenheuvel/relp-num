@@ -114,6 +114,12 @@ macro_rules! creation {
             }
         }
 
+        impl Default for $name {
+            fn default() -> Self {
+                Self::zero()
+            }
+        }
+
         impl fmt::Debug for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 match self.sign {

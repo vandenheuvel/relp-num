@@ -56,6 +56,12 @@ impl<const S: usize> Big<S> {
     }
 }
 
+impl<const S: usize> Default for Big<S> {
+    fn default() -> Self {
+        Self::zero()
+    }
+}
+
 impl<const S: usize> fmt::Debug for Big<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.sign {

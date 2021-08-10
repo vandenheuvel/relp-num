@@ -60,6 +60,12 @@ impl<const S: usize> NonZeroUbig<S> {
     }
 }
 
+impl<const S: usize> Default for Ubig<S> {
+    fn default() -> Self {
+        Self::zero()
+    }
+}
+
 impl<const S: usize> From<NonZeroUsize> for Ubig<S> {
     fn from(value: NonZeroUsize) -> Self {
         Self(smallvec![value.get()])

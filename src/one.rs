@@ -2,6 +2,7 @@
 use std::fmt;
 use std::ops::{Add, AddAssign, Div, };
 use std::ops::Mul;
+
 use crate::NonZero;
 
 /// A type representing the value `1`.
@@ -18,6 +19,12 @@ impl num_traits::One for One {
     #[must_use]
     fn one() -> Self {
         Self
+    }
+}
+
+impl Default for One {
+    fn default() -> Self {
+        One
     }
 }
 
