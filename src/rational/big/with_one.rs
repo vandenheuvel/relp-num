@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use num_traits::Zero;
 
@@ -45,6 +45,13 @@ impl<const S: usize> Add<&One> for Big<S> {
     }
 }
 
+impl<const S: usize> AddAssign<One> for Big<S> {
+    #[inline]
+    fn add_assign(&mut self, _: One) {
+        AddAssign::add_assign(self, &One);
+    }
+}
+
 impl<const S: usize> AddAssign<&One> for Big<S> {
     #[inline]
     fn add_assign(&mut self, _: &One) {
@@ -81,13 +88,6 @@ impl<const S: usize> AddAssign<&One> for Big<S> {
     }
 }
 
-impl<const S: usize> AddAssign<One> for Big<S> {
-    #[inline]
-    fn add_assign(&mut self, _: One) {
-        AddAssign::add_assign(self, &One);
-    }
-}
-
 impl<const S: usize> Sub<One> for Big<S> {
     type Output = Self;
 
@@ -113,6 +113,13 @@ impl<const S: usize> Sub<&One> for Big<S> {
 impl<const S: usize> SubAssign<One> for Big<S> {
     #[inline]
     fn sub_assign(&mut self, _: One) {
+        SubAssign::sub_assign(self, &One);
+    }
+}
+
+impl<const S: usize> SubAssign<&One> for Big<S> {
+    #[inline]
+    fn sub_assign(&mut self, _: &One) {
         match self.sign {
             Sign::Positive => {
                 let numerator_is_one = unsafe { is_one_non_zero(self.numerator.inner()) };
@@ -165,6 +172,16 @@ impl<const S: usize> Mul<&One> for Big<S> {
     }
 }
 
+impl<const S: usize> Mul<One> for &Big<S> {
+    type Output = Big<S>;
+
+    #[inline]
+    #[must_use]
+    fn mul(self, _: One) -> Self::Output {
+        self.clone()
+    }
+}
+
 impl<const S: usize> Mul<&One> for &Big<S> {
     type Output = Big<S>;
 
@@ -175,13 +192,15 @@ impl<const S: usize> Mul<&One> for &Big<S> {
     }
 }
 
-impl<const S: usize> Mul<One> for &Big<S> {
-    type Output = Big<S>;
-
+impl<const S: usize> MulAssign<One> for Big<S> {
     #[inline]
-    #[must_use]
-    fn mul(self, _: One) -> Self::Output {
-        self.clone()
+    fn mul_assign(&mut self, _: One) {
+    }
+}
+
+impl<const S: usize> MulAssign<&One> for Big<S> {
+    #[inline]
+    fn mul_assign(&mut self, _: &One) {
     }
 }
 
@@ -205,6 +224,16 @@ impl<const S: usize> Div<&One> for Big<S> {
     }
 }
 
+impl<const S: usize> Div<One> for &Big<S> {
+    type Output = Big<S>;
+
+    #[inline]
+    #[must_use]
+    fn div(self, _: One) -> Self::Output {
+        self.clone()
+    }
+}
+
 impl<const S: usize> Div<&One> for &Big<S> {
     type Output = Big<S>;
 
@@ -215,12 +244,14 @@ impl<const S: usize> Div<&One> for &Big<S> {
     }
 }
 
-impl<const S: usize> Div<One> for &Big<S> {
-    type Output = Big<S>;
-
+impl<const S: usize> DivAssign<One> for Big<S> {
     #[inline]
-    #[must_use]
-    fn div(self, _: One) -> Self::Output {
-        self.clone()
+    fn div_assign(&mut self, _: One) {
+    }
+}
+
+impl<const S: usize> DivAssign<&One> for Big<S> {
+    #[inline]
+    fn div_assign(&mut self, _: &One) {
     }
 }

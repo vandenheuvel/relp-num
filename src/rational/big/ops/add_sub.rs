@@ -99,6 +99,7 @@ impl<const S: usize> Add for &Big<S> {
 impl<const S: usize> AddAssign for Big<S> {
     #[inline]
     fn add_assign(&mut self, rhs: Big<S>) {
+        // TODO(PERFORMANCE): Utilize ownership somehow?
         AddAssign::add_assign(self, &rhs);
     }
 }
@@ -198,6 +199,7 @@ impl<const S: usize> Sub for &Big<S> {
 }
 
 impl<const S: usize> SubAssign<Big<S>> for Big<S> {
+    // TODO(PERFORMANCE): Utilize ownership somehow?
     #[inline]
     fn sub_assign(&mut self, rhs: Big<S>) {
         SubAssign::sub_assign(self, &rhs);

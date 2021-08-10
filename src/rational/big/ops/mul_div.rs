@@ -115,7 +115,7 @@ impl<const S: usize> Mul<&NonZeroBig<S>> for NonZeroBig<S> {
     }
 }
 
-impl<const S: usize> Mul<&NonZeroBig<S>> for &NonZeroBig<S> {
+impl<const S: usize> Mul for &NonZeroBig<S> {
     type Output = NonZeroBig<S>;
 
     #[must_use]
@@ -167,7 +167,7 @@ impl<const S: usize> MulAssign<&Big<S>> for Big<S> {
         }
     }
 }
-impl<const S: usize> Div<Big<S>> for Big<S> {
+impl<const S: usize> Div for Big<S> {
     type Output = Big<S>;
 
     #[inline]
@@ -199,7 +199,7 @@ impl<const S: usize> Div<Big<S>> for &Big<S> {
     }
 }
 
-impl<const S: usize> Div<&Big<S>> for &Big<S> {
+impl<const S: usize> Div for &Big<S> {
     type Output = Big<S>;
 
     #[inline]

@@ -13,6 +13,7 @@ pub mod ops;
 mod with_small;
 mod with_integer;
 mod with_binary;
+mod with_zero;
 mod with_one;
 mod with_option;
 
