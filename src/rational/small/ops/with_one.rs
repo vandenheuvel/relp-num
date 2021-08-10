@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use num_traits::Zero;
 
@@ -46,6 +46,13 @@ macro_rules! impls {
             }
         }
 
+        impl AddAssign<One> for $name {
+            #[inline]
+            fn add_assign(&mut self, _: One) {
+                AddAssign::add_assign(self, &One);
+            }
+        }
+
         impl AddAssign<&One> for $name {
             #[inline]
             fn add_assign(&mut self, _: &One) {
@@ -75,13 +82,6 @@ macro_rules! impls {
             }
         }
 
-        impl AddAssign<One> for $name {
-            #[inline]
-            fn add_assign(&mut self, _: One) {
-                AddAssign::add_assign(self, &One);
-            }
-        }
-
         impl Sub<One> for $name {
             type Output = Self;
 
@@ -107,6 +107,13 @@ macro_rules! impls {
         impl SubAssign<One> for $name {
             #[inline]
             fn sub_assign(&mut self, _: One) {
+                SubAssign::sub_assign(self, &One);
+            }
+        }
+
+        impl SubAssign<&One> for $name {
+            #[inline]
+            fn sub_assign(&mut self, _: &One) {
                 match self.sign {
                     Sign::Positive => {
                         if self.numerator != 1 || self.denominator != 1 {
@@ -173,6 +180,19 @@ macro_rules! impls {
             }
         }
 
+        impl MulAssign<One> for $name {
+            #[inline]
+            fn mul_assign(&mut self, _: One) {
+                MulAssign::mul_assign(self, &One);
+            }
+        }
+
+        impl MulAssign<&One> for $name {
+            #[inline]
+            fn mul_assign(&mut self, _: &One) {
+            }
+        }
+
         impl Div<One> for $name {
             type Output = Self;
 
@@ -210,6 +230,19 @@ macro_rules! impls {
             #[must_use]
             fn div(self, _: One) -> Self::Output {
                 self.clone()
+            }
+        }
+
+        impl DivAssign<One> for $name {
+            #[inline]
+            fn div_assign(&mut self, _: One) {
+                DivAssign::div_assign(self, &One);
+            }
+        }
+
+        impl DivAssign<&One> for $name {
+            #[inline]
+            fn div_assign(&mut self, _: &One) {
             }
         }
     }
