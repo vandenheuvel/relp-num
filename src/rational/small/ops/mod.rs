@@ -16,6 +16,7 @@ use crate::sign::Sign;
 pub(crate) mod building_blocks;
 mod with_int;
 mod with_one;
+mod with_zero;
 
 #[cfg(test)]
 mod test;
