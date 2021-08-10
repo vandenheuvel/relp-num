@@ -1,13 +1,9 @@
 //! # Interactions with fixed size ratios
-use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
-
 use crate::NonZeroUbig;
 use crate::rational::{Rational16, Rational32, Rational64, Rational8};
-use crate::rational::big::ops::building_blocks::{add_small, mul_small, SignChange, sub_small};
+use crate::rational::big::Big;
 use crate::sign::Sign;
 use crate::Ubig;
-
-use super::Big;
 
 macro_rules! define_interations {
     ($small:ident, $module_name:ident) => {
@@ -70,12 +66,13 @@ macro_rules! define_interations {
             }
 
             mod field {
-                use crate::sign::Sign;
                 use super::*;
+                use crate::sign::Sign;
 
                 mod add {
-
                     use super::*;
+                    use std::ops::{Add, AddAssign};
+                    use crate::rational::big::ops::building_blocks::{add_small, sub_small, SignChange};
 
                     impl<const S: usize> Add<$small> for Big<S> {
                         type Output = Self;
@@ -200,6 +197,8 @@ macro_rules! define_interations {
 
                 mod sub {
                     use super::*;
+                    use crate::rational::big::ops::building_blocks::{add_small, sub_small, SignChange};
+                    use std::ops::{Sub, SubAssign};
 
                     impl<const S: usize> Sub<$small> for Big<S> {
                         type Output = Self;
@@ -324,6 +323,8 @@ macro_rules! define_interations {
 
                 mod mul {
                     use super::*;
+                    use std::ops::{Mul, MulAssign};
+                    use crate::rational::big::ops::building_blocks::mul_small;
 
                     impl<const S: usize> Mul<$small> for Big<S> {
                         type Output = Self;
@@ -341,24 +342,7 @@ macro_rules! define_interations {
                         #[must_use]
                         #[inline]
                         fn mul(mut self, rhs: &$small) -> Self::Output {
-                            match (self.sign, rhs.sign) {
-                                (Sign::Positive | Sign::Negative, Sign::Positive | Sign::Negative) => {
-                                    self.sign *= rhs.sign;
-                                    unsafe {
-                                        mul_small(
-                                            self.numerator.inner_mut(),
-                                            self.denominator.inner_mut(),
-                                            rhs.numerator as usize,
-                                            rhs.denominator as usize,
-                                        )
-                                    }
-                                }
-                                (Sign::Positive | Sign::Negative, Sign::Zero) => {
-                                    <Self as num_traits::Zero>::set_zero(&mut self);
-                                }
-                                (Sign::Zero, _) => {}
-                            }
-
+                            MulAssign::mul_assign(&mut self, rhs);
                             self
                         }
                     }
@@ -402,10 +386,53 @@ macro_rules! define_interations {
                             }
                         }
                     }
+
+                    impl<const S: usize> MulAssign<$small> for Big<S> {
+                        #[inline]
+                        fn mul_assign(&mut self, rhs: $small) {
+                            MulAssign::mul_assign(self, &rhs);
+                        }
+                    }
+
+                    impl<const S: usize> MulAssign<&$small> for Big<S> {
+                        #[inline]
+                        fn mul_assign(&mut self, rhs: &$small) {
+                            match (self.sign, rhs.sign) {
+                                (Sign::Positive | Sign::Negative, Sign::Positive | Sign::Negative) => {
+                                    self.sign *= rhs.sign;
+                                    unsafe {
+                                        mul_small(
+                                            self.numerator.inner_mut(),
+                                            self.denominator.inner_mut(),
+                                            rhs.numerator as usize,
+                                            rhs.denominator as usize,
+                                        )
+                                    }
+                                }
+                                (Sign::Positive | Sign::Negative, Sign::Zero) => {
+                                    <Self as num_traits::Zero>::set_zero(self);
+                                }
+                                (Sign::Zero, _) => {}
+                            }
+                        }
+                    }
                 }
 
                 mod div {
                     use super::*;
+                    use std::ops::{Div, DivAssign};
+                    use crate::rational::big::ops::building_blocks::mul_small;
+
+                    impl<const S: usize> Div<$small> for Big<S> {
+                        type Output = Big<S>;
+
+                        #[must_use]
+                        #[inline]
+                        fn div(mut self, rhs: $small) -> Self::Output {
+                            DivAssign::div_assign(&mut self, rhs);
+                            self
+                        }
+                    }
 
                     impl<const S: usize> Div<&$small> for Big<S> {
                         type Output = Big<S>;
@@ -413,8 +440,21 @@ macro_rules! define_interations {
                         #[must_use]
                         #[inline]
                         fn div(mut self, rhs: &$small) -> Self::Output {
-                            debug_assert_ne!(rhs.sign, Sign::Zero);
+                            DivAssign::div_assign(&mut self, rhs);
+                            self
+                        }
+                    }
 
+                    impl<const S: usize> DivAssign<$small> for Big<S> {
+                        #[inline]
+                        fn div_assign(&mut self, rhs: $small) {
+                            DivAssign::div_assign(self, &rhs);
+                        }
+                    }
+
+                    impl<const S: usize> DivAssign<&$small> for Big<S> {
+                        #[inline]
+                        fn div_assign(&mut self, rhs: &$small) {
                             match (self.sign, rhs.sign) {
                                 (Sign::Positive | Sign::Negative, Sign::Positive | Sign::Negative) => {
                                     self.sign *= rhs.sign;
@@ -427,11 +467,9 @@ macro_rules! define_interations {
                                         );
                                     }
                                 }
-                                (Sign::Positive | Sign::Negative, Sign::Zero) => panic!(),
+                                (Sign::Positive | Sign::Negative, Sign::Zero) => panic!("attempt to divide by zero"),
                                 (Sign::Zero, _) => {}
                             }
-
-                            self
                         }
                     }
                 }
