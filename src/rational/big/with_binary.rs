@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign, Div, DivAssign};
 
 use crate::binary::Binary;
 use crate::one::One;
@@ -158,6 +158,68 @@ impl<const S: usize> MulAssign<&Binary> for Big<S> {
     fn mul_assign(&mut self, rhs: &Binary) {
         match rhs {
             Binary::Zero => num_traits::Zero::set_zero(self),
+            Binary::One => {},
+        }
+    }
+}
+
+impl<const S: usize> Div<Binary> for Big<S> {
+    type Output = Self;
+
+    #[must_use]
+    #[inline]
+    fn div(mut self, rhs: Binary) -> Self::Output {
+        DivAssign::div_assign(&mut self, rhs);
+        self
+    }
+}
+
+impl<const S: usize> Div<&Binary> for Big<S> {
+    type Output = Big<S>;
+
+    #[must_use]
+    #[inline]
+    fn div(mut self, rhs: &Binary) -> Self::Output {
+        DivAssign::div_assign(&mut self, rhs);
+        self
+    }
+}
+
+impl<const S: usize> Div<Binary> for &Big<S> {
+    type Output = Big<S>;
+
+    #[must_use]
+    #[inline]
+    fn div(self, rhs: Binary) -> Self::Output {
+        Div::div(self, &rhs)
+    }
+}
+
+impl<const S: usize> Div<&Binary> for &Big<S> {
+    type Output = Big<S>;
+
+    #[must_use]
+    #[inline]
+    fn div(self, rhs: &Binary) -> Self::Output {
+        match rhs {
+            Binary::Zero => panic!("attempt to divide by zero"),
+            Binary::One => self.clone(),
+        }
+    }
+}
+
+impl<const S: usize> DivAssign<Binary> for Big<S> {
+    #[inline]
+    fn div_assign(&mut self, rhs: Binary) {
+        DivAssign::div_assign(self, &rhs);
+    }
+}
+
+impl<const S: usize> DivAssign<&Binary> for Big<S> {
+    #[inline]
+    fn div_assign(&mut self, rhs: &Binary) {
+        match rhs {
+            Binary::Zero => panic!("attempt to divide by zero"),
             Binary::One => {},
         }
     }
