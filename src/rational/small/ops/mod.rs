@@ -3,6 +3,7 @@ use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 use std::ops::Neg;
 
+use crate::Negateable;
 use crate::non_zero::NonZero;
 use crate::non_zero::NonZeroSign;
 use crate::rational::small::{Rational128, Rational16, Rational32, Rational64, Rational8};
@@ -44,7 +45,7 @@ macro_rules! rational {
                         );
                         match sign_change {
                             SignChange::None => {}
-                            SignChange::Flip => self.sign = !self.sign,
+                            SignChange::Flip => self.sign.negate(),
                             SignChange::Zero => self.sign = Sign::Zero,
                         }
                     }
@@ -73,7 +74,7 @@ macro_rules! rational {
                         );
                         match sign_change {
                             SignChange::None => {}
-                            SignChange::Flip => self.sign = !self.sign,
+                            SignChange::Flip => self.sign.negate(),
                             SignChange::Zero => self.sign = Sign::Zero,
                         }
                     }
@@ -198,7 +199,7 @@ macro_rules! rational_non_zero {
                         );
                         match sign_change {
                             SignChange::None => {}
-                            SignChange::Flip => self.sign = !self.sign,
+                            SignChange::Flip => self.sign.negate(),
                             SignChange::Zero => panic!("attempt to add with overflow"),
                         }
                     }
@@ -218,7 +219,7 @@ macro_rules! rational_non_zero {
                         );
                         match sign_change {
                             SignChange::None => {}
-                            SignChange::Flip => self.sign = !self.sign,
+                            SignChange::Flip => self.sign.negate(),
                             SignChange::Zero => panic!("attempt to subtract with overflow"),
                         }
                     }
@@ -269,7 +270,7 @@ macro_rules! rational_non_zero {
             #[must_use]
             #[inline]
             fn neg(mut self) -> Self::Output {
-                self.sign = !self.sign;
+                self.sign.negate();
                 self
             }
         }

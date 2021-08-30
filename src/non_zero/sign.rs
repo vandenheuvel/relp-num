@@ -2,11 +2,11 @@
 //!
 //! Usual sign implementations have a sign for zero, the implementation in this module does not.
 use std::cmp::Ordering;
-use std::ops::{Mul, MulAssign, Not, Neg};
+use std::ops::{Mul, MulAssign, Neg, Not};
 
+use crate::{Negateable, Signed};
 use crate::non_zero::NonZero;
 use crate::sign::Sign;
-use crate::Signed;
 
 /// A signed number that can have a nonzero value.
 pub trait NonZeroSigned: NonZero + Signed {
@@ -62,25 +62,30 @@ impl NonZero for NonZeroSign {
     }
 }
 
-impl Not for NonZeroSign {
-    type Output = Self;
-
-    fn not(self) -> Self::Output {
-        match self {
+impl Negateable for NonZeroSign {
+    fn negate(&mut self) {
+        *self = match self {
             NonZeroSign::Positive => NonZeroSign::Negative,
             NonZeroSign::Negative => NonZeroSign::Positive,
         }
     }
 }
 
+impl Not for NonZeroSign {
+    type Output = Self;
+
+    fn not(mut self) -> Self::Output {
+        Negateable::negate(&mut self);
+        self
+    }
+}
+
 impl Neg for NonZeroSign {
     type Output = Self;
 
-    fn neg(self) -> Self::Output {
-        match self {
-            NonZeroSign::Positive => NonZeroSign::Negative,
-            NonZeroSign::Negative => NonZeroSign::Positive,
-        }
+    fn neg(mut self) -> Self::Output {
+        Negateable::negate(&mut self);
+        self
     }
 }
 

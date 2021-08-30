@@ -4,9 +4,10 @@ use std::fmt::Display;
 use std::ops::Neg;
 
 use crate::integer::big::ops::normalize::gcd_scalar;
-use crate::non_zero::{NonZeroSign};
+use crate::Negateable;
+use crate::non_zero::NonZeroSign;
 use crate::rational::Ratio;
-use crate::sign::{Sign};
+use crate::sign::Sign;
 
 mod io;
 pub(crate) mod ops;
@@ -22,7 +23,7 @@ macro_rules! rational {
             #[must_use]
             #[inline]
             fn neg(mut self) -> Self::Output {
-                self.sign = !self.sign;
+                Negateable::negate(&mut self.sign);
                 self
             }
         }

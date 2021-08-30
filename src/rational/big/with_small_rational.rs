@@ -2,6 +2,7 @@
 use crate::NonZeroUbig;
 use crate::rational::{Rational16, Rational32, Rational64, Rational8};
 use crate::rational::big::Big;
+use crate::sign::Negateable;
 use crate::sign::Sign;
 use crate::Ubig;
 
@@ -170,7 +171,7 @@ macro_rules! define_interations {
                                         );
                                         match sign_change {
                                             SignChange::None => {}
-                                            SignChange::Flip => self.sign = !self.sign,
+                                            SignChange::Flip => self.sign.negate(),
                                             SignChange::Zero => self.sign = Sign::Zero,
                                         }
                                     }
@@ -285,7 +286,7 @@ macro_rules! define_interations {
                                         );
                                         match sign_change {
                                             SignChange::None => {}
-                                            SignChange::Flip => self.sign = !self.sign,
+                                            SignChange::Flip => self.sign.negate(),
                                             SignChange::Zero => self.sign = Sign::Zero,
                                         }
                                     }

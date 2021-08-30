@@ -1,6 +1,6 @@
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-use crate::{NonZero, Sign};
+use crate::{Negateable, NonZero, Sign};
 use crate::rational::big::Big;
 use crate::rational::big::ops::building_blocks::{add_assign_fraction_non_zero, SignChange, sub_assign_fraction_non_zero};
 
@@ -23,7 +23,7 @@ impl<const S: usize> Big<S> {
         );
         match sign_change {
             SignChange::None => {}
-            SignChange::Flip => self.sign = !self.sign,
+            SignChange::Flip => self.sign.negate(),
             SignChange::Zero => self.sign = Sign::Zero,
         }
     }

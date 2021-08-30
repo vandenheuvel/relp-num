@@ -18,8 +18,8 @@ pub use small::Rational32 as Rational32;
 pub use small::Rational64 as Rational64;
 pub use small::Rational8 as Rational8;
 
+use crate::Negateable;
 use crate::non_zero::NonZero;
-use crate::{Negateable};
 use crate::sign::Sign;
 use crate::Signed;
 
