@@ -10,7 +10,7 @@ use crate::rational::Ratio;
 pub (crate) mod io;
 pub(crate) mod properties;
 pub mod ops;
-mod with_small;
+mod with_small_rational;
 mod with_integer;
 mod with_binary;
 mod with_zero;
