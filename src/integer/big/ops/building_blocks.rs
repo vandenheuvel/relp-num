@@ -168,34 +168,16 @@ pub unsafe fn sub_assign_slice(values: &mut [usize], rhs: &[usize]) -> bool {
 
 #[inline]
 pub fn carrying_add_mut(value: &mut usize, rhs: usize, carry: bool) -> bool {
-    let (new_value, new_carry) = carrying_add(*value, rhs, carry);
+    let (new_value, new_carry) = value.carrying_add(rhs, carry);
     *value = new_value;
     new_carry
-}
-
-// Copied from an open pr on rust
-#[must_use]
-#[inline]
-pub fn carrying_add(value: usize, rhs: usize, carry: bool) -> (usize, bool) {
-    let (a, b) = value.overflowing_add(rhs);
-    let (c, d) = a.overflowing_add(carry as usize);
-    (c, b | d)
 }
 
 #[inline]
 pub fn carrying_sub_mut(value: &mut usize, rhs: usize, carry: bool) -> bool {
-    let (new_value, new_carry) = carrying_sub(*value, rhs, carry);
+    let (new_value, new_carry) = value.borrowing_sub(rhs, carry);
     *value = new_value;
     new_carry
-}
-
-// Copied from an open pr on rust
-#[must_use]
-#[inline]
-pub fn carrying_sub(value: usize, rhs: usize, carry: bool) -> (usize, bool) {
-    let (a, b) = value.overflowing_sub(rhs);
-    let (c, d) = a.overflowing_sub(carry as usize);
-    (c, b | d)
 }
 
 #[cfg(test)]

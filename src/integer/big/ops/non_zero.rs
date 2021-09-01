@@ -6,7 +6,7 @@ use std::ptr;
 use smallvec::SmallVec;
 
 use crate::integer::big::BITS_PER_WORD;
-use crate::integer::big::ops::building_blocks::{addmul_1, carrying_add, carrying_add_mut, carrying_sub, carrying_sub_mut, is_well_formed, is_well_formed_non_zero, mul_1, sub_assign_slice, sub_n, to_twos_complement};
+use crate::integer::big::ops::building_blocks::{addmul_1, carrying_add_mut, carrying_sub_mut, is_well_formed, is_well_formed_non_zero, mul_1, sub_assign_slice, sub_n, to_twos_complement};
 use crate::integer::big::properties::cmp;
 use crate::rational::big::properties::cmp_single;
 
@@ -220,13 +220,13 @@ pub(crate) fn mul_assign_single_non_zero<const S: usize>(
     let mut carry = false;
     for i in 1..values.len() {
         let (low, high) = values[i].widening_mul(rhs);
-        let (value_new, carry_new) = carrying_add(previous_high, low, carry);
+        let (value_new, carry_new) = previous_high.carrying_add(low, carry);
         values[i] = value_new;
         carry = carry_new;
         previous_high = high;
     }
 
-    let (value_new, carry) = carrying_add(previous_high, 0, carry);
+    let (value_new, carry) = previous_high.carrying_add(0, carry);
     if value_new > 0 {
         values.push(value_new);
         if carry {
@@ -288,7 +288,7 @@ pub unsafe fn sub<const S: usize>(
 
     while carry {
         debug_assert!(values.len() > rhs.len());
-        let (value, new_carry) = carrying_sub(values[result.len()], 0, carry);
+        let (value, new_carry) = values[result.len()].borrowing_sub(0, carry);
         carry = new_carry;
         result.push(value);
     }
@@ -370,14 +370,14 @@ pub(crate) fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, r
             let mut i = 0;
             while i < left.len() {
                 // TODO(PERFORMANCE): Is assembler faster?
-                let (new_value, new_carry) = carrying_sub(right[i], left[i], carry);
+                let (new_value, new_carry) = right[i].borrowing_sub(left[i], carry);
                 left[i] = new_value;
                 carry = new_carry;
                 i += 1;
             }
 
             while carry {
-                let (new_value, new_carry) = carrying_sub(right[i], 0, true);
+                let (new_value, new_carry) = right[i].borrowing_sub(0, true);
                 left.push(new_value);
                 carry = new_carry;
                 i += 1;
