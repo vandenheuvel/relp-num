@@ -4,7 +4,7 @@ use std::ptr::copy;
 use smallvec::{smallvec, SmallVec};
 
 use crate::integer::big::BITS_PER_WORD;
-use crate::integer::big::ops::building_blocks::{add_2, add_assign_slice, is_well_formed, sub_2, sub_assign_slice, submul_slice, widening_mul};
+use crate::integer::big::ops::building_blocks::{add_2, add_assign_slice, is_well_formed, sub_2, sub_assign_slice, submul_slice};
 use crate::integer::big::ops::non_zero::{is_one_non_zero, shl, shl_mut, shl_mut_overflowing, shr};
 use crate::integer::big::ops::normalize::trailing_zeros;
 use crate::integer::big::properties::cmp;
@@ -206,7 +206,7 @@ pub unsafe fn div_assign_one_word<const S: usize>(values: &mut SmallVec<[usize; 
 
 #[inline]
 pub fn div_preinv(high: usize, low: usize, divisor: usize, divisor_inverted: usize) -> (usize, usize) {
-    let (quotient_high, quotient_low) = widening_mul(divisor_inverted, high);
+    let (quotient_low, quotient_high) = divisor_inverted.widening_mul(high);
     let (mut quotient_high, quotient_low) = add_2(quotient_high, quotient_low, high + 1, low);
 
     let mut remainder = low.wrapping_sub(quotient_high.wrapping_mul(divisor));
@@ -454,7 +454,7 @@ pub fn invert_pi(high: usize, low: usize) -> usize {
         result = result.wrapping_sub(mask & high);
     }
 
-    let (result_high, _result_low) = widening_mul(low, inverse);
+    let (_result_low, result_high) = low.widening_mul(inverse);
     result = result.wrapping_add(result_high);
 
     if result < result_high {
@@ -473,12 +473,12 @@ pub fn divrem_3by2(
     divisor_high: usize, divisor_low: usize,
     divisor_inverse: usize,
 ) -> (usize, usize, usize) {
-    let (quotient_high, quotient_low) = widening_mul(numerator_high, divisor_inverse);
+    let (quotient_low, quotient_high) = numerator_high.widening_mul(divisor_inverse);
     let (quotient_high, quotient_low) = add_2(quotient_high, quotient_low, numerator_high, numerator_middle);
 
     let remainder_high = numerator_middle.wrapping_sub(divisor_high.wrapping_mul(quotient_high));
     let (remainder_high, remainder_low) = sub_2(remainder_high, numerator_low, divisor_high, divisor_low);
-    let (result_high, result_low) = widening_mul(divisor_low, quotient_high);
+    let (result_low, result_high) = divisor_low.widening_mul(quotient_high);
     let (remainder_high, remainder_low) = sub_2(remainder_high, remainder_low, result_high, result_low);
 
     let quotient_high = quotient_high.wrapping_add(1);

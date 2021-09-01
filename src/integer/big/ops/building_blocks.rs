@@ -15,29 +15,6 @@ pub fn is_well_formed_non_zero(values: &[usize]) -> bool {
 
 #[must_use]
 #[inline]
-pub fn widening_mul(left: usize, right: usize) -> (usize, usize) {
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    fn inner(left: usize, right: usize) -> (usize, usize) {
-        let mut high_out;
-        let mut low_out;
-
-        unsafe {
-            asm!(
-            "mul {v}",
-            v = in(reg) right,
-            inout("rax") left => low_out,
-            out("rdx") high_out,
-            );
-        }
-
-        (high_out, low_out)
-    }
-
-    inner(left, right)
-}
-
-#[must_use]
-#[inline]
 pub fn add_2(left_high: usize, left_low: usize, right_high: usize, right_low: usize) -> (usize, usize) {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     fn inner(left_high: usize, left_low: usize, right_high: usize, right_low: usize) -> (usize, usize) {
@@ -225,7 +202,7 @@ pub fn carrying_sub(value: usize, rhs: usize, carry: bool) -> (usize, bool) {
 mod test {
     use smallvec::{smallvec, SmallVec};
 
-    use crate::integer::big::ops::building_blocks::{add_2, carrying_add_mut, is_well_formed, sub_n, to_twos_complement, widening_mul};
+    use crate::integer::big::ops::building_blocks::{add_2, carrying_add_mut, is_well_formed, sub_n, to_twos_complement};
 
     #[test]
     fn test_is_well_formed() {
@@ -253,14 +230,6 @@ mod test {
 
         let x: SV = smallvec![0, 0, 0, 0];
         assert!(!is_well_formed(&x));
-    }
-
-    #[test]
-    fn test_mul() {
-        assert_eq!(widening_mul(0, 2), (0, 0));
-        assert_eq!(widening_mul(2, 2), (0, 4));
-        assert_eq!(widening_mul(1 << 32, 1 << 32), (1, 0));
-        assert_eq!(widening_mul(1 << 63, 3), (1, 1 << 63));
     }
 
     #[test]

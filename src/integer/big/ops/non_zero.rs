@@ -6,7 +6,7 @@ use std::ptr;
 use smallvec::SmallVec;
 
 use crate::integer::big::BITS_PER_WORD;
-use crate::integer::big::ops::building_blocks::{addmul_1, carrying_add, carrying_add_mut, carrying_sub, carrying_sub_mut, is_well_formed, is_well_formed_non_zero, mul_1, sub_assign_slice, sub_n, to_twos_complement, widening_mul};
+use crate::integer::big::ops::building_blocks::{addmul_1, carrying_add, carrying_add_mut, carrying_sub, carrying_sub_mut, is_well_formed, is_well_formed_non_zero, mul_1, sub_assign_slice, sub_n, to_twos_complement};
 use crate::integer::big::properties::cmp;
 use crate::rational::big::properties::cmp_single;
 
@@ -215,11 +215,11 @@ pub(crate) fn mul_assign_single_non_zero<const S: usize>(
 ) {
     debug_assert!(!values.is_empty());
     
-    let (mut previous_high, low) = widening_mul(values[0], rhs);
+    let (low, mut previous_high) = values[0].widening_mul(rhs);
     values[0] = low;
     let mut carry = false;
     for i in 1..values.len() {
-        let (high, low) = widening_mul(values[i], rhs);
+        let (low, high) = values[i].widening_mul(rhs);
         let (value_new, carry_new) = carrying_add(previous_high, low, carry);
         values[i] = value_new;
         carry = carry_new;

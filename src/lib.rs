@@ -12,6 +12,7 @@
 #![feature(core_intrinsics)]
 #![feature(nonzero_ops)]
 #![feature(half_open_range_patterns)]
+#![feature(bigint_helper_methods)]
 
 mod binary;
 pub use binary::Binary;
