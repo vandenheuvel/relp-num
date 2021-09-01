@@ -396,11 +396,12 @@ pub unsafe fn sub_small<const S: usize>(
             sign_change
         } else {
             // result won't be negative
-            let mut carry = borrowing_sub_mut(&mut left_numerator[0], right_numerator, false);
+            let mut carry = false;
+            borrowing_sub_mut(&mut left_numerator[0], right_numerator, &mut carry);
 
             let mut i = 1;
             while carry {
-                carry = borrowing_sub_mut(&mut left_numerator[i], 0, true);
+                borrowing_sub_mut(&mut left_numerator[i], 0, &mut carry);
                 i += 1;
             }
 

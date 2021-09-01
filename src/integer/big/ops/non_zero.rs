@@ -170,7 +170,7 @@ pub fn add_assign<const S: usize>(values: &mut SmallVec<[usize; S]>, rhs: &[usiz
 
     let mut carry = false;
     while i < values.len() && i < rhs.len() {
-        carry = carrying_add_mut(&mut values[i], rhs[i], carry);
+        carrying_add_mut(&mut values[i], rhs[i], &mut carry);
         i += 1;
     }
 
@@ -198,10 +198,11 @@ pub fn add_assign_single_non_zero<const S: usize>(
     values: &mut SmallVec<[usize; S]>,
     rhs: usize,
 ) {
-    let mut carry = carrying_add_mut(&mut values[0], rhs, false);
+    let mut carry = false;
+    carrying_add_mut(&mut values[0], rhs, &mut carry);
     let mut i = 1;
     while carry && i < values.len() {
-        carry = carrying_add_mut(&mut values[i], 0, true);
+        carrying_add_mut(&mut values[i], 0, &mut carry);
         i += 1;
     }
     if carry {
@@ -323,7 +324,7 @@ pub unsafe fn sub_assign_result_positive<const S: usize>(
     let mut index = 0;
     while carry {
         debug_assert!(values.len() > rhs.len());
-        carry = borrowing_sub_mut(&mut values[rhs.len() + index], 0, true);
+        borrowing_sub_mut(&mut values[rhs.len() + index], 0, &mut carry);
         index += 1;
     }
 
@@ -341,14 +342,14 @@ pub fn sub_assign_single_result_positive<const S: usize>(
     debug_assert!(is_well_formed_non_zero(values));
     debug_assert_eq!(cmp_single(values, rhs), Ordering::Greater);
 
-    let mut carry = borrowing_sub_mut(&mut values[0], rhs, false);
-
+    let mut carry = false;
+    borrowing_sub_mut(&mut values[0], rhs, &mut carry);
     debug_assert!(is_well_formed_non_zero(values));
 
     let mut index = 0;
     while carry {
         debug_assert!(values.len() > 1);
-        carry = borrowing_sub_mut(&mut values[1 + index], 0, carry);
+        borrowing_sub_mut(&mut values[1 + index], 0, &mut carry);
         index += 1;
     }
 
@@ -395,7 +396,7 @@ pub(crate) fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, r
             let mut carry = false;
             for i in 0..left.len() {
                 // TODO(PERFORMANCE): Is assembler faster?
-                carry = borrowing_sub_mut(&mut left[i], right[i], carry);
+                borrowing_sub_mut(&mut left[i], right[i], &mut carry);
             }
 
             if carry {
@@ -425,7 +426,7 @@ pub(crate) fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, r
             let mut carry = unsafe { sub_assign_slice(&mut left[..right.len()], right) };
             let mut i = 0;
             while carry && i + right.len() < left.len() {
-                carry = borrowing_sub_mut(&mut left[i + right.len()], 0, true);
+                borrowing_sub_mut(&mut left[i + right.len()], 0, &mut carry);
                 i += 1;
             }
             debug_assert!(!carry);
@@ -446,11 +447,12 @@ pub(crate) fn subtracting_cmp_ne_single<const S: usize>(left: &mut SmallVec<[usi
 
     if left.len() > 1 {
         // result won't be negative
-        let mut carry = borrowing_sub_mut(&mut left[0], right, false);
+        let mut carry = false;
+        borrowing_sub_mut(&mut left[0], right, &mut carry);
 
         let mut i = 1;
         while carry {
-            carry = borrowing_sub_mut(&mut left[i], 0, true);
+            borrowing_sub_mut(&mut left[i], 0, &mut carry);
             i += 1;
         }
 

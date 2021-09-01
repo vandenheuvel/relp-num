@@ -128,7 +128,7 @@ pub fn to_twos_complement<const S: usize>(values: &mut SmallVec<[usize; S]>) {
     let mut carry = true;
 
     for value in values.iter_mut() {
-        carry = borrowing_sub_mut(value, 0, carry);
+        borrowing_sub_mut(value, 0, &mut carry);
         *value = !*value;
     }
 
@@ -148,7 +148,7 @@ pub unsafe fn add_assign_slice(values: &mut [usize], rhs: &[usize]) -> bool {
 
     let mut carry = false;
     for (value, rhs_value) in values.iter_mut().zip(rhs.iter()) {
-        carry = carrying_add_mut(value, *rhs_value, carry);
+        carrying_add_mut(value, *rhs_value, &mut carry);
     }
 
     carry
@@ -160,31 +160,31 @@ pub unsafe fn sub_assign_slice(values: &mut [usize], rhs: &[usize]) -> bool {
 
     let mut carry = false;
     for (value, rhs_value) in values.iter_mut().zip(rhs.iter()) {
-        carry = borrowing_sub_mut(value, *rhs_value, carry);
+        borrowing_sub_mut(value, *rhs_value, &mut carry);
     }
 
     carry
 }
 
 #[inline]
-pub fn carrying_add_mut(value: &mut usize, rhs: usize, carry: bool) -> bool {
-    let (new_value, new_carry) = value.carrying_add(rhs, carry);
+pub fn carrying_add_mut(value: &mut usize, rhs: usize, carry: &mut bool) {
+    let (new_value, new_carry) = value.carrying_add(rhs, *carry);
     *value = new_value;
-    new_carry
+    *carry = new_carry;
 }
 
 #[inline]
-pub fn borrowing_sub_mut(value: &mut usize, rhs: usize, carry: bool) -> bool {
-    let (new_value, new_carry) = value.borrowing_sub(rhs, carry);
+pub fn borrowing_sub_mut(value: &mut usize, rhs: usize, carry: &mut bool) {
+    let (new_value, new_carry) = value.borrowing_sub(rhs, *carry);
     *value = new_value;
-    new_carry
+    *carry = new_carry;
 }
 
 #[cfg(test)]
 mod test {
     use smallvec::{smallvec, SmallVec};
 
-    use crate::integer::big::ops::building_blocks::{add_2, carrying_add_mut, is_well_formed, sub_n, to_twos_complement};
+    use crate::integer::big::ops::building_blocks::{add_2, is_well_formed, sub_n, to_twos_complement};
 
     #[test]
     fn test_is_well_formed() {
@@ -275,28 +275,5 @@ mod test {
         to_twos_complement(&mut value);
         let expected: SV = smallvec![4];
         assert_eq!(value, expected);
-    }
-
-    #[test]
-    fn test_carrying_add_mut() {
-        let mut value = 1;
-        let carry = carrying_add_mut(&mut value, 1, false);
-        assert_eq!((value, carry), (2, false));
-
-        let mut value = 1;
-        let carry = carrying_add_mut(&mut value, 0, true);
-        assert_eq!((value, carry), (2, false));
-
-        let mut value = 1;
-        let carry = carrying_add_mut(&mut value, usize::MAX, false);
-        assert_eq!((value, carry), (0, true));
-
-        let mut value = 2;
-        let carry = carrying_add_mut(&mut value, usize::MAX, false);
-        assert_eq!((value, carry), (1, true));
-
-        let mut value = 1;
-        let carry = carrying_add_mut(&mut value, usize::MAX, true);
-        assert_eq!((value, carry), (1, true));
     }
 }
