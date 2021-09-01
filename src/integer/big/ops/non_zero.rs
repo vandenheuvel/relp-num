@@ -6,7 +6,7 @@ use std::ptr;
 use smallvec::SmallVec;
 
 use crate::integer::big::BITS_PER_WORD;
-use crate::integer::big::ops::building_blocks::{addmul_1, carrying_add_mut, carrying_sub_mut, is_well_formed, is_well_formed_non_zero, mul_1, sub_assign_slice, sub_n, to_twos_complement};
+use crate::integer::big::ops::building_blocks::{addmul_1, carrying_add_mut, borrowing_sub_mut, is_well_formed, is_well_formed_non_zero, mul_1, sub_assign_slice, sub_n, to_twos_complement};
 use crate::integer::big::properties::cmp;
 use crate::rational::big::properties::cmp_single;
 
@@ -323,7 +323,7 @@ pub unsafe fn sub_assign_result_positive<const S: usize>(
     let mut index = 0;
     while carry {
         debug_assert!(values.len() > rhs.len());
-        carry = carrying_sub_mut(&mut values[rhs.len() + index], 0, true);
+        carry = borrowing_sub_mut(&mut values[rhs.len() + index], 0, true);
         index += 1;
     }
 
@@ -341,14 +341,14 @@ pub fn sub_assign_single_result_positive<const S: usize>(
     debug_assert!(is_well_formed_non_zero(values));
     debug_assert_eq!(cmp_single(values, rhs), Ordering::Greater);
 
-    let mut carry = carrying_sub_mut(&mut values[0], rhs, false);
+    let mut carry = borrowing_sub_mut(&mut values[0], rhs, false);
 
     debug_assert!(is_well_formed_non_zero(values));
 
     let mut index = 0;
     while carry {
         debug_assert!(values.len() > 1);
-        carry = carrying_sub_mut(&mut values[1 + index], 0, carry);
+        carry = borrowing_sub_mut(&mut values[1 + index], 0, carry);
         index += 1;
     }
 
@@ -395,7 +395,7 @@ pub(crate) fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, r
             let mut carry = false;
             for i in 0..left.len() {
                 // TODO(PERFORMANCE): Is assembler faster?
-                carry = carrying_sub_mut(&mut left[i], right[i], carry);
+                carry = borrowing_sub_mut(&mut left[i], right[i], carry);
             }
 
             if carry {
@@ -425,7 +425,7 @@ pub(crate) fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, r
             let mut carry = unsafe { sub_assign_slice(&mut left[..right.len()], right) };
             let mut i = 0;
             while carry && i + right.len() < left.len() {
-                carry = carrying_sub_mut(&mut left[i + right.len()], 0, true);
+                carry = borrowing_sub_mut(&mut left[i + right.len()], 0, true);
                 i += 1;
             }
             debug_assert!(!carry);
@@ -446,11 +446,11 @@ pub(crate) fn subtracting_cmp_ne_single<const S: usize>(left: &mut SmallVec<[usi
 
     if left.len() > 1 {
         // result won't be negative
-        let mut carry = carrying_sub_mut(&mut left[0], right, false);
+        let mut carry = borrowing_sub_mut(&mut left[0], right, false);
 
         let mut i = 1;
         while carry {
-            carry = carrying_sub_mut(&mut left[i], 0, true);
+            carry = borrowing_sub_mut(&mut left[i], 0, true);
             i += 1;
         }
 

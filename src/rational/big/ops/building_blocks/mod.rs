@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use smallvec::SmallVec;
 
-use crate::integer::big::ops::building_blocks::{carrying_sub_mut, is_well_formed_non_zero};
+use crate::integer::big::ops::building_blocks::{borrowing_sub_mut, is_well_formed_non_zero};
 use crate::integer::big::ops::div::{div_assign_by_odd, div_assign_one_word};
 use crate::integer::big::ops::non_zero::{add_assign, add_assign_single_non_zero, both_not_one_non_zero, is_one_non_zero, mul_assign_single_non_zero, mul_non_zero, shr_mut, subtracting_cmp, subtracting_cmp_ne_single};
 use crate::integer::big::ops::normalize::{gcd_scalar, gcd_single, is_coprime_non_zero, prepare_gcd_single, remove_shared_two_factors_mut, simplify_fraction_gcd, simplify_fraction_gcd_single, simplify_fraction_without_info};
@@ -396,11 +396,11 @@ pub unsafe fn sub_small<const S: usize>(
             sign_change
         } else {
             // result won't be negative
-            let mut carry = carrying_sub_mut(&mut left_numerator[0], right_numerator, false);
+            let mut carry = borrowing_sub_mut(&mut left_numerator[0], right_numerator, false);
 
             let mut i = 1;
             while carry {
-                carry = carrying_sub_mut(&mut left_numerator[i], 0, true);
+                carry = borrowing_sub_mut(&mut left_numerator[i], 0, true);
                 i += 1;
             }
 

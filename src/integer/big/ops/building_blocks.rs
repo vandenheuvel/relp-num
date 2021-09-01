@@ -128,7 +128,7 @@ pub fn to_twos_complement<const S: usize>(values: &mut SmallVec<[usize; S]>) {
     let mut carry = true;
 
     for value in values.iter_mut() {
-        carry = carrying_sub_mut(value, 0, carry);
+        carry = borrowing_sub_mut(value, 0, carry);
         *value = !*value;
     }
 
@@ -160,7 +160,7 @@ pub unsafe fn sub_assign_slice(values: &mut [usize], rhs: &[usize]) -> bool {
 
     let mut carry = false;
     for (value, rhs_value) in values.iter_mut().zip(rhs.iter()) {
-        carry = carrying_sub_mut(value, *rhs_value, carry);
+        carry = borrowing_sub_mut(value, *rhs_value, carry);
     }
 
     carry
@@ -174,7 +174,7 @@ pub fn carrying_add_mut(value: &mut usize, rhs: usize, carry: bool) -> bool {
 }
 
 #[inline]
-pub fn carrying_sub_mut(value: &mut usize, rhs: usize, carry: bool) -> bool {
+pub fn borrowing_sub_mut(value: &mut usize, rhs: usize, carry: bool) -> bool {
     let (new_value, new_carry) = value.borrowing_sub(rhs, carry);
     *value = new_value;
     new_carry
