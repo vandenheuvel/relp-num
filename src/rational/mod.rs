@@ -12,11 +12,13 @@ pub use small::NonZeroRational16 as NonZeroRational16;
 pub use small::NonZeroRational32 as NonZeroRational32;
 pub use small::NonZeroRational64 as NonZeroRational64;
 pub use small::NonZeroRational8 as NonZeroRational8;
+pub use small::NonZeroRationalUsize as NonZeroRationalUsize;
 pub use small::Rational128 as Rational128;
 pub use small::Rational16 as Rational16;
 pub use small::Rational32 as Rational32;
 pub use small::Rational64 as Rational64;
 pub use small::Rational8 as Rational8;
+pub use small::RationalUsize as RationalUsize;
 
 use crate::Negateable;
 use crate::non_zero::NonZero;

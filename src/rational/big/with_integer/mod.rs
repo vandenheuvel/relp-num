@@ -1,13 +1,235 @@
-use std::ops::{Div, DivAssign, Mul, MulAssign};
+use std::cmp::Ordering;
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use smallvec::SmallVec;
 
-use crate::{NonZero, NonZeroUbig, Ubig};
+use crate::{Negateable, NonZero, NonZeroUbig, Sign, Ubig};
 use crate::integer::big::ops::building_blocks::is_well_formed_non_zero;
-use crate::integer::big::ops::non_zero::{is_one_non_zero, mul_assign_single_non_zero, mul_non_zero};
-use crate::integer::big::ops::normalize::{simplify_fraction_gcd_single, simplify_fraction_without_info};
+use crate::integer::big::ops::non_zero::{add_assign, mul_non_zero, subtracting_cmp};
+use crate::integer::big::ops::normalize::simplify_fraction_without_info;
 use crate::rational::big::{Big, NonZeroBig};
+
+mod small;
+
+impl<const S: usize> Add<Ubig<S>> for Big<S> {
+    type Output = Self;
+
+    #[must_use]
+    #[inline]
+    fn add(mut self, rhs: Ubig<S>) -> Self::Output {
+        AddAssign::add_assign(&mut self, rhs);
+        self
+    }
+}
+
+impl<const S: usize> Add<&Ubig<S>> for Big<S> {
+    type Output = Self;
+
+    #[must_use]
+    #[inline]
+    fn add(mut self, rhs: &Ubig<S>) -> Self::Output {
+        AddAssign::add_assign(&mut self, rhs);
+        self
+    }
+}
+
+impl<const S: usize> AddAssign<Ubig<S>> for Big<S> {
+    #[inline]
+    fn add_assign(&mut self, rhs: Ubig<S>) {
+        // TODO(PERFORMANCE): Utilize ownership of `rhs`.
+        AddAssign::add_assign(self, &rhs);
+    }
+}
+
+impl<const S: usize> AddAssign<&Ubig<S>> for Big<S> {
+    #[inline]
+    fn add_assign(&mut self, rhs: &Ubig<S>) {
+        if rhs.is_not_zero() {
+            unsafe {
+                // SAFETY: rhs is non zero
+                self.add_assign_int_non_zero(rhs);
+            }
+        }
+    }
+}
+
+impl<const S: usize> Add<NonZeroUbig<S>> for Big<S> {
+    type Output = Self;
+
+    #[must_use]
+    #[inline]
+    fn add(mut self, rhs: NonZeroUbig<S>) -> Self::Output {
+        AddAssign::add_assign(&mut self, rhs);
+        self
+    }
+}
+
+impl<const S: usize> Add<&NonZeroUbig<S>> for Big<S> {
+    type Output = Self;
+
+    #[must_use]
+    #[inline]
+    fn add(mut self, rhs: &NonZeroUbig<S>) -> Self::Output {
+        AddAssign::add_assign(&mut self, rhs);
+        self
+    }
+}
+
+impl<const S: usize> AddAssign<NonZeroUbig<S>> for Big<S> {
+    #[inline]
+    fn add_assign(&mut self, rhs: NonZeroUbig<S>) {
+        // TODO(PERFORMANCE): Utilize ownership of `rhs`.
+        AddAssign::add_assign(self, &rhs);
+    }
+}
+
+impl<const S: usize> AddAssign<&NonZeroUbig<S>> for Big<S> {
+    #[inline]
+    fn add_assign(&mut self, rhs: &NonZeroUbig<S>) {
+        unsafe {
+            // SAFETY: rhs is non zero
+            self.add_assign_int_non_zero(rhs);
+        }
+    }
+}
+
+impl<const S: usize> Big<S> {
+    #[inline]
+    unsafe fn add_assign_int_non_zero(&mut self, rhs: &[usize]) {
+        debug_assert!(is_well_formed_non_zero(rhs));
+
+        match self.sign {
+            Sign::Positive => {
+                let difference = mul_non_zero::<S>(&self.denominator, rhs);
+                add_assign(self.numerator.inner_mut(), &difference)
+            },
+            Sign::Zero => {
+                *self.numerator.inner_mut() = SmallVec::from_slice(rhs);
+                debug_assert!(self.denominator.is_one());
+            }
+            Sign::Negative => {
+                let difference = mul_non_zero::<S>(&self.denominator, rhs);
+                let ordering = subtracting_cmp(self.numerator.inner_mut(), &difference);
+
+                // ordering can't be equal
+                if ordering == Ordering::Less {
+                    self.sign.negate();
+                }
+            }
+        }
+    }
+}
+
+impl<const S: usize> Sub<Ubig<S>> for Big<S> {
+    type Output = Self;
+
+    #[must_use]
+    #[inline]
+    fn sub(mut self, rhs: Ubig<S>) -> Self::Output {
+        SubAssign::sub_assign(&mut self, rhs);
+        self
+    }
+}
+
+impl<const S: usize> Sub<&Ubig<S>> for Big<S> {
+    type Output = Self;
+
+    #[must_use]
+    #[inline]
+    fn sub(mut self, rhs: &Ubig<S>) -> Self::Output {
+        SubAssign::sub_assign(&mut self, rhs);
+        self
+    }
+}
+
+impl<const S: usize> SubAssign<Ubig<S>> for Big<S> {
+    #[inline]
+    fn sub_assign(&mut self, rhs: Ubig<S>) {
+        // TODO(PERFORMANCE): Utilize ownership of `rhs`.
+        SubAssign::sub_assign(self, &rhs);
+    }
+}
+
+impl<const S: usize> SubAssign<&Ubig<S>> for Big<S> {
+    #[inline]
+    fn sub_assign(&mut self, rhs: &Ubig<S>) {
+        if rhs.is_not_zero() {
+            unsafe {
+                // SAFETY: rhs is non zero
+                self.sub_assign_int_non_zero(rhs);
+            }
+        }
+    }
+}
+
+impl<const S: usize> Sub<NonZeroUbig<S>> for Big<S> {
+    type Output = Self;
+
+    #[must_use]
+    #[inline]
+    fn sub(mut self, rhs: NonZeroUbig<S>) -> Self::Output {
+        SubAssign::sub_assign(&mut self, rhs);
+        self
+    }
+}
+
+impl<const S: usize> Sub<&NonZeroUbig<S>> for Big<S> {
+    type Output = Self;
+
+    #[must_use]
+    #[inline]
+    fn sub(mut self, rhs: &NonZeroUbig<S>) -> Self::Output {
+        SubAssign::sub_assign(&mut self, rhs);
+        self
+    }
+}
+
+impl<const S: usize> SubAssign<NonZeroUbig<S>> for Big<S> {
+    #[inline]
+    fn sub_assign(&mut self, rhs: NonZeroUbig<S>) {
+        // TODO(PERFORMANCE): Utilize ownership of `rhs`.
+        SubAssign::sub_assign(self, &rhs);
+    }
+}
+
+impl<const S: usize> SubAssign<&NonZeroUbig<S>> for Big<S> {
+    #[inline]
+    fn sub_assign(&mut self, rhs: &NonZeroUbig<S>) {
+        unsafe {
+            // SAFETY: rhs is non zero
+            self.sub_assign_int_non_zero(rhs);
+        }
+    }
+}
+
+impl<const S: usize> Big<S> {
+    #[inline]
+    unsafe fn sub_assign_int_non_zero(&mut self, rhs: &[usize]) {
+        debug_assert!(is_well_formed_non_zero(rhs));
+
+        match self.sign {
+            Sign::Positive => {
+                let difference = mul_non_zero::<S>(&self.denominator, rhs);
+                let ordering = subtracting_cmp(self.numerator.inner_mut(), &difference);
+
+                // ordering can't be equal
+                if ordering == Ordering::Less {
+                    self.sign.negate();
+                }
+            }
+            Sign::Zero => {
+                *self.numerator.inner_mut() = SmallVec::from_slice(rhs);
+                self.sign = Sign::Negative;
+                debug_assert!(self.denominator.is_one());
+            }
+            Sign::Negative => {
+                let difference = mul_non_zero::<S>(&self.denominator, rhs);
+                add_assign(self.numerator.inner_mut(), &difference)
+            },
+        }
+    }
+}
 
 impl<const S: usize> Mul<Ubig<S>> for Big<S> {
     type Output = Self;
@@ -271,138 +493,22 @@ unsafe fn mul_assign_int_owning<const S: usize>(
     *left_numerator = mul_non_zero(left_numerator, &right);
 }
 
-impl<const S: usize> MulAssign<&usize> for Big<S> {
-    #[inline]
-    fn mul_assign(&mut self, rhs: &usize) {
-        MulAssign::mul_assign(self, *rhs);
-    }
-}
-
-impl<const S: usize> MulAssign<usize> for Big<S> {
-    #[inline]
-    fn mul_assign(&mut self, rhs: usize) {
-        if !self.is_zero() {
-            if rhs != 0 {
-                unsafe {
-                    // SAFETY: The numerator is not zero, rhs is not zero or one
-                    // SAFETY: Denominator can't become zero
-                    mul_assign_usize(
-                        self.numerator.inner_mut(),
-                        self.denominator.inner_mut(),
-                        rhs,
-                    );
-                }
-            } else {
-                self.set_zero()
-            }
-        }
-    }
-}
-
-impl<const S: usize> DivAssign<&usize> for Big<S> {
-    #[inline]
-    fn div_assign(&mut self, rhs: &usize) {
-        DivAssign::div_assign(self, *rhs);
-    }
-}
-
-impl<const S: usize> DivAssign<usize> for Big<S> {
-    #[inline]
-    fn div_assign(&mut self, rhs: usize) {
-        if rhs != 0 {
-            if !self.is_zero() {
-                unsafe {
-                    // SAFETY: The numerator is not zero, rhs is not zero or one
-                    // SAFETY: Denominator can't become zero
-                    mul_assign_usize(
-                        self.denominator.inner_mut(),
-                        self.numerator.inner_mut(),
-                        rhs,
-                    );
-                }
-            }
-        } else {
-            panic!("attempt to divide by zero");
-        }
-    }
-}
-
-impl<const S: usize> MulAssign<&usize> for NonZeroBig<S> {
-    #[inline]
-    fn mul_assign(&mut self, rhs: &usize) {
-        MulAssign::mul_assign(self, *rhs);
-    }
-}
-
-impl<const S: usize> MulAssign<usize> for NonZeroBig<S> {
-    #[inline]
-    fn mul_assign(&mut self, rhs: usize) {
-        if rhs != 0 {
-            unsafe {
-                // SAFETY: The numerator is not zero, rhs is not zero or one
-                // SAFETY: Denominator can't become zero
-                mul_assign_usize(
-                    self.numerator.inner_mut(),
-                    self.denominator.inner_mut(),
-                    rhs,
-                );
-            }
-        } else {
-            panic!("attempt to multiply by zero")
-        }
-    }
-}
-
-impl<const S: usize> DivAssign<&usize> for NonZeroBig<S> {
-    #[inline]
-    fn div_assign(&mut self, rhs: &usize) {
-        DivAssign::div_assign(self, *rhs);
-    }
-}
-
-impl<const S: usize> DivAssign<usize> for NonZeroBig<S> {
-    #[inline]
-    fn div_assign(&mut self, rhs: usize) {
-        if rhs != 0 {
-            unsafe {
-                // SAFETY: The numerator is not zero, rhs is not zero or one
-                // SAFETY: Denominator can't become zero
-                mul_assign_usize(
-                    self.denominator.inner_mut(),
-                    self.numerator.inner_mut(),
-                    rhs,
-                );
-            }
-        } else {
-            panic!("attempt to divide by zero");
-        }
-    }
-}
-
-#[inline]
-unsafe fn mul_assign_usize<const S: usize>(
-    left_numerator: &mut SmallVec<[usize; S]>, left_denominator: &mut SmallVec<[usize; S]>,
-    mut rhs: usize,
-) {
-    debug_assert!(is_well_formed_non_zero(left_numerator));
-    debug_assert!(is_well_formed_non_zero(left_denominator));
-    debug_assert_ne!(rhs, 0);
-
-    if rhs != 1 {
-        if !is_one_non_zero(left_denominator) {
-            rhs = simplify_fraction_gcd_single(left_denominator, rhs)
-        }
-        mul_assign_single_non_zero(left_numerator, rhs);
-    }
-}
-
-
 #[cfg(test)]
 mod test {
     use num_traits::{One, Zero};
 
     use crate::{NonZeroUbig, RationalBig, Ubig};
     use crate::RB;
+
+    #[test]
+    fn add() {
+        assert_eq!(RB!(2, 3) + NonZeroUbig::new(2).unwrap(), RB!(8, 3));
+        assert_eq!(RB!(-2, 3) + NonZeroUbig::new(2).unwrap(), RB!(4, 3));
+        assert_eq!(RB!(2, 3) + Ubig::zero(), RB!(2, 3));
+        assert_eq!(RB!(2, 3) - NonZeroUbig::new(2).unwrap(), RB!(-4, 3));
+        assert_eq!(RB!(0) - NonZeroUbig::one(), RB!(-1));
+        assert_eq!(RB!(-2, 3) - NonZeroUbig::new(2).unwrap(), RB!(-8, 3));
+    }
 
     #[test]
     fn mul_assign() {

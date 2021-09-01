@@ -83,6 +83,7 @@ rational!(Rational8, i8, u8);
 rational!(Rational16, i16, u16);
 rational!(Rational32, i32, u32);
 rational!(Rational64, i64, u64);
+rational!(RationalUsize, isize, usize);
 rational!(Rational128, i128, u128);
 
 macro_rules! rational_non_zero {
@@ -105,6 +106,7 @@ rational_non_zero!(NonZeroRational16, i16, u16);
 rational_non_zero!(NonZeroRational32, i32, u32);
 rational_non_zero!(NonZeroRational64, i64, u64);
 rational_non_zero!(NonZeroRational128, i128, u128);
+rational_non_zero!(NonZeroRationalUsize, isize, usize);
 
 #[cfg(test)]
 mod test {

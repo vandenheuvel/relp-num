@@ -144,9 +144,9 @@ pub unsafe fn simplify_fraction_gcd_single<const S: usize>(
 ) -> usize {
     debug_assert!(is_well_formed(left));
     debug_assert!(!left.is_empty());
+    debug_assert!(left[0] != 1 || left.len() > 1);
     debug_assert_ne!(right, 0);
     debug_assert_ne!(right, 1);
-    debug_assert!(left[0] != 1 || left.len() > 1);
 
     let (mut right, left_to_shift, right_to_shift, _) = prepare_gcd_single_mut(left, right);
     let right_shifted = right >> right_to_shift;

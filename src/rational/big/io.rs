@@ -4,6 +4,7 @@ use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::iter::repeat;
 use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
+use std::num::{NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize};
 use std::str::FromStr;
 
 use num_traits::{FromPrimitive, One, ToPrimitive, Zero};
@@ -89,6 +90,33 @@ impl<const S: usize> fmt::Debug for Big<S> {
     }
 }
 
+macro_rules! forwards {
+    ($ty:ty) => {
+        impl<const S: usize> From<&$ty> for Big<S> {
+            fn from(other: &$ty) -> Self {
+                From::from(*other)
+            }
+        }
+    }
+}
+
+forwards!(u8);
+forwards!(u16);
+forwards!(u32);
+forwards!(u64);
+forwards!(NonZeroU8);
+forwards!(NonZeroU16);
+forwards!(NonZeroU32);
+forwards!(NonZeroU64);
+forwards!(i8);
+forwards!(i16);
+forwards!(i32);
+forwards!(i64);
+forwards!(NonZeroI8);
+forwards!(NonZeroI16);
+forwards!(NonZeroI32);
+forwards!(NonZeroI64);
+
 macro_rules! from_integer_unsigned {
     ($ty:ty) => {
         impl<const S: usize> From<$ty> for Big<S> {
@@ -109,6 +137,26 @@ from_integer_unsigned!(u32);
 from_integer_unsigned!(u64);
 from_integer_unsigned!(usize);
 
+macro_rules! from_integer_unsigned_non_zero {
+    ($ty:ty) => {
+        impl<const S: usize> From<$ty> for Big<S> {
+            fn from(value: $ty) -> Self {
+                Self {
+                    sign: Signed::signum(&value),
+                    numerator: Ubig::from(value.get() as usize),
+                    denominator: NonZeroUbig::one(),
+                }
+            }
+        }
+    }
+}
+
+from_integer_unsigned_non_zero!(NonZeroU8);
+from_integer_unsigned_non_zero!(NonZeroU16);
+from_integer_unsigned_non_zero!(NonZeroU32);
+from_integer_unsigned_non_zero!(NonZeroU64);
+from_integer_unsigned_non_zero!(NonZeroUsize);
+
 macro_rules! from_integer_signed {
     ($ty:ty) => {
         impl<const S: usize> From<$ty> for Big<S> {
@@ -128,6 +176,26 @@ from_integer_signed!(i16);
 from_integer_signed!(i32);
 from_integer_signed!(i64);
 from_integer_signed!(isize);
+
+macro_rules! from_integer_signed_non_zero {
+    ($ty:ty) => {
+        impl<const S: usize> From<$ty> for Big<S> {
+            fn from(value: $ty) -> Self {
+                Self {
+                    sign: Signed::signum(&value),
+                    numerator: Ubig::from(value.get().unsigned_abs() as usize),
+                    denominator: NonZeroUbig::one(),
+                }
+            }
+        }
+    }
+}
+
+from_integer_signed_non_zero!(NonZeroI8);
+from_integer_signed_non_zero!(NonZeroI16);
+from_integer_signed_non_zero!(NonZeroI32);
+from_integer_signed_non_zero!(NonZeroI64);
+from_integer_signed_non_zero!(NonZeroIsize);
 
 macro_rules! impl_from_iu {
     ($numerator:ty, $denominator:ty, $simplify:ident) => {
