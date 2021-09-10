@@ -35,12 +35,14 @@ pub use non_zero::sign::NonZeroSigned;
 
 mod rational;
 pub use rational::RationalBig;
+pub use rational::RationalUsize;
 pub use rational::Rational128;
 pub use rational::Rational64;
 pub use rational::Rational32;
 pub use rational::Rational16;
 pub use rational::Rational8;
 pub use rational::NonZeroRationalBig;
+pub use rational::NonZeroRationalUsize;
 pub use rational::NonZeroRational128;
 pub use rational::NonZeroRational64;
 pub use rational::NonZeroRational32;

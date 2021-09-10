@@ -6,7 +6,7 @@ use std::ptr;
 use smallvec::SmallVec;
 
 use crate::integer::big::BITS_PER_WORD;
-use crate::integer::big::ops::building_blocks::{addmul_1, carrying_add_mut, borrowing_sub_mut, is_well_formed, is_well_formed_non_zero, mul_1, sub_assign_slice, sub_n, to_twos_complement};
+use crate::integer::big::ops::building_blocks::{addmul_1, borrowing_sub_mut, carrying_add_mut, is_well_formed, is_well_formed_non_zero, mul_1, sub_assign_slice, sub_n, to_twos_complement};
 use crate::integer::big::properties::cmp;
 use crate::rational::big::properties::cmp_single;
 

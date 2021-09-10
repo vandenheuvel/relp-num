@@ -1,7 +1,7 @@
 //! # NonZero signs of integers
 use std::cmp::Ordering;
-use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8};
-use std::num::{NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8};
+use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
+use std::num::{NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize};
 
 use crate::Negateable;
 use crate::Sign;
@@ -77,6 +77,7 @@ non_zero_unsigned!(NonZeroU16);
 non_zero_unsigned!(NonZeroU32);
 non_zero_unsigned!(NonZeroU64);
 non_zero_unsigned!(NonZeroU128);
+non_zero_unsigned!(NonZeroUsize);
 
 macro_rules! non_zero_signed {
     ($ty:ty) => {
@@ -109,6 +110,7 @@ non_zero_signed!(NonZeroI16);
 non_zero_signed!(NonZeroI32);
 non_zero_signed!(NonZeroI64);
 non_zero_signed!(NonZeroI128);
+non_zero_signed!(NonZeroIsize);
 
 #[cfg(test)]
 mod test {

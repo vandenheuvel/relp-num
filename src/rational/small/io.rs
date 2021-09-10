@@ -7,10 +7,10 @@ use num_traits::ToPrimitive;
 
 use crate::non_zero::NonZeroSign;
 use crate::rational::big::Big;
-use crate::rational::small::{Rational128, Rational16, Rational32, Rational64, Rational8};
-use crate::rational::small::{NonZeroRational128, NonZeroRational16, NonZeroRational32, NonZeroRational64, NonZeroRational8};
+use crate::rational::small::{Rational128, Rational16, Rational32, Rational64, Rational8, RationalUsize};
+use crate::rational::small::{NonZeroRational128, NonZeroRational16, NonZeroRational32, NonZeroRational64, NonZeroRational8, NonZeroRationalUsize};
 use crate::rational::small::gcd_scalar;
-use crate::rational::small::ops::building_blocks::{simplify128, simplify16, simplify32, simplify64, simplify8};
+use crate::rational::small::ops::building_blocks::{simplify128, simplify16, simplify32, simplify64, simplify8, simplify_usize};
 use crate::sign::{Sign, Signed};
 
 macro_rules! signed_floor {
@@ -310,6 +310,7 @@ creation!(Rational16, i16, u16, gcd16, simplify16);
 creation!(Rational32, i32, u32, gcd32, simplify32);
 creation!(Rational64, i64, u64, gcd64, simplify64);
 creation!(Rational128, i128, u128, gcd128, simplify128);
+creation!(RationalUsize, isize, usize, gcd_usize, simplify_usize);
 
 macro_rules! impl_one {
     ($name:ident, $sign:ident) => {
@@ -344,11 +345,13 @@ impl_one!(Rational16, Sign);
 impl_one!(Rational32, Sign);
 impl_one!(Rational64, Sign);
 impl_one!(Rational128, Sign);
+impl_one!(RationalUsize, Sign);
 impl_one!(NonZeroRational8, NonZeroSign);
 impl_one!(NonZeroRational16, NonZeroSign);
 impl_one!(NonZeroRational32, NonZeroSign);
 impl_one!(NonZeroRational64, NonZeroSign);
 impl_one!(NonZeroRational128, NonZeroSign);
+impl_one!(NonZeroRationalUsize, NonZeroSign);
 
 macro_rules! size_dependent_unsigned {
     ($name:ty, $uty:ty, $other:ty, $simplify:ident) => {

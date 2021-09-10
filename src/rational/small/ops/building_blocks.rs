@@ -218,3 +218,4 @@ rational!(add16, sub16, direction16, mul16, u16, gcd16, simplify16);
 rational!(add32, sub32, sub_direction32, mul32, u32, gcd32, simplify32);
 rational!(add64, sub64, sub_direction64, mul64, u64, gcd64, simplify64);
 rational!(add128, sub128, sub_direction128, mul128, u128, gcd128, simplify128);
+rational!(add_usize, sub_usize, sub_direction_usize, mul_usize, usize, gcd_usize, simplify_usize);
