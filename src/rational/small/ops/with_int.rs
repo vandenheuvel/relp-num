@@ -211,6 +211,13 @@ macro_rules! forwards {
                 DivAssign::div_assign(self, *rhs);
             }
         }
+
+        impl PartialEq<$large> for $ty {
+            #[inline]
+            fn eq(&self, rhs: &$large) -> bool {
+                PartialEq::eq(rhs, self)
+            }
+        }
     }
 }
 
@@ -468,6 +475,34 @@ macro_rules! impls {
                 if rhs.is_negative() {
                     self.negate();
                 }
+            }
+        }
+
+        impl PartialEq<$ty> for $name {
+            #[inline]
+            fn eq(&self, rhs: &$ty) -> bool {
+                self.numerator == *rhs as $large && self.denominator.is_one() && self.sign == Sign::Positive
+            }
+        }
+
+        impl PartialEq<$nzty> for $name {
+            #[inline]
+            fn eq(&self, rhs: &$nzty) -> bool {
+                self.numerator == rhs.get() as $large && self.denominator.is_one() && self.sign == Sign::Positive
+            }
+        }
+
+        impl PartialEq<$sty> for $name {
+            #[inline]
+            fn eq(&self, rhs: &$sty) -> bool {
+                self.numerator == rhs.unsigned_abs() as $large && self.denominator.is_one() && self.sign == Signed::signum(rhs)
+            }
+        }
+
+        impl PartialEq<$nzsty> for $name {
+            #[inline]
+            fn eq(&self, rhs: &$nzsty) -> bool {
+                self.numerator == rhs.get().unsigned_abs() as $large && self.denominator.is_one() && self.sign == Signed::signum(rhs)
             }
         }
     }
