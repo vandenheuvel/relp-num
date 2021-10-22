@@ -2,7 +2,7 @@
 name = "relp-num"
 version = "0.1.8"
 authors = ["Bram van den Heuvel <bram@vandenheuvel.online>"]
-edition = "2018"
+edition = "2021"
 description = "Number types for the relp crate"
 repository = "https://github.com/vandenheuvel/relp-num"
 license = "GPL-3.0-only"
