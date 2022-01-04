@@ -336,6 +336,7 @@ impl<const S: usize> FromPrimitive for Big<S> {
     }
 }
 
+/// See also the `std::num::FpCategory`.
 pub enum FloatKind {
     Zero,
     Subnormal(FloatAsRatio),
