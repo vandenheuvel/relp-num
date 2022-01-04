@@ -13,15 +13,15 @@ categories = ["algorithms", "science"]
 [dependencies]
 num-traits = "0.2.14"
 gcd = "2.0.1"
-smallvec = { version = "1.6.1", features = ["const_generics", "specialization"] }
-index-utils = "1.0.0"
+smallvec = { version = "1.7.0", features = ["const_generics", "specialization"] }
+index-utils = "2.2.0"
 
 [dev-dependencies]
-criterion = { version = "0.3", features = ['real_blackbox'] }
+criterion = { version = "0.3.5", features = ['real_blackbox'] }
 iai = "0.1.1"
 
 [build-dependencies]
-cc = "1.0.68"
+cc = "1.0.72"
 
 [[bench]]
 name = "criterion"
