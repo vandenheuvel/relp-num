@@ -523,6 +523,7 @@ mod test {
 
     #[test]
     #[should_panic]
+    #[allow(unused_must_use)]
     fn test_from_div_zero() {
         Rational32::from((4, 0));
     }
