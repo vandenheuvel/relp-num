@@ -114,7 +114,7 @@ macro_rules! define_ops {
             type Output = $primitive;
 
             fn mul(self, _: &One) -> Self::Output {
-                self.clone()
+                *self
             }
         }
 
