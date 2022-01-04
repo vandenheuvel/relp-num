@@ -12,7 +12,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-relp-num = "0.1.6"
+relp-num = "0.1.10"
 ```
 
 You can now use the crate, for example to compute `2 + 2`:
