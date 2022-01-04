@@ -1,3 +1,5 @@
+use std::arch::asm;
+
 use smallvec::SmallVec;
 
 #[must_use]
