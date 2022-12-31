@@ -11,17 +11,17 @@ keywords = ["relp", "exact", "precision", "number", "rational"]
 categories = ["algorithms", "science"]
 
 [dependencies]
-num-traits = "0.2.14"
-gcd = "2.0.1"
-smallvec = { version = "1.7.0", features = ["const_generics", "specialization"] }
+num-traits = "0.2.15"
+gcd = "2.2.0"
+smallvec = { version = "1.10.0", features = ["const_generics", "specialization"] }
 index-utils = "2.2.0"
 
 [dev-dependencies]
-criterion = { version = "0.3.5", features = ['real_blackbox'] }
+criterion = { version = "0.4.0", features = ['real_blackbox'] }
 iai = "0.1.1"
 
 [build-dependencies]
-cc = "1.0.72"
+cc = "1.0.78"
 
 [[bench]]
 name = "criterion"
