@@ -1,6 +1,6 @@
 [package]
 name = "relp-num"
-version = "0.1.10"
+version = "0.1.11"
 authors = ["Bram van den Heuvel <bram@vandenheuvel.online>"]
 edition = "2021"
 description = "Number types for the relp crate"
