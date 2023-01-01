@@ -3,15 +3,12 @@
 //! Number types for the [RELP](https://crates.io/crates/relp) crate.
 #![warn(missing_docs)]
 
-#![feature(asm)]
 #![feature(min_specialization)]
-#![feature(label_break_value)]
 #![feature(trait_alias)]
 #![feature(result_flattening)]
 #![feature(unchecked_math)]
 #![feature(core_intrinsics)]
 #![feature(nonzero_ops)]
-#![feature(half_open_range_patterns)]
 #![feature(bigint_helper_methods)]
 
 mod binary;
