@@ -3,9 +3,9 @@ use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZe
 use std::num::{NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
-use num_traits::{One, Zero};
+use num_traits::{One, ToPrimitive, Zero};
 
-use crate::{Rational128, Rational16, Rational32, Rational64, Rational8, RationalUsize};
+use crate::{Rational128, Rational16, Rational32, Rational64, Rational8, RationalSize};
 use crate::non_zero::NonZero;
 use crate::NonZeroSign;
 use crate::NonZeroSigned;
@@ -13,6 +13,7 @@ use crate::rational::small::ops::building_blocks::{gcd128, gcd16, gcd32, gcd64, 
 use crate::Sign;
 use crate::sign::Negateable;
 use crate::Signed;
+use crate::Round;
 
 macro_rules! forwards {
     ($ty:ty, $large:ty) => {
@@ -530,11 +531,53 @@ impls!(Rational128, u128, u64, NonZeroU64, i64, NonZeroI64, mul128, gcd128);
 impls!(Rational128, u128, usize, NonZeroUsize, isize, NonZeroIsize, mul128, gcd128);
 impls!(Rational128, u128, u128, NonZeroU128, i128, NonZeroI128, mul128, gcd128);
 
-impls!(RationalUsize, usize, u8, NonZeroU8, i8, NonZeroI8, mul_usize, gcd_usize);
-impls!(RationalUsize, usize, u16, NonZeroU16, i16, NonZeroI16, mul_usize, gcd_usize);
-impls!(RationalUsize, usize, u32, NonZeroU32, i32, NonZeroI32, mul_usize, gcd_usize);
-impls!(RationalUsize, usize, u64, NonZeroU64, i64, NonZeroI64, mul_usize, gcd_usize);
-impls!(RationalUsize, usize, usize, NonZeroUsize, isize, NonZeroIsize, mul_usize, gcd_usize);
+impls!(RationalSize, usize, u8, NonZeroU8, i8, NonZeroI8, mul_usize, gcd_usize);
+impls!(RationalSize, usize, u16, NonZeroU16, i16, NonZeroI16, mul_usize, gcd_usize);
+impls!(RationalSize, usize, u32, NonZeroU32, i32, NonZeroI32, mul_usize, gcd_usize);
+impls!(RationalSize, usize, u64, NonZeroU64, i64, NonZeroI64, mul_usize, gcd_usize);
+impls!(RationalSize, usize, usize, NonZeroUsize, isize, NonZeroIsize, mul_usize, gcd_usize);
+
+impl Round<i16> for Rational8 {
+    fn floor(&self) -> (i16, Self) {
+        let (rounded, remainder) = match self.signum() {
+            Sign::Positive => {
+                let q = self.numerator.div_euclid(self.denominator);
+                let r = self.numerator.rem_euclid(self.denominator);
+
+                (
+                    q as i16,
+                    Self {
+                        sign: Sign::Positive,
+                        numerator: r,
+                        denominator: self.denominator,
+                    },
+                )
+            }
+            Sign::Zero => (0, self.clone()),
+            Sign::Negative => {
+                let q = self.numerator.div_euclid(self.denominator);
+                let r = self.numerator.rem_euclid(self.denominator);
+
+                (
+                    -(q as i16 + 1),
+                    Self {
+                        sign: Sign::Positive,
+                        numerator: self.denominator - r,
+                        denominator: self.denominator,
+                    },
+                )
+            }
+        };
+
+        assert!(remainder > Self::zero());
+
+        (rounded, remainder)
+    }
+
+    fn ceil(&self) -> (i16, Self) {
+        todo!()
+    }
+}
 
 macro_rules! shared {
     ($ty:ty, $large:ty, $mul_name:ident, $gcd_name:ident) => {
@@ -606,7 +649,7 @@ shared!(Rational16, u16, mul16, gcd16);
 shared!(Rational32, u32, mul32, gcd32);
 shared!(Rational64, u64, mul64, gcd64);
 shared!(Rational128, u128, mul128, gcd128);
-shared!(RationalUsize, usize, mul_usize, gcd_usize);
+shared!(RationalSize, usize, mul_usize, gcd_usize);
 
 #[cfg(test)]
 mod test {

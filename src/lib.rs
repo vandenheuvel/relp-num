@@ -10,6 +10,8 @@
 #![feature(core_intrinsics)]
 #![feature(nonzero_ops)]
 #![feature(bigint_helper_methods)]
+#![feature(nonzero_negation_ops)]
+#![feature(associated_type_bounds)]
 
 mod binary;
 pub use binary::Binary;
@@ -35,19 +37,31 @@ pub use non_zero::sign::NonZeroSigned;
 
 mod rational;
 pub use rational::RationalBig;
-pub use rational::RationalUsize;
+pub use rational::RationalSize;
 pub use rational::Rational128;
 pub use rational::Rational64;
 pub use rational::Rational32;
 pub use rational::Rational16;
 pub use rational::Rational8;
 pub use rational::NonZeroRationalBig;
-pub use rational::NonZeroRationalUsize;
+pub use rational::NonZeroRationalSize;
 pub use rational::NonZeroRational128;
 pub use rational::NonZeroRational64;
 pub use rational::NonZeroRational32;
 pub use rational::NonZeroRational16;
 pub use rational::NonZeroRational8;
+pub use rational::NonNegativeRationalSize;
+pub use rational::NonNegativeRational128;
+pub use rational::NonNegativeRational64;
+pub use rational::NonNegativeRational32;
+pub use rational::NonNegativeRational16;
+pub use rational::NonNegativeRational8;
+pub use rational::PositiveRationalSize;
+pub use rational::PositiveRational128;
+pub use rational::PositiveRational64;
+pub use rational::PositiveRational32;
+pub use rational::PositiveRational16;
+pub use rational::PositiveRational8;
 
 mod sign;
 pub use sign::Sign;
@@ -62,6 +76,9 @@ pub use traits::Field;
 pub use traits::FieldRef;
 pub use traits::OrderedField;
 pub use traits::OrderedFieldRef;
+pub use traits::Round;
 
 // This re-export is used in macros used to construct rationals in tests.
 pub use num_traits::FromPrimitive;
+
+mod io;

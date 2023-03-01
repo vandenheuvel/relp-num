@@ -6,8 +6,8 @@ use std::ops::Neg;
 use crate::Negateable;
 use crate::non_zero::NonZero;
 use crate::non_zero::NonZeroSign;
-use crate::rational::small::{Rational128, Rational16, Rational32, Rational64, Rational8, RationalUsize};
-use crate::rational::small::{NonZeroRational128, NonZeroRational16, NonZeroRational32, NonZeroRational64, NonZeroRational8, NonZeroRationalUsize};
+use crate::rational::small::{Rational128, Rational16, Rational32, Rational64, Rational8, RationalSize};
+use crate::rational::small::{NonZeroRational128, NonZeroRational16, NonZeroRational32, NonZeroRational64, NonZeroRational8, NonZeroRationalSize};
 use crate::rational::small::ops::building_blocks::{add128, add16, add32, add64, add8, add_usize};
 use crate::rational::small::ops::building_blocks::{sub128, sub16, sub32, sub64, sub8, sub_usize};
 use crate::rational::small::ops::building_blocks::{mul128, mul16, mul32, mul64, mul8, mul_usize};
@@ -175,7 +175,7 @@ rational!(Rational16, add16, sub16, mul16);
 rational!(Rational32, add32, sub32, mul32);
 rational!(Rational64, add64, sub64, mul64);
 rational!(Rational128, add128, sub128, mul128);
-rational!(RationalUsize, add_usize, sub_usize, mul_usize);
+rational!(RationalSize, add_usize, sub_usize, mul_usize);
 
 macro_rules! rational_non_zero {
     ($name:ident, $add_name:ident, $sub_name:ident, $mul_name:ident) => {
@@ -296,7 +296,7 @@ rational_non_zero!(NonZeroRational16, add16, sub16, mul16);
 rational_non_zero!(NonZeroRational32, add32, sub32, mul32);
 rational_non_zero!(NonZeroRational64, add64, sub64, mul64);
 rational_non_zero!(NonZeroRational128, add128, sub128, mul128);
-rational_non_zero!(NonZeroRationalUsize, add_usize, sub_usize, mul_usize);
+rational_non_zero!(NonZeroRationalSize, add_usize, sub_usize, mul_usize);
 
 macro_rules! rational_requiring_wide {
     ($name:ident, $uty:ty, $BITS:literal, $wide:ty, $sign:ident) => {
@@ -540,10 +540,10 @@ rational_forward!(Rational16);
 rational_forward!(Rational32);
 rational_forward!(Rational64);
 rational_forward!(Rational128);
-rational_forward!(RationalUsize);
+rational_forward!(RationalSize);
 rational_forward!(NonZeroRational8);
 rational_forward!(NonZeroRational16);
 rational_forward!(NonZeroRational32);
 rational_forward!(NonZeroRational64);
 rational_forward!(NonZeroRational128);
-rational_forward!(NonZeroRationalUsize);
+rational_forward!(NonZeroRationalSize);

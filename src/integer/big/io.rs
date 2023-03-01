@@ -15,8 +15,8 @@ use smallvec::smallvec;
 use crate::integer::big::{BITS_PER_WORD, NonZeroUbig, Ubig};
 use crate::integer::big::ops::building_blocks::is_well_formed;
 use crate::integer::big::ops::non_zero::{add_assign_single_non_zero, mul_assign_single_non_zero, shr, shr_mut};
-use crate::rational::{f32_kind, f64_kind};
-use crate::rational::big::io::FloatKind;
+use crate::io::{f32_kind, f64_kind};
+use crate::io::FloatKind;
 
 impl<const S: usize> Ubig<S> {
     /// Creates a new unsigned integer with the small specified value.

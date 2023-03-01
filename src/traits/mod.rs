@@ -117,6 +117,12 @@ pub trait Abs: Neg<Output=Self> + Ord + num_traits::Zero {
 impl<T: Neg<Output=Self> + Ord + num_traits::Zero> Abs for T {
 }
 
+/// Round elements from one ordered set to elements from a subset.
+pub trait Round<Subset>: Ord {
+    fn floor(&self) -> (Subset, Self);
+    fn ceil(&self) -> (Subset, Self);
+}
+
 /// Helper macro for tests.
 #[macro_export]
 macro_rules! F {

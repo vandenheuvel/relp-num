@@ -8,7 +8,6 @@ use smallvec::SmallVec;
 use crate::integer::big::BITS_PER_WORD;
 use crate::integer::big::ops::building_blocks::{addmul_1, borrowing_sub_mut, carrying_add_mut, is_well_formed, is_well_formed_non_zero, mul_1, sub_assign_slice, sub_n, to_twos_complement};
 use crate::integer::big::properties::cmp;
-use crate::rational::big::properties::cmp_single;
 
 #[inline]
 pub fn shr_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, bits: u32) {
@@ -358,6 +357,17 @@ pub fn sub_assign_single_result_positive<const S: usize>(
     }
 
     debug_assert!(is_well_formed_non_zero(values));
+}
+
+#[inline]
+pub fn cmp_single(large: &[usize], small: usize) -> Ordering {
+    debug_assert!(!large.is_empty());
+
+    if large.len() > 1 {
+        Ordering::Greater
+    } else {
+        large[0].cmp(&small)
+    }
 }
 
 #[inline]

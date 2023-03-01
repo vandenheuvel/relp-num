@@ -2,22 +2,140 @@
 use std::fmt;
 use std::fmt::Display;
 use std::ops::Neg;
+use std::num::{NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize};
+use std::num::{NonZeroU8, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize};
 
 use crate::integer::big::ops::normalize::gcd_scalar;
-use crate::Negateable;
+use crate::{Negateable, NonZero, Signed};
 use crate::non_zero::NonZeroSign;
-use crate::rational::Ratio;
 use crate::sign::Sign;
 
 mod io;
 pub(crate) mod ops;
 
-macro_rules! rational {
-    ($name:ident, $ity:ty, $uty:ty) => {
-        /// A signed ratio between two small integers.
-        pub type $name = Ratio<Sign, $uty, $uty>;
+/// Ratio between two numbers.
+#[derive(Copy, Clone)]
+struct Ratio<N, D: NonZero> {
+    numerator: N,
+    denominator: D,
+}
 
-        impl Neg for $name {
+impl<N: Signed, D: NonZero> Signed for Ratio<N, D> {
+    fn signum(&self) -> Sign {
+        self.numerator.signum()
+    }
+}
+
+impl<N: Negateable, D: NonZero> Negateable for Ratio<N, D> {
+    fn negate(&mut self) {
+        self.numerator.negate();
+    }
+}
+
+impl<N: NonZero, D: NonZero> NonZero for Ratio<N, D> {
+    fn is_not_zero(&self) -> bool {
+        self.numerator.is_not_zero()
+    }
+}
+
+macro_rules! inner {
+    ($name:ident, $nty:ty, $dty:ty) => {
+        /// A signed ratio between two fixed-size integers.
+        pub type $name = Ratio<$nty, $dty>;
+
+        impl PartialEq for $name {
+            fn eq(&self, other: &Self) -> bool {
+                self.numerator.eq(&other.numerator) && self.denominator.eq(&other.denominator)
+            }
+        }
+        impl Eq for $name {}
+    }
+}
+
+macro_rules! rational {
+    [$($size:expr,)*] => {
+        $(
+            paste::paste! {
+                inner!([<Rational $size>], [<i $size:lower>], [<NonZeroI $size:lower>]);
+                inner!([<NonZeroRational $size>], [<NonZeroI $size:lower>], [<NonZeroI $size:lower>]);
+                inner!([<NonNegativeRational $size>], [<u $size:lower>], [<NonZeroU $size:lower>]);
+                inner!([<PositiveRational $size>], [<NonZeroU $size:lower>], [<NonZeroU $size:lower>]);
+            }
+        )*
+        // $(
+        //     paste::paste! {
+        //         inner!([<Rational $size>], [<i $size:lower>], [<NonZeroI $size:lower>]);
+        //         // pub type [<Rational $size>] = Ratio<[<i $size:lower>], [<NonZeroI $size:lower>]>;
+        //     }
+        // )*
+        // $(
+        //     paste::paste! {
+        //         #[doc = stringify!([<abc $size>])]
+        //         pub type [<Rational $size>] = Ratio<[<i $size:lower>], [<NonZeroI $size:lower>]>;
+        //     }
+        // )*
+        // $(
+        //     #[doc = paste! { [<$size>]}]
+        //     pub type Rational16 = Ratio<i16, NonZeroI16>;
+        // )*
+        // paste! {
+        //     $(
+        //         #[doc = stringify($size)]
+        //         pub type Rational16 = Ratio<i16, NonZeroI16>;
+        //     )*
+        // }
+        // paste! {
+        //     $(
+        //         {pub type [<Rational $size>] = Ratio<[<i $size>], [<NonZeroI $size>]>;}
+        //     )*
+        // }
+        // paste! {
+        //     $(
+        //         inner!([<Rational $size>], [<i $size>], [<NonZeroI $size>]);
+        //     )*
+        // }
+
+            // ([<NonZeroRational$size $size>], [<NonZeroI$size $size>], [<NonZeroI $size>],),
+            // ([<NonNegativeRational$size $size>], [<u $size>], [<NonZeroU$size $size>],),
+            // ([<PositiveRational$size $size>], [<NonZeroU$size $size>], [<NonZeroU $size>],),
+
+        // $(
+        //         type a = concat_idents!(Rational, $size);
+        //         type b = concat_idents!(i, $size);
+        //         type c = concat_idents!(NonZeroI, $size);
+        //         inner![
+        //             (a, b, c),
+        //             // (a, concat_idents!(i, $size), concat_idents!(NonZeroI, $size)),
+        //             // (NonZeroRational$size, NonZeroI$size, NonZeroI$size),
+        //             // (NonNegativeRational$size, u$size, NonZeroU$size),
+        //             // (PositiveRational$size, NonZeroU$size, NonZeroU$size),
+        //         ]
+        // )*
+    }
+}
+rational![8, 16, 32, 64, 128, Size,];
+
+// rational_all!(Rational8, i8, NonZeroI8);
+// rational_all!(Rational16, i16, NonZeroI16);
+// rational_all!(Rational32, i32, NonZeroI32);
+// rational_all!(Rational64, i64, NonZeroI64);
+// rational_all!(Rational128, i128, NonZeroI128);
+// rational_all!(RationalSize, isize, NonZeroIsize);
+// rational_all!(NonZeroRational8, NonZeroI8, NonZeroI8);
+// rational_all!(NonZeroRational16, NonZeroI16, NonZeroI16);
+// rational_all!(NonZeroRational32, NonZeroI32, NonZeroI32);
+// rational_all!(NonZeroRational64, NonZeroI64, NonZeroI64);
+// rational_all!(NonZeroRational128, NonZeroI128, NonZeroI128);
+// rational_all!(NonZeroRationalSize, NonZeroIsize, NonZeroIsize);
+// rational_all!(NonNegativeRational8, u8, NonZeroU8);
+// rational_all!(PositiveRational8, NonZeroU8, NonZeroU8);
+
+macro_rules! rational {
+    ($name:ident, $nty:ty, $dty:ty) => {
+        /// A signed ratio between two small integers.
+        pub type $iname = Ratio<$uty, $uty>;
+
+        impl Neg for $iname {
             type Output = Self;
 
             #[must_use]
@@ -28,8 +146,8 @@ macro_rules! rational {
             }
         }
 
-        impl Neg for &$name {
-            type Output = $name;
+        impl Neg for &$iname {
+            type Output = $iname;
 
             #[must_use]
             #[inline]
@@ -42,23 +160,7 @@ macro_rules! rational {
             }
         }
 
-        impl PartialEq for $name {
-            fn eq(&self, other: &Self) -> bool {
-                match (self.sign, other.sign) {
-                    (Sign::Positive, Sign::Negative) |
-                    (Sign::Negative, Sign::Positive) => false,
-                    (Sign::Zero, Sign::Zero) => true,
-                    (Sign::Positive, Sign::Positive) | (Sign::Negative, Sign::Negative) => {
-                        self.numerator == other.numerator && self.denominator == other.denominator
-                    }
-                    (Sign::Zero, Sign::Positive | Sign::Negative) |
-                    (Sign::Positive | Sign::Negative, Sign::Zero) => false,
-                }
-            }
-        }
-        impl Eq for $name {}
-
-        impl Display for $name {
+        impl Display for $iname {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 match self.sign {
                     Sign::Positive => {}
@@ -79,52 +181,33 @@ macro_rules! rational {
         }
     }
 }
-rational!(Rational8, i8, u8);
-rational!(Rational16, i16, u16);
-rational!(Rational32, i32, u32);
-rational!(Rational64, i64, u64);
-rational!(RationalUsize, isize, usize);
-rational!(Rational128, i128, u128);
+// rational!(Rational8, NonZeroRational8, UnsignedRational8, PositiveRational8, i8, u8);
+// rational!(Rational16, NonZeroRational16, UnsignedRational16, PositiveRational16, i16, u16);
+// rational!(Rational32, NonZeroRational32, UnsignedRational32, PositiveRational32, i32, u32);
+// rational!(Rational64, NonZeroRational64, UnsignedRational64, PositiveRational64, i64, u64);
+// rational!(Rational128, NonZeroRational128, UnsignedRational128, PositiveRational128, i128, u128);
+// rational!(RationalSize, NonZeroRationalSize, UnsignedRationalSize, PositiveRationalSize, isize, usize);
 
-macro_rules! rational_non_zero {
-    ($name:ident, $ity:ty, $uty:ty) => {
-        /// Non zero rational number.
-        pub type $name = Ratio<NonZeroSign, $uty, $uty>;
-
-        impl PartialEq for $name {
-            fn eq(&self, other: &Self) -> bool {
-                self.numerator == other.numerator &&
-                    self.denominator == other.denominator &&
-                    self.sign == other.sign
-            }
-        }
-        impl Eq for $name {}
-    }
-}
-rational_non_zero!(NonZeroRational8, i8, u8);
-rational_non_zero!(NonZeroRational16, i16, u16);
-rational_non_zero!(NonZeroRational32, i32, u32);
-rational_non_zero!(NonZeroRational64, i64, u64);
-rational_non_zero!(NonZeroRational128, i128, u128);
-rational_non_zero!(NonZeroRationalUsize, isize, usize);
 
 #[cfg(test)]
 mod test {
     use std::cmp::Ordering;
+    use std::num::NonZeroI8;
     use std::str::FromStr;
 
     use num_traits::{FromPrimitive, One, Zero};
 
     use crate::{NonZero, NonZeroSign, NonZeroSigned, Rational128};
     use crate::{R16, R32, R64, R8};
-    use crate::rational::{Ratio, Rational16, Rational32, Rational64, Rational8, Sign};
+    use crate::rational::small::Ratio;
+    use crate::rational::{Rational16, Rational32, Rational64, Rational8, Sign};
 
     #[test]
     fn test_new() {
-        assert_eq!(R8!(0, 2), Ratio { sign: Sign::Zero, numerator: 0_u8, denominator: 1 });
-        assert_eq!(R8!(2, 2), Ratio { sign: Sign::Positive, numerator: 1, denominator: 1 });
-        assert_eq!(R8!(6, 2), Ratio { sign: Sign::Positive, numerator: 3, denominator: 1 });
-        assert_eq!(R8!(-6, 2), Ratio { sign: Sign::Negative, numerator: 3, denominator: 1 });
+        assert_eq!(R8!(0, 2), Ratio { numerator: 0_i8, denominator: NonZeroI8::new(1).unwrap() });
+        assert_eq!(R8!(2, 2), Ratio { numerator: 1_i8, denominator: NonZeroI8::new(1).unwrap() });
+        assert_eq!(R8!(6, 2), Ratio { numerator: 3_i8, denominator: NonZeroI8::new(1).unwrap() });
+        assert_eq!(R8!(-6, 2), Ratio { numerator: 3_i8, denominator: NonZeroI8::new(1).unwrap() });
     }
 
     #[test]

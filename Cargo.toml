@@ -11,6 +11,7 @@ keywords = ["relp", "exact", "precision", "number", "rational"]
 categories = ["algorithms", "science"]
 
 [dependencies]
+paste = "1.0"
 num-traits = "0.2.15"
 gcd = "2.2.0"
 smallvec = { version = "1.10.0", features = ["const_generics", "specialization"] }

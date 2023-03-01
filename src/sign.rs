@@ -166,6 +166,91 @@ impl fmt::Display for Sign {
     }
 }
 
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+pub enum NonNegativeSign {
+    Zero,
+    Positive,
+}
+
+
+impl Signed for NonNegativeSign {
+    #[inline]
+    fn signum(&self) -> Sign {
+        match self {
+            NonNegativeSign::Zero => Sign::Zero,
+            NonNegativeSign::Positive => Sign::Positive,
+        }
+    }
+
+    #[inline]
+    fn is_positive(&self) -> bool {
+        match self {
+            NonNegativeSign::Zero => false,
+            NonNegativeSign::Positive => true,
+        }
+    }
+
+    #[inline]
+    fn is_negative(&self) -> bool {
+        false
+    }
+}
+
+impl NonZero for NonNegativeSign {
+    #[must_use]
+    #[inline]
+    fn is_not_zero(&self) -> bool {
+        match self {
+            NonNegativeSign::Zero => false,
+            NonNegativeSign::Positive => true,
+        }
+    }
+}
+
+impl MulAssign for NonNegativeSign {
+    #[inline]
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = match (&self, rhs) {
+            (NonNegativeSign::Zero, _) | (NonNegativeSign::Positive, NonNegativeSign::Zero) => NonNegativeSign::Zero,
+            (NonNegativeSign::Positive, NonNegativeSign::Positive) => NonNegativeSign::Positive,
+        };
+    }
+}
+
+impl Mul for NonNegativeSign {
+    type Output = Self;
+
+    #[must_use]
+    #[inline]
+    fn mul(mut self, rhs: Self) -> Self::Output {
+        self *= rhs;
+        self
+    }
+}
+
+impl PartialOrd for NonNegativeSign {
+    #[must_use]
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (NonNegativeSign::Zero, NonNegativeSign::Positive) => Some(Ordering::Less),
+            (NonNegativeSign::Zero, NonNegativeSign::Zero) => Some(Ordering::Equal),
+            (NonNegativeSign::Positive, NonNegativeSign::Positive) => None,
+            (NonNegativeSign::Positive, NonNegativeSign::Zero) => Some(Ordering::Greater),
+        }
+    }
+}
+
+impl fmt::Display for NonNegativeSign {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Zero => "0",
+            Self::Positive => "+",
+        })
+    }
+}
+
+
 #[cfg(test)]
 mod test {
     use crate::{Sign, Signed};
