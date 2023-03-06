@@ -121,50 +121,69 @@ rational![8, 16, 32, 64, 128, "size",];
 //     }
 // }
 
-macro_rules! size_dependent_rational {
-    ($size:expr, [$($other_size:expr,)*]) => {
+macro_rules! from_single_rational {
+    ($size:expr, $other_signedness:expr, [$($other_size:expr,)*]) => {
         $(
             paste! {
-                impl From<[<i $other_size>]> for [<Rational $size>] {
+                impl From<[<$other_signedness $other_size>]> for [<Rational $size>] {
                     #[must_use]
                     #[inline]
-                    fn from(other: [<i $other_size>]) -> Self {
+                    fn from(other: [<$other_signedness $other_size>]) -> Self {
                         Self {
                             numerator: other as [<i $size>],
                             denominator: [<NonZeroI $size>]::new(1).unwrap(),
                         }
                     }
                 }
-                impl From<&[<i $other_size>]> for [<Rational $size>] {
+                impl From<&[<$other_signedness $other_size>]> for [<Rational $size>] {
                     #[must_use]
                     #[inline]
-                    fn from(value: &[<i $other_size>]) -> Self {
+                    fn from(value: &[<$other_signedness $other_size>]) -> Self {
                         From::from(*value)
-                    }
-                }
-                impl From<([<i $other_size>], [<i $other_size>])> for [<Rational $size>] {
-                    #[must_use]
-                    #[inline]
-                    fn from(value: ([<i $other_size>], [<i $other_size>])) -> Self {
-                        assert_ne!(value.1, 0, "attempt to divide by zero");
-
-                        let (numerator, denominator) = [<simplify_ $other_size>](value.0.unsigned_abs(), value.1.unsigned_abs());
-
-                        Self {
-                            numerator: (numerator as [<i $other_size>] * value.0.signum() * value.1.signum()) as [<i $size>],
-                            denominator: [<NonZeroI $size>]::new(denominator as [<i $size>]).unwrap(),
-                        }
                     }
                 }
             }
         )*
     }
 }
-size_dependent_rational!(8, [8,]);
-size_dependent_rational!(16, [8, 16,]);
-size_dependent_rational!(32, [8, 16, 32,]);
-size_dependent_rational!(64, [8, 16, 32, 64,]);
-size_dependent_rational!(128, [8, 16, 32, 64, 128,]);
+
+macro_rules! from_tuple_rational {
+    ($size:expr, $smaller_size:expr) => {
+        paste! {
+            impl From<([<i $smaller_size>], [<i $smaller_size>])> for [<Rational $size>] {
+                #[must_use]
+                #[inline]
+                fn from(value: ([<i $smaller_size>], [<i $smaller_size>])) -> Self {
+                    assert_ne!(value.1, 0, "attempt to divide by zero");
+
+                    let (numerator, denominator) = [<simplify_ $smaller_size>](value.0.unsigned_abs(), value.1.unsigned_abs());
+
+                    Self {
+                        numerator: (numerator as [<i $smaller_size>] * value.0.signum() * value.1.signum()) as [<i $size>],
+                        denominator: [<NonZeroI $size>]::new(denominator as [<i $size>]).unwrap(),
+                    }
+                }
+            }
+        }
+    }
+}
+
+macro_rules! size_dependent_rational {
+    ($size:expr, [$($smaller_size:expr,)*]) => {
+        from_single_rational!($size, "i", [$size,]);
+        from_single_rational!($size, "i", [$($smaller_size,)*]);
+        from_single_rational!($size, "u", [$($smaller_size,)*]);
+        from_tuple_rational!($size, $size);
+        $(
+            from_tuple_rational!($size, $smaller_size);
+        )*
+    }
+}
+size_dependent_rational!(8, []);
+size_dependent_rational!(16, [8,]);
+size_dependent_rational!(32, [8, 16,]);
+size_dependent_rational!(64, [8, 16, 32,]);
+size_dependent_rational!(128, [8, 16, 32, 64,]);
 
 macro_rules! size_dependent_non_zero {
     ($size:expr, [$($other_size:expr,)*]) => {
@@ -311,9 +330,10 @@ size_dependent_positive!(128, [8, 16, 32, 64, 128,]);
 
 #[cfg(test)]
 mod test {
+    use std::num::NonZeroU8;
     use num_traits::ToPrimitive;
 
-    use crate::{R16, R32, R64, R8, Rational16, Rational32, Rational8};
+    use crate::{NonNegativeRational8, R16, R32, R64, R8, Rational16, Rational32, Rational8};
 
     #[test]
     fn test_debug() {
@@ -326,12 +346,12 @@ mod test {
 
     #[test]
     fn test_from() {
-        assert_eq!(Rational8::from(4_u8), R8!(4));
+        assert_eq!(Rational16::from(4_u8), R16!(4));
         assert_eq!(Rational16::from(-4_i8), R16!(-4));
-        assert_eq!(Rational8::from(&4_u8), R8!(4));
+        assert_eq!(NonNegativeRational8::from(&4_u8), NonNegativeRational8 { numerator: 4, denominator: NonZeroU8::new(1).unwrap() });
         assert_eq!(Rational16::from(&-4_i8), R16!(-4));
         assert_eq!(Rational16::from((-4_i8, 2_i8)), R16!(-2));
-        assert_eq!(Rational16::from((4_u8, 2_u8)), R16!(2));
+        assert_eq!(Rational16::from((4_i8, 2_i8)), R16!(2));
     }
 
     #[test]
