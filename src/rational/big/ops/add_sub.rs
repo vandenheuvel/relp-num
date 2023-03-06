@@ -1,6 +1,6 @@
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-use crate::{Negateable, NonZero, Sign};
+use crate::{NonZero, Sign};
 use crate::rational::big::Big;
 use crate::rational::big::ops::building_blocks::{add_assign_fraction_non_zero, SignChange, sub_assign_fraction_non_zero};
 

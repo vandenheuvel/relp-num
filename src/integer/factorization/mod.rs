@@ -2,8 +2,9 @@
 use std::num::{NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8};
 use std::num::{NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8};
 
-use crate::{NonZeroFactorizable, NonZeroFactorization, NonZeroSign, NonZeroSigned};
+use crate::{NonZeroFactorizable, NonZeroFactorization, NonZeroSign};
 use crate::integer::factorization::prime::primes::SMALL_ODD_PRIMES;
+use crate::sign::NonZeroSigned;
 
 pub mod prime;
 mod size_8;
@@ -32,7 +33,7 @@ macro_rules! forwards {
 
             #[must_use]
             fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power> {
-                let sign = self.non_zero_signum();
+                let sign = NonZeroSigned::signum(self);
                 let factors = $method_name(self.unsigned_abs());
 
                 NonZeroFactorization { sign, factors }

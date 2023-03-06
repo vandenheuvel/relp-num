@@ -20,9 +20,9 @@ mod with_option;
 /// Ratio between two numbers.
 #[derive(Copy, Clone)]
 struct Ratio<S, N, D: NonZero> {
-    sign: S,
-    numerator: N,
-    denominator: D,
+    pub(in crate::rational) sign: S,
+    pub(in crate::rational) numerator: N,
+    pub(in crate::rational) denominator: D,
 }
 
 pub type Big<const S: usize> = Ratio<Sign, Ubig<S>, NonZeroUbig<S>>;

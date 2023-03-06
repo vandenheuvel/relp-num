@@ -18,7 +18,7 @@ use crate::integer::big::ops::normalize::{gcd_scalar, simplify_fraction_without_
 use crate::integer::big::properties::cmp;
 use crate::io::{f32_kind, f64_kind, FloatKind};
 use crate::rational::big::{Big, NonZeroBig, Ratio};
-use crate::rational::small::ops::building_blocks::{simplify128, simplify16, simplify32, simplify64, simplify8};
+use crate::rational::small::ops::building_blocks::{simplify_128, simplify_16, simplify_32, simplify_64, simplify_8};
 use crate::sign::Sign;
 use crate::sign::Signed;
 
@@ -230,11 +230,11 @@ macro_rules! impl_from_iu {
     }
 }
 
-impl_from_iu!(i8, u8, simplify8);
-impl_from_iu!(i16, u16, simplify16);
-impl_from_iu!(i32, u32, simplify32);
-impl_from_iu!(i64, u64, simplify64);
-impl_from_iu!(i128, u128, simplify128);
+impl_from_iu!(i8, u8, simplify_8);
+impl_from_iu!(i16, u16, simplify_16);
+impl_from_iu!(i32, u32, simplify_32);
+impl_from_iu!(i64, u64, simplify_64);
+impl_from_iu!(i128, u128, simplify_128);
 
 macro_rules! impl_from_ii {
     ($ty:ty) => {
@@ -497,7 +497,7 @@ impl<const S: usize> Big<S> {
 
             match (sign, numerator) {
                 (Sign::Positive | Sign::Negative, n) if n != 0 => {
-                    let (numerator, denominator) = simplify64(numerator, denominator);
+                    let (numerator, denominator) = simplify_64(numerator, denominator);
 
                     Some(Self {
                         sign,

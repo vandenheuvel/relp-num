@@ -7,7 +7,7 @@ use num_traits::{One, Zero};
 use smallvec::{smallvec, SmallVec};
 
 use crate::{NonZeroSign, NonZeroSigned, Signed};
-use crate::{Negateable, NonZero, Sign};
+use crate::{NonZero, Sign};
 use crate::integer::big::ops::building_blocks::is_well_formed_non_zero;
 use crate::integer::big::ops::non_zero::{add_assign, is_one_non_zero, mul_assign_single_non_zero, subtracting_cmp};
 use crate::integer::big::ops::normalize::simplify_fraction_gcd_single;

@@ -3,12 +3,13 @@
 //! Number types for the [RELP](https://crates.io/crates/relp) crate.
 #![warn(missing_docs)]
 
-#![feature(min_specialization)]
+#![feature(specialization)]
 #![feature(trait_alias)]
 #![feature(result_flattening)]
 #![feature(unchecked_math)]
 #![feature(core_intrinsics)]
 #![feature(nonzero_ops)]
+#![feature(nonzero_min_max)]
 #![feature(bigint_helper_methods)]
 #![feature(nonzero_negation_ops)]
 #![feature(associated_type_bounds)]
@@ -32,8 +33,6 @@ pub use integer::big::NonZeroUbig;
 
 mod non_zero;
 pub use non_zero::NonZero;
-pub use non_zero::sign::NonZeroSign;
-pub use non_zero::sign::NonZeroSigned;
 
 mod rational;
 pub use rational::RationalBig;
@@ -66,7 +65,8 @@ pub use rational::PositiveRational8;
 mod sign;
 pub use sign::Sign;
 pub use sign::Signed;
-pub use sign::Negateable;
+pub use sign::NonZeroSign;
+pub use sign::NonZeroSigned;
 
 mod traits;
 pub use traits::Abs;

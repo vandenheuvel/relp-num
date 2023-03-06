@@ -7,8 +7,9 @@ use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 use num_traits::One;
 
-use crate::non_zero::{NonZero, NonZeroSign};
-use crate::Signed;
+use crate::non_zero::{NonZero};
+use crate::sign::NonZeroSigned;
+use crate::{NonZeroSign, Signed};
 
 /// Creating a factorization of an integer or rational number.
 ///

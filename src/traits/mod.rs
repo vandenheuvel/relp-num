@@ -8,7 +8,7 @@ use std::fmt::{Debug, Display};
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-use crate::non_zero::NonZeroSigned;
+use crate::sign::NonZeroSigned;
 
 pub mod factorization;
 mod signed_unsigned;

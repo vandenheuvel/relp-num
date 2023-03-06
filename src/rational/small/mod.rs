@@ -1,34 +1,57 @@
 //! # Rational types of fixed size
 use std::fmt;
-use std::fmt::Display;
+use std::fmt::Formatter;
+use std::io::Write;
 use std::ops::Neg;
 use std::num::{NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI128, NonZeroIsize};
 use std::num::{NonZeroU8, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU128, NonZeroUsize};
+use num_traits::{One, Zero};
+
+use paste::paste;
 
 use crate::integer::big::ops::normalize::gcd_scalar;
-use crate::{Negateable, NonZero, Signed};
-use crate::non_zero::NonZeroSign;
-use crate::sign::Sign;
+use crate::{NonZero};
+use crate::sign::{Sign, Signed, NonZeroSign, NonZeroSigned, NonNegativeSign, NonNegativelySigned, PositiveSign, PositivelySigned};
 
 mod io;
+mod convert;
 pub(crate) mod ops;
 
 /// Ratio between two numbers.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 struct Ratio<N, D: NonZero> {
     numerator: N,
     denominator: D,
 }
 
-impl<N: Signed, D: NonZero> Signed for Ratio<N, D> {
-    fn signum(&self) -> Sign {
-        self.numerator.signum()
+macro_rules! all {
+    ($name:ident, $nty:ty, $dty:ty, $size:expr) => {
+        #[doc = "A `"]
+        #[doc = stringify!($name)]
+        #[doc = "` number represented by two integers of size"]
+        #[doc = stringify!($size)]
+        #[doc = "."]
+        /// A signed ratio between two fixed-size integers.
+        pub type $name = Ratio<$nty, $dty>;
     }
 }
+macro_rules! implement_all {
+    [$($size:expr,)*] => {
+        $(
+            paste::paste! {
+                all!([<Rational $size>], [<i $size:lower>], [<NonZeroI $size:lower>], $size);
+                all!([<NonZeroRational $size>], [<NonZeroI $size:lower>], [<NonZeroI $size:lower>], $size);
+                all!([<NonNegativeRational $size>], [<u $size:lower>], [<NonZeroU $size:lower>], $size);
+                all!([<PositiveRational $size>], [<NonZeroU $size:lower>], [<NonZeroU $size:lower>], $size);
+            }
+        )*
+    }
+}
+implement_all![8, 16, 32, 64, 128, "Size",];
 
-impl<N: Negateable, D: NonZero> Negateable for Ratio<N, D> {
-    fn negate(&mut self) {
-        self.numerator.negate();
+impl<N: Signed, D: NonZero> Signed for Ratio<N, D> where Self: NonZeroSigned {
+    fn signum(&self) -> Sign {
+        self.numerator.signum()
     }
 }
 
@@ -38,155 +61,98 @@ impl<N: NonZero, D: NonZero> NonZero for Ratio<N, D> {
     }
 }
 
-macro_rules! inner {
-    ($name:ident, $nty:ty, $dty:ty) => {
-        /// A signed ratio between two fixed-size integers.
-        pub type $name = Ratio<$nty, $dty>;
-
-        impl PartialEq for $name {
-            fn eq(&self, other: &Self) -> bool {
-                self.numerator.eq(&other.numerator) && self.denominator.eq(&other.denominator)
-            }
-        }
-        impl Eq for $name {}
+impl<N: Zero, D: NonZero> Default for Ratio<N, D> {
+    fn default() -> Self {
+        Self::zero()
     }
 }
 
-macro_rules! rational {
+macro_rules! can_be_negative {
+    ($name:ident, $nty:ty, $dty:ty) => {
+
+    }
+}
+macro_rules! implement_can_be_negative {
     [$($size:expr,)*] => {
         $(
             paste::paste! {
-                inner!([<Rational $size>], [<i $size:lower>], [<NonZeroI $size:lower>]);
-                inner!([<NonZeroRational $size>], [<NonZeroI $size:lower>], [<NonZeroI $size:lower>]);
-                inner!([<NonNegativeRational $size>], [<u $size:lower>], [<NonZeroU $size:lower>]);
-                inner!([<PositiveRational $size>], [<NonZeroU $size:lower>], [<NonZeroU $size:lower>]);
+                can_be_negative!([<Rational $size>], [<i $size:lower>], [<NonZeroI $size:lower>]);
+                can_be_negative!([<NonZeroRational $size>], [<NonZeroI $size:lower>], [<NonZeroI $size:lower>]);
             }
         )*
-        // $(
-        //     paste::paste! {
-        //         inner!([<Rational $size>], [<i $size:lower>], [<NonZeroI $size:lower>]);
-        //         // pub type [<Rational $size>] = Ratio<[<i $size:lower>], [<NonZeroI $size:lower>]>;
-        //     }
-        // )*
-        // $(
-        //     paste::paste! {
-        //         #[doc = stringify!([<abc $size>])]
-        //         pub type [<Rational $size>] = Ratio<[<i $size:lower>], [<NonZeroI $size:lower>]>;
-        //     }
-        // )*
-        // $(
-        //     #[doc = paste! { [<$size>]}]
-        //     pub type Rational16 = Ratio<i16, NonZeroI16>;
-        // )*
-        // paste! {
-        //     $(
-        //         #[doc = stringify($size)]
-        //         pub type Rational16 = Ratio<i16, NonZeroI16>;
-        //     )*
-        // }
-        // paste! {
-        //     $(
-        //         {pub type [<Rational $size>] = Ratio<[<i $size>], [<NonZeroI $size>]>;}
-        //     )*
-        // }
-        // paste! {
-        //     $(
-        //         inner!([<Rational $size>], [<i $size>], [<NonZeroI $size>]);
-        //     )*
-        // }
-
-            // ([<NonZeroRational$size $size>], [<NonZeroI$size $size>], [<NonZeroI $size>],),
-            // ([<NonNegativeRational$size $size>], [<u $size>], [<NonZeroU$size $size>],),
-            // ([<PositiveRational$size $size>], [<NonZeroU$size $size>], [<NonZeroU $size>],),
-
-        // $(
-        //         type a = concat_idents!(Rational, $size);
-        //         type b = concat_idents!(i, $size);
-        //         type c = concat_idents!(NonZeroI, $size);
-        //         inner![
-        //             (a, b, c),
-        //             // (a, concat_idents!(i, $size), concat_idents!(NonZeroI, $size)),
-        //             // (NonZeroRational$size, NonZeroI$size, NonZeroI$size),
-        //             // (NonNegativeRational$size, u$size, NonZeroU$size),
-        //             // (PositiveRational$size, NonZeroU$size, NonZeroU$size),
-        //         ]
-        // )*
     }
 }
-rational![8, 16, 32, 64, 128, Size,];
+implement_can_be_negative![8, 16, 32, 64, 128, Size,];
+impl<N: Neg, D: NonZero> Neg for Ratio<N, D> {
+    type Output = Self;
 
-// rational_all!(Rational8, i8, NonZeroI8);
-// rational_all!(Rational16, i16, NonZeroI16);
-// rational_all!(Rational32, i32, NonZeroI32);
-// rational_all!(Rational64, i64, NonZeroI64);
-// rational_all!(Rational128, i128, NonZeroI128);
-// rational_all!(RationalSize, isize, NonZeroIsize);
-// rational_all!(NonZeroRational8, NonZeroI8, NonZeroI8);
-// rational_all!(NonZeroRational16, NonZeroI16, NonZeroI16);
-// rational_all!(NonZeroRational32, NonZeroI32, NonZeroI32);
-// rational_all!(NonZeroRational64, NonZeroI64, NonZeroI64);
-// rational_all!(NonZeroRational128, NonZeroI128, NonZeroI128);
-// rational_all!(NonZeroRationalSize, NonZeroIsize, NonZeroIsize);
-// rational_all!(NonNegativeRational8, u8, NonZeroU8);
-// rational_all!(PositiveRational8, NonZeroU8, NonZeroU8);
-
-macro_rules! rational {
-    ($name:ident, $nty:ty, $dty:ty) => {
-        /// A signed ratio between two small integers.
-        pub type $iname = Ratio<$uty, $uty>;
-
-        impl Neg for $iname {
-            type Output = Self;
-
-            #[must_use]
-            #[inline]
-            fn neg(mut self) -> Self::Output {
-                Negateable::negate(&mut self.sign);
-                self
-            }
-        }
-
-        impl Neg for &$iname {
-            type Output = $iname;
-
-            #[must_use]
-            #[inline]
-            fn neg(self) -> Self::Output {
-                Self::Output {
-                    sign: !self.sign,
-                    numerator: self.numerator,
-                    denominator: self.denominator,
-                }
-            }
-        }
-
-        impl Display for $iname {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                match self.sign {
-                    Sign::Positive => {}
-                    Sign::Zero => return write!(f, "0"),
-                    Sign::Negative => {
-                        write!(f, "-")?;
-                    }
-                }
-
-                write!(f, "{}", self.numerator)?;
-                if self.denominator != 1 {
-                    write!(f, "/")?;
-                    write!(f, "{}", self.denominator)?;
-                }
-
-                fmt::Result::Ok(())
-            }
+    #[must_use]
+    #[inline]
+    fn neg(mut self) -> Self::Output {
+        Self {
+            numerator: self.numerator.neg(),
+            denominator: self.denominator,
         }
     }
 }
-// rational!(Rational8, NonZeroRational8, UnsignedRational8, PositiveRational8, i8, u8);
-// rational!(Rational16, NonZeroRational16, UnsignedRational16, PositiveRational16, i16, u16);
-// rational!(Rational32, NonZeroRational32, UnsignedRational32, PositiveRational32, i32, u32);
-// rational!(Rational64, NonZeroRational64, UnsignedRational64, PositiveRational64, i64, u64);
-// rational!(Rational128, NonZeroRational128, UnsignedRational128, PositiveRational128, i128, u128);
-// rational!(RationalSize, NonZeroRationalSize, UnsignedRationalSize, PositiveRationalSize, isize, usize);
+
+// macro_rules! rational {
+//     [$($size:expr,)*] => {
+//         $(
+//             paste! {
+//
+//             }
+//         )*
+//     }
+// }
+// rational![8, 16, 32, 64, 128, "Size",];
+
+// macro_rules! non_zero_rational {
+//     [$($size:expr,)*] => {
+//         $(
+//
+//         )*
+//     }
+// }
+// non_zero_rational![8, 16, 32, 64, 128, Size,];
+impl<N: NonZeroSigned, D: NonZero> NonZeroSigned for Ratio<N, D> {
+    fn signum(&self) -> NonZeroSign {
+        self.numerator.signum()
+    }
+}
+
+// macro_rules! non_negative_rational {
+//     [$($size:expr,)*] => {
+//         $(
+//             paste! {
+//
+//             }
+//         )*
+//     }
+// }
+// non_negative_rational![8, 16, 32, 64, 128, Size,];
+impl<N: NonNegativelySigned, D: NonZero> NonNegativelySigned for Ratio<N, D> where Self: NonNegativelySigned {
+    fn signum(&self) -> NonNegativeSign {
+        self.numerator.signum()
+    }
+}
+
+// macro_rules! positive_rational {
+//     [$($size:expr,)*] => {
+//         $(
+//             paste! {\
+//
+//             }
+//         )*
+//     }
+// }
+// positive_rational![8, 16, 32, 64, 128, Size,];
+
+impl<N: PositivelySigned, D: NonZero> PositivelySigned for Ratio<N, D> {
+    fn signum(&self) -> PositiveSign {
+        self.numerator.signum()
+    }
+}
 
 
 #[cfg(test)]

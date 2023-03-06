@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::ops::{Add, AddAssign, Mul, Neg};
 
-use crate::{Sign, Signed, Negateable};
+use crate::{Sign, Signed};
 
 /// # Zero
 ///
@@ -72,12 +72,6 @@ impl Ord for Zero {
 impl Signed for Zero {
     fn signum(&self) -> Sign {
         Sign::Zero
-    }
-}
-
-impl Negateable for Zero {
-    #[inline]
-    fn negate(&mut self) {
     }
 }
 

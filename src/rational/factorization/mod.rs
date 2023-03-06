@@ -52,7 +52,6 @@ mod test {
     use num_traits::{One, Zero};
 
     use crate::{NonZeroRationalBig, RationalBig};
-    use crate::non_zero::NonZeroSign;
     // use crate::rational::Ratio;
     use crate::traits::factorization::{NonZeroFactorizable, NonZeroFactorization};
 

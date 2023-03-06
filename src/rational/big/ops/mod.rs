@@ -3,7 +3,6 @@ use std::ops::Neg;
 
 use crate::integer::big::ops::div::div as div_by_odd_or_even;
 use crate::integer::big::ops::normalize::gcd;
-use crate::Negateable;
 use crate::rational::big::Big;
 
 mod add_sub;

@@ -4,11 +4,6 @@
 use std::num::{NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize};
 use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
 
-pub use sign::NonZeroSign as NonZeroSign;
-pub use sign::NonZeroSigned as NonZeroSigned;
-
-pub mod sign;
-
 /// # Nonzero values
 ///
 /// In contexts where this trait is required, implementors should not have value zero.

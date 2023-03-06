@@ -4,7 +4,7 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 use num_traits::{One, Zero};
 use smallvec::SmallVec;
 
-use crate::{Negateable, NonZero, NonZeroUbig, Sign, Ubig};
+use crate::{NonZero, NonZeroUbig, Sign, Ubig};
 use crate::integer::big::ops::building_blocks::is_well_formed_non_zero;
 use crate::integer::big::ops::non_zero::{add_assign, mul_non_zero, subtracting_cmp};
 use crate::integer::big::ops::normalize::simplify_fraction_without_info;

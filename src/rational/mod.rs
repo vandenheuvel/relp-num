@@ -4,6 +4,8 @@
 //!
 //! Using rational numbers with large numerator and denominator is the way arbitrary precision
 //! computation is done.
+use std::fmt;
+use std::fmt::Display;
 pub use crate::io::{f32_kind, f64_kind};
 
 pub use big::Big8 as RationalBig;
@@ -37,12 +39,12 @@ pub use small::PositiveRational64 as PositiveRational64;
 pub use small::PositiveRational8 as PositiveRational8;
 pub use small::PositiveRationalSize as PositiveRationalSize;
 
-use crate::{Negateable, NonZeroSigned};
+use crate::{NonZeroSigned};
 use crate::non_zero::NonZero;
 use crate::sign::Sign;
 use crate::Signed;
 
-pub trait Rational: Clone {
+pub trait Rational: Clone + Display {
     type Sign;
     type Numerator;
     type Denominator;

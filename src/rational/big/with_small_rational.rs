@@ -2,7 +2,6 @@
 use crate::NonZeroUbig;
 use crate::rational::{Rational16, Rational32, Rational64, Rational8};
 use crate::rational::big::Big;
-use crate::sign::Negateable;
 use crate::sign::Sign;
 use crate::Ubig;
 

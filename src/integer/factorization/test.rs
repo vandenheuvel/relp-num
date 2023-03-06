@@ -1,7 +1,7 @@
 use std::num::NonZeroU64;
 
 use crate::integer::factorization::prime::primes::SMALL_ODD_PRIMES_16;
-use crate::non_zero::NonZeroSign;
+use crate::sign::NonZeroSign;
 use crate::traits::factorization::{NonZeroFactorizable, NonZeroFactorization};
 
 macro_rules! shared {
