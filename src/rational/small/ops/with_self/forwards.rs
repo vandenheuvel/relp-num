@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use crate::NonZero;
 use crate::rational::small::Ratio;
 
@@ -34,7 +34,7 @@ impl<'a, N: 'a, D: NonZero + 'a> Add<&Self> for Ratio<N, D> where Self: AddAssig
     }
 }
 
-impl<N, D: NonZero> Add<Ratio<N, D>> for &Ratio<N, D> where Self:  {
+impl<N, D: NonZero> Add<Ratio<N, D>> for &Ratio<N, D> where Ratio<N, D>: Add<Self, Output=Ratio<N, D>> {
     type Output = Ratio<N, D>;
 
     #[must_use]
@@ -84,7 +84,7 @@ impl<'a, N: 'a, D: NonZero + 'a> Sub<&Self> for Ratio<N, D> where Self: SubAssig
     }
 }
 
-impl<N, D: NonZero> Sub<Ratio<N, D>> for &Ratio<N, D> where Ratio<N, D>: Sub<Self> {
+impl<N, D: NonZero> Sub<Ratio<N, D>> for &Ratio<N, D> where Ratio<N, D>: Sub<Self, Output=Ratio<N, D>> + Neg<Output=Ratio<N, D>> {
     type Output = Ratio<N, D>;
     
     #[must_use]
@@ -122,7 +122,7 @@ impl<'a, N: 'a, D: NonZero + 'a> Mul<Self> for &'a Ratio<N, D> {
     }
 }
 
-impl<N, D: NonZero> Mul for Ratio<N, D> {
+impl<N, D: NonZero> Mul for Ratio<N, D> where Self: MulAssign {
     type Output = Self;
     
     #[must_use]

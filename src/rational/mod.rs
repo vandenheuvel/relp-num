@@ -53,7 +53,7 @@ pub trait Rational: Clone + Display {
 mod small;
 mod big;
 mod factorization;
-mod macros;
+mod r#macro;
 
 #[cfg(test)]
 mod test;

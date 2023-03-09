@@ -9,7 +9,7 @@ use crate::{Rational128, Rational16, Rational32, Rational64, Rational8, Rational
 use crate::non_zero::NonZero;
 use crate::NonZeroSign;
 use crate::NonZeroSigned;
-use crate::rational::small::ops::building_blocks::{gcd_128, gcd_16, gcd_32, gcd_64, gcd_8, gcd_size};
+use crate::rational::small::ops::building_block::{gcd_128, gcd_16, gcd_32, gcd_64, gcd_8, gcd_size};
 use crate::Sign;
 use crate::Signed;
 use crate::Round;

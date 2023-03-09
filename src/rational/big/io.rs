@@ -18,7 +18,7 @@ use crate::integer::big::ops::normalize::{gcd_scalar, simplify_fraction_without_
 use crate::integer::big::properties::cmp;
 use crate::io::{f32_kind, f64_kind, FloatKind};
 use crate::rational::big::{Big, NonZeroBig, Ratio};
-use crate::rational::small::ops::building_blocks::{simplify_128, simplify_16, simplify_32, simplify_64, simplify_8};
+use crate::rational::small::ops::building_block::{simplify_128, simplify_16, simplify_32, simplify_64, simplify_8};
 use crate::sign::Sign;
 use crate::sign::Signed;
 

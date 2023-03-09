@@ -1,4 +1,4 @@
-pub(crate) mod building_blocks;
+pub(crate) mod building_block;
 mod with_self;
 mod with_int;
 mod with_one;

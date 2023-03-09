@@ -39,8 +39,8 @@ macro_rules! implement_all {
     [$($size:expr,)*] => {
         $(
             paste::paste! {
-                all!([<Rational $size>], [<i $size:lower>], [<NonZeroI $size:lower>], $size);
-                all!([<NonZeroRational $size>], [<NonZeroI $size:lower>], [<NonZeroI $size:lower>], $size);
+                all!([<Rational $size>], [<i $size:lower>], [<NonZeroU $size:lower>], $size);
+                all!([<NonZeroRational $size>], [<NonZeroI $size:lower>], [<NonZeroU $size:lower>], $size);
                 all!([<NonNegativeRational $size>], [<u $size:lower>], [<NonZeroU $size:lower>], $size);
                 all!([<PositiveRational $size>], [<NonZeroU $size:lower>], [<NonZeroU $size:lower>], $size);
             }

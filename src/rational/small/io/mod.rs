@@ -16,7 +16,7 @@ use crate::rational::small::{PositiveRational128, PositiveRational16, PositiveRa
 use crate::rational::small::{NonZeroRational128, NonZeroRational16, NonZeroRational32, NonZeroRational64, NonZeroRational8, NonZeroRationalSize};
 use crate::rational::small::{NonNegativeRational128, NonNegativeRational16, NonNegativeRational32, NonNegativeRational64, NonNegativeRational8, NonNegativeRationalSize};
 use crate::rational::small::gcd_scalar;
-use crate::rational::small::ops::building_blocks::{simplify_128, simplify_16, simplify_32, simplify_64, simplify_8, simplify_size};
+use crate::rational::small::ops::building_block::{simplify_128, simplify_16, simplify_32, simplify_64, simplify_8, simplify_size};
 use crate::sign::{Sign, Signed};
 
 
@@ -121,6 +121,14 @@ rational![8, 16, 32, 64, 128, "size",];
 //     }
 // }
 
+macro_rules! triangle {
+    ($target:ident, []) => {};
+    ($target:ident, [$largest_size:expr, $($smaller_sizes:tt)*]) => {
+        $target!($largest_size, [$($smaller_sizes)*]);
+        triangle!($target, [$($smaller_sizes)*]);
+    };
+}
+
 macro_rules! from_single_rational {
     ($size:expr, $other_signedness:expr, [$($other_size:expr,)*]) => {
         $(
@@ -146,7 +154,6 @@ macro_rules! from_single_rational {
         )*
     }
 }
-
 macro_rules! from_tuple_rational {
     ($size:expr, $smaller_size:expr) => {
         paste! {
@@ -167,7 +174,6 @@ macro_rules! from_tuple_rational {
         }
     }
 }
-
 macro_rules! size_dependent_rational {
     ($size:expr, [$($smaller_size:expr,)*]) => {
         from_single_rational!($size, "i", [$size,]);
@@ -179,21 +185,17 @@ macro_rules! size_dependent_rational {
         )*
     }
 }
-size_dependent_rational!(8, []);
-size_dependent_rational!(16, [8,]);
-size_dependent_rational!(32, [8, 16,]);
-size_dependent_rational!(64, [8, 16, 32,]);
-size_dependent_rational!(128, [8, 16, 32, 64,]);
+triangle!(size_dependent_rational, [128, 64, 32, 16, 8,]);
 
-macro_rules! size_dependent_non_zero {
-    ($size:expr, [$($other_size:expr,)*]) => {
+macro_rules! from_single_non_zero_rational {
+    ($size:expr, $other_signedness:expr, [$($other_size:expr,)*]) => {
         $(
             paste! {
-                impl From<[<i $other_size>]> for [<NonZeroRational $size>] {
+                impl From<[<$other_signedness $other_size>]> for [<NonZeroRational $size>] {
                     #[must_use]
                     #[inline]
-                    fn from(value: [<i $other_size>]) -> Self {
-                        assert_ne!(value, 0, "attempt to create non-zero type with a zero value");
+                    fn from(value: [<$other_signedness $other_size>]) -> Self {
+                        assert_ne!(value, 0, "attempt to initialize a non-zero typed variable with a zero value");
 
                         Self {
                             numerator: [<NonZeroI $size>]::new(value as [<i $size>]).unwrap(),
@@ -201,94 +203,123 @@ macro_rules! size_dependent_non_zero {
                         }
                     }
                 }
-                impl From<&[<i $other_size>]> for [<NonZeroRational $size>] {
+                impl From<&[<$other_signedness $other_size>]> for [<NonZeroRational $size>] {
                     #[must_use]
                     #[inline]
-                    fn from(value: &[<i $other_size>]) -> Self {
+                    fn from(value: &[<$other_signedness $other_size>]) -> Self {
                         From::from(*value)
-                    }
-                }
-                impl From<([<i $other_size>], [<i $other_size>])> for [<NonZeroRational $size>] {
-                    #[must_use]
-                    #[inline]
-                    fn from(value: ([<i $other_size>], [<i $other_size>])) -> Self {
-                        assert_ne!(value.0, 0, "attempt to create non-zero type with a zero value");
-                        assert_ne!(value.1, 0, "attempt to divide by zero");
-
-                        let (numerator, denominator) = [<simplify_ $other_size>](value.0.unsigned_abs(), value.1.unsigned_abs());
-
-                        Self {
-                            numerator: [<NonZeroI $size>]::new(
-                                (numerator as [<i $other_size>] * value.0.signum() * value.1.signum()) as [<i $size>]
-                            ).unwrap(),
-                            denominator: [<NonZeroI $size>]::new(denominator as [<i $size>]).unwrap(),
-                        }
                     }
                 }
             }
         )*
     }
 }
-size_dependent_non_zero!(8, [8,]);
-size_dependent_non_zero!(16, [8, 16,]);
-size_dependent_non_zero!(32, [8, 16, 32,]);
-size_dependent_non_zero!(64, [8, 16, 32, 64,]);
-size_dependent_non_zero!(128, [8, 16, 32, 64, 128,]);
+macro_rules! from_tuple_non_zero_rational {
+    ($size:expr, $smaller_size:expr) => {
+        paste! {
+            impl From<([<i $smaller_size>], [<i $smaller_size>])> for [<NonZeroRational $size>] {
+                #[must_use]
+                #[inline]
+                fn from(value: ([<i $smaller_size>], [<i $smaller_size>])) -> Self {
+                    assert_ne!(value.0, 0, "attempt to initialize a non-zero typed variable with a zero value");
+                    assert_ne!(value.1, 0, "attempt to divide by zero");
 
-macro_rules! size_dependent_non_negative {
-    ($size:expr, [$($other_size:expr,)*]) => {
+                    let (numerator, denominator) = [<simplify_ $smaller_size>](value.0.unsigned_abs(), value.1.unsigned_abs());
+
+                    Self {
+                        numerator: [<NonZeroI $size>]::new(
+                            (numerator as [<i $smaller_size>] * value.0.signum() * value.1.signum()) as [<i $size>]
+                        ).unwrap(),
+                        denominator: [<NonZeroI $size>]::new(denominator as [<i $size>]).unwrap(),
+                    }
+                }
+            }
+        }
+    }
+}
+macro_rules! size_dependent_non_zero_rational {
+    ($size:expr, [$($smaller_size:expr,)*]) => {
+        from_single_non_zero_rational!($size, "i", [$size,]);
+        from_single_non_zero_rational!($size, "i", [$($smaller_size,)*]);
+        from_single_non_zero_rational!($size, "u", [$($smaller_size,)*]);
+        from_tuple_non_zero_rational!($size, $size);
+        $(
+            from_tuple_non_zero_rational!($size, $smaller_size);
+        )*
+    }
+}
+triangle!(size_dependent_non_zero_rational, [128, 64, 32, 16, 8,]);
+
+macro_rules! from_single_non_negative_rational {
+    ($size:expr, $other_signedness:expr, [$($other_size:expr,)*]) => {
         $(
             paste! {
-                impl From<[<u $other_size>]> for [<NonNegativeRational $size>] {
+                impl From<[<$other_signedness $other_size>]> for [<NonNegativeRational $size>] {
                     #[must_use]
                     #[inline]
-                    fn from(value: [<u $other_size>]) -> Self {
+                    fn from(value: [<$other_signedness $other_size>]) -> Self {
+                        assert!(value >= 0, "attempt to initialize a non-negatively typed variable with a negative value");
+
                         Self {
                             numerator: value as [<u $size>],
                             denominator: [<NonZeroU $size>]::new(1).unwrap(),
                         }
                     }
                 }
-                impl From<&[<u $other_size>]> for [<NonNegativeRational $size>] {
+                impl From<&[<$other_signedness $other_size>]> for [<NonNegativeRational $size>] {
                     #[must_use]
                     #[inline]
-                    fn from(value: &[<u $other_size>]) -> Self {
+                    fn from(value: &[<$other_signedness $other_size>]) -> Self {
                         From::from(*value)
-                    }
-                }
-                impl From<([<u $other_size>], [<u $other_size>])> for [<NonNegativeRational $size>] {
-                    #[must_use]
-                    #[inline]
-                    fn from(value: ([<u $other_size>], [<u $other_size>])) -> Self {
-                        assert_ne!(value.1, 0, "attempt to divide by zero");
-
-                        let (numerator, denominator) = [<simplify_ $other_size>](value.0, value.1);
-
-                        Self {
-                            numerator: numerator as [<u $size>],
-                            denominator: [<NonZeroU $size>]::new(denominator as [<u $size>]).unwrap(),
-                        }
                     }
                 }
             }
         )*
     }
 }
-size_dependent_non_negative!(8, [8,]);
-size_dependent_non_negative!(16, [8, 16,]);
-size_dependent_non_negative!(32, [8, 16, 32,]);
-size_dependent_non_negative!(64, [8, 16, 32, 64,]);
-size_dependent_non_negative!(128, [8, 16, 32, 64, 128,]);
+macro_rules! from_tuple_non_negative_rational {
+    ($size:expr, $smaller_size:expr) => {
+        paste! {
+            impl From<([<u $smaller_size>], [<u $smaller_size>])> for [<NonNegativeRational $size>] {
+                #[must_use]
+                #[inline]
+                fn from(value: ([<u $smaller_size>], [<u $smaller_size>])) -> Self {
+                    assert_ne!(value.1, 0, "attempt to divide by zero");
 
-macro_rules! size_dependent_positive {
-    ($size:expr, [$($other_size:expr,)*]) => {
+                    let (numerator, denominator) = [<simplify_ $smaller_size>](value.0, value.1);
+
+                    Self {
+                        numerator: numerator as [<u $size>],
+                        denominator: [<NonZeroU $size>]::new(denominator as [<u $size>]).unwrap(),
+                    }
+                }
+            }
+        }
+    }
+}
+macro_rules! size_dependent_non_negative_rational {
+    ($size:expr, [$($smaller_size:expr,)*]) => {
+        from_single_non_negative_rational!($size, "i", [$size,]);
+        from_single_non_negative_rational!($size, "i", [$($smaller_size,)*]);
+        from_single_non_negative_rational!($size, "u", [$size,]);
+        from_single_non_negative_rational!($size, "u", [$($smaller_size,)*]);
+        from_tuple_non_negative_rational!($size, $size);
+        $(
+            from_tuple_non_negative_rational!($size, $smaller_size);
+        )*
+    }
+}
+triangle!(size_dependent_non_negative_rational, [128, 64, 32, 16, 8,]);
+
+macro_rules! from_single_positive_rational {
+    ($size:expr, $other_signedness:expr, [$($other_size:expr,)*]) => {
         $(
             paste! {
-                impl From<[<u $other_size>]> for [<PositiveRational $size>] {
+                impl From<[<$other_signedness $other_size>]> for [<PositiveRational $size>] {
                     #[must_use]
                     #[inline]
-                    fn from(value: [<u $other_size>]) -> Self {
-                        assert_ne!(value, 0, "attempt to create non-zero type with a zero value");
+                    fn from(value: [<$other_signedness $other_size>]) -> Self {
+                        assert!(value > 0, "attempt to initialize a positively typed variable with a zero or negative value");
 
                         Self {
                             numerator: [<NonZeroU $size>]::new(value as [<u $size>]).unwrap(),
@@ -296,37 +327,51 @@ macro_rules! size_dependent_positive {
                         }
                     }
                 }
-                impl From<&[<u $other_size>]> for [<PositiveRational $size>] {
+                impl From<&[<$other_signedness $other_size>]> for [<PositiveRational $size>] {
                     #[must_use]
                     #[inline]
-                    fn from(value: &[<u $other_size>]) -> Self {
+                    fn from(value: &[<$other_signedness $other_size>]) -> Self {
                         From::from(*value)
-                    }
-                }
-                impl From<([<u $other_size>], [<u $other_size>])> for [<PositiveRational $size>] {
-                    #[must_use]
-                    #[inline]
-                    fn from(value: ([<u $other_size>], [<u $other_size>])) -> Self {
-                        assert_ne!(value.0, 0, "attempt to create non-zero type with a zero value");
-                        assert_ne!(value.1, 0, "attempt to divide by zero");
-
-                        let (numerator, denominator) = [<simplify_ $other_size>](value.0, value.1);
-
-                        Self {
-                            numerator: [<NonZeroU $size>]::new(numerator as [<u $size>]).unwrap(),
-                            denominator: [<NonZeroU $size>]::new(denominator as [<u $size>]).unwrap(),
-                        }
                     }
                 }
             }
         )*
     }
 }
-size_dependent_positive!(8, [8,]);
-size_dependent_positive!(16, [8, 16,]);
-size_dependent_positive!(32, [8, 16, 32,]);
-size_dependent_positive!(64, [8, 16, 32, 64,]);
-size_dependent_positive!(128, [8, 16, 32, 64, 128,]);
+macro_rules! from_tuple_positive_rational {
+    ($size:expr, $smaller_size:expr) => {
+        paste! {
+            impl From<([<u $smaller_size>], [<u $smaller_size>])> for [<PositiveRational $size>] {
+                #[must_use]
+                #[inline]
+                fn from(value: ([<u $smaller_size>], [<u $smaller_size>])) -> Self {
+                    assert_ne!(value.1, 0, "attempt to divide by zero");
+
+                    let (numerator, denominator) = [<simplify_ $smaller_size>](value.0, value.1);
+
+                    Self {
+                        numerator: [<NonZeroU $size>]::new(numerator as [<u $size>]).unwrap(),
+                        denominator: [<NonZeroU $size>]::new(denominator as [<u $size>]).unwrap(),
+                    }
+                }
+            }
+        }
+    }
+}
+macro_rules! size_dependent_positive_rational {
+    ($size:expr, [$($smaller_size:expr,)*]) => {
+        from_single_positive_rational!($size, "i", [$size,]);
+        from_single_positive_rational!($size, "i", [$($smaller_size,)*]);
+        from_single_positive_rational!($size, "u", [$size,]);
+        from_single_positive_rational!($size, "u", [$($smaller_size,)*]);
+        from_tuple_positive_rational!($size, $size);
+        $(
+            from_tuple_positive_rational!($size, $smaller_size);
+        )*
+    }
+}
+triangle!(size_dependent_positive_rational, [128, 64, 32, 16, 8,]);
+
 
 #[cfg(test)]
 mod test {
