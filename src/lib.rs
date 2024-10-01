@@ -6,7 +6,6 @@
 #![feature(min_specialization)]
 #![feature(trait_alias)]
 #![feature(result_flattening)]
-#![feature(unchecked_math)]
 #![feature(core_intrinsics)]
 #![feature(nonzero_ops)]
 #![feature(bigint_helper_methods)]
