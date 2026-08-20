@@ -216,11 +216,11 @@ pub(crate) fn mul_assign_single_non_zero<const S: usize>(
 ) {
     debug_assert!(!values.is_empty());
     
-    let (low, mut previous_high) = values[0].widening_mul(rhs);
+    let (low, mut previous_high) = values[0].carrying_mul(rhs, 0);
     values[0] = low;
     let mut carry = false;
     for i in 1..values.len() {
-        let (low, high) = values[i].widening_mul(rhs);
+        let (low, high) = values[i].carrying_mul(rhs, 0);
         let (value_new, carry_new) = previous_high.carrying_add(low, carry);
         values[i] = value_new;
         carry = carry_new;

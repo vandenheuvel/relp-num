@@ -8,7 +8,6 @@
 #![feature(result_flattening)]
 #![feature(core_intrinsics)]
 #![feature(nonzero_ops)]
-#![feature(bigint_helper_methods)]
 
 mod binary;
 pub use binary::Binary;
