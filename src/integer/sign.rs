@@ -10,7 +10,6 @@ use crate::Signed;
 macro_rules! unsigned {
     ($ty:ty) => {
         impl Signed for $ty {
-            #[must_use]
             #[inline]
             fn signum(&self) -> Sign {
                 if *self == 0 {
@@ -33,7 +32,6 @@ unsigned!(usize);
 macro_rules! signed {
     ($ty:ty) => {
         impl Signed for $ty {
-            #[must_use]
             #[inline]
             fn signum(&self) -> Sign {
                 match self.cmp(&0) {
@@ -63,7 +61,6 @@ signed!(isize);
 macro_rules! non_zero_unsigned {
     ($ty:ty) => {
         impl Signed for $ty {
-            #[must_use]
             #[inline]
             fn signum(&self) -> Sign {
                 Sign::Positive
@@ -82,7 +79,6 @@ non_zero_unsigned!(NonZeroUsize);
 macro_rules! non_zero_signed {
     ($ty:ty) => {
         impl Signed for $ty {
-            #[must_use]
             #[inline]
             fn signum(&self) -> Sign {
                 if self.get() > 0 {

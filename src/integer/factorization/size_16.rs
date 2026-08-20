@@ -1,4 +1,4 @@
-use std::intrinsics::assume;
+use std::hint::assert_unchecked;
 use std::num::NonZeroU16;
 
 use crate::integer::factorization::prime::primes::SMALL_ODD_PRIMES_16;
@@ -15,10 +15,10 @@ pub fn factorize(value: NonZeroU16) -> Vec<(u16, u32)> {
     }
 
     for divisor in SMALL_ODD_PRIMES_16 {
-        unsafe { assume(divisor != 0); }
+        unsafe { assert_unchecked(divisor != 0); }
 
         let mut count = 0;
-        while x % divisor == 0 {
+        while x.is_multiple_of(divisor) {
             x /= divisor;
             count += 1;
         }

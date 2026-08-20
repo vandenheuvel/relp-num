@@ -7,7 +7,6 @@ macro_rules! impls {
     ($name:ty) => {
         impl From<Zero> for $name {
             #[inline]
-            #[must_use]
             fn from(_: Zero) -> Self {
                 num_traits::Zero::zero()
             }
@@ -15,7 +14,6 @@ macro_rules! impls {
 
         impl From<&Zero> for $name {
             #[inline]
-            #[must_use]
             fn from(_: &Zero) -> Self {
                 num_traits::Zero::zero()
             }
@@ -25,7 +23,6 @@ macro_rules! impls {
             type Output = Self;
 
             #[inline]
-            #[must_use]
             fn add(mut self, _: Zero) -> Self::Output {
                 AddAssign::add_assign(&mut self, Zero);
                 self
@@ -36,7 +33,6 @@ macro_rules! impls {
             type Output = Self;
 
             #[inline]
-            #[must_use]
             fn add(mut self, _: &Zero) -> Self::Output {
                 AddAssign::add_assign(&mut self, &Zero);
                 self
@@ -58,7 +54,6 @@ macro_rules! impls {
         impl Sub<Zero> for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn sub(mut self, _: Zero) -> Self::Output {
                 SubAssign::sub_assign(&mut self, Zero);
@@ -69,7 +64,6 @@ macro_rules! impls {
         impl Sub<&Zero> for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn sub(mut self, _: &Zero) -> Self::Output {
                 SubAssign::sub_assign(&mut self, Zero);
@@ -87,7 +81,6 @@ macro_rules! impls {
             type Output = Self;
 
             #[inline]
-            #[must_use]
             fn mul(mut self, _: Zero) -> Self::Output {
                 MulAssign::mul_assign(&mut self, Zero);
                 self
@@ -98,7 +91,6 @@ macro_rules! impls {
             type Output = Self;
 
             #[inline]
-            #[must_use]
             fn mul(mut self, _: &Zero) -> Self::Output {
                 MulAssign::mul_assign(&mut self, Zero);
                 self
@@ -109,7 +101,6 @@ macro_rules! impls {
             type Output = $name;
 
             #[inline]
-            #[must_use]
             fn mul(self, _: &Zero) -> Self::Output {
                 num_traits::Zero::zero()
             }
@@ -119,7 +110,6 @@ macro_rules! impls {
             type Output = $name;
 
             #[inline]
-            #[must_use]
             fn mul(self, _: Zero) -> Self::Output {
                 num_traits::Zero::zero()
             }

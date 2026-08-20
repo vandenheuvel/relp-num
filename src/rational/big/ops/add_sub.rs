@@ -32,7 +32,6 @@ impl<const S: usize> Big<S> {
 impl<const S: usize> Add for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn add(mut self, rhs: Big<S>) -> Self::Output {
         match (self.sign, rhs.sign) {
@@ -66,7 +65,6 @@ impl<const S: usize> Add for Big<S> {
 impl<const S: usize> Add<Big<S>> for &Big<S> {
     type Output = Big<S>;
 
-    #[must_use]
     #[inline]
     fn add(self, rhs: Big<S>) -> Self::Output {
         Add::add(rhs, self)
@@ -76,7 +74,6 @@ impl<const S: usize> Add<Big<S>> for &Big<S> {
 impl<const S: usize> Add<&Big<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn add(mut self, rhs: &Big<S>) -> Self::Output {
         self += rhs;
@@ -87,7 +84,6 @@ impl<const S: usize> Add<&Big<S>> for Big<S> {
 impl<const S: usize> Add for &Big<S> {
     type Output = Big<S>;
 
-    #[must_use]
     #[inline]
     fn add(self, rhs: Self) -> Self::Output {
         // TODO(PERFORMANCE): Which one should be cloned?
@@ -134,7 +130,6 @@ impl<const S: usize> AddAssign<&Big<S>> for Big<S> {
 impl<const S: usize> Sub for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn sub(mut self, mut rhs: Big<S>) -> Self::Output {
         match (self.sign, rhs.sign) {
@@ -169,7 +164,6 @@ impl<const S: usize> Sub for Big<S> {
 impl<const S: usize> Sub<&Big<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn sub(mut self, rhs: &Big<S>) -> Self::Output {
         SubAssign::sub_assign(&mut self, rhs);
@@ -180,7 +174,6 @@ impl<const S: usize> Sub<&Big<S>> for Big<S> {
 impl<const S: usize> Sub<Big<S>> for &Big<S> {
     type Output = Big<S>;
 
-    #[must_use]
     #[inline]
     fn sub(self, rhs: Big<S>) -> Self::Output {
         -Sub::sub(rhs, self)
@@ -190,7 +183,6 @@ impl<const S: usize> Sub<Big<S>> for &Big<S> {
 impl<const S: usize> Sub for &Big<S> {
     type Output = Big<S>;
 
-    #[must_use]
     #[inline]
     fn sub(self, rhs: Self) -> Self::Output {
         // TODO(PERFORMANCE): Which one should be cloned?

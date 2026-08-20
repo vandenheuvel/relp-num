@@ -1,4 +1,4 @@
-use std::intrinsics::assume;
+use std::hint::assert_unchecked;
 use std::num::NonZeroU32;
 
 use crate::integer::factorization::prime::primes::SMALL_ODD_PRIMES;
@@ -21,10 +21,10 @@ pub fn factorize(value: NonZeroU32) -> Vec<(u32, u32)> {
         for divisor in SMALL_ODD_PRIMES {
             let divisor = divisor as u32;
 
-            unsafe { assume(divisor != 0); }
+            unsafe { assert_unchecked(divisor != 0); }
 
             let mut counter = 0;
-            while x % divisor == 0 {
+            while x.is_multiple_of(divisor) {
                 x /= divisor;
                 counter += 1;
             }
@@ -42,7 +42,7 @@ pub fn factorize(value: NonZeroU32) -> Vec<(u32, u32)> {
         let mut sqrt = ((x as f64).sqrt() + 2_f64) as u32;
         while x > 1 && divisor <= sqrt && !x.is_prime() {
             let mut counter = 0;
-            while x % divisor == 0 {
+            while x.is_multiple_of(divisor) {
                 x /= divisor;
                 counter += 1;
             }

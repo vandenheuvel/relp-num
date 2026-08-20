@@ -29,7 +29,6 @@ pub trait NonZero {
 macro_rules! could_be_zero {
     ($t:ty) => {
         impl NonZero for $t {
-            #[must_use]
             #[inline]
             fn is_not_zero(&self) -> bool {
                 !num_traits::Zero::is_zero(self)
@@ -57,7 +56,6 @@ could_be_zero!(f64);
 macro_rules! could_be_zero_tuple {
     ($t:ty) => {
         impl NonZero for ($t, $t) {
-            #[must_use]
             #[inline]
             fn is_not_zero(&self) -> bool {
                 debug_assert!(self.1.is_not_zero());
@@ -86,7 +84,6 @@ could_be_zero_tuple!(f64);
 macro_rules! can_not_be_zero {
     ($t:ty) => {
         impl NonZero for $t {
-            #[must_use]
             #[inline]
             fn is_not_zero(&self) -> bool {
                 true

@@ -26,7 +26,7 @@ impl Prime for u64 {
             return true;
         }
 
-        if *self % 2 == 0 || *self % 3 == 0 || *self % 5 == 0 || *self % 7 == 0 {
+        if (*self).is_multiple_of(2) || (*self).is_multiple_of(3) || (*self).is_multiple_of(5) || (*self).is_multiple_of(7) {
             return false;
         }
 
@@ -91,7 +91,7 @@ impl Prime for u32 {
         if *self == 2 || *self == 3 || *self == 5 || *self == 7 {
             return true;
         }
-        if *self % 2 == 0 || *self % 3 == 0 || *self % 5 == 0 || *self % 7 == 0 {
+        if (*self).is_multiple_of(2) || (*self).is_multiple_of(3) || (*self).is_multiple_of(5) || (*self).is_multiple_of(7) {
             return false;
         }
         if *self < 121 {
@@ -155,7 +155,7 @@ impl ProbablePrime for u64 {
             return true;
         }
 
-        if *self % base == 0 {
+        if (*self).is_multiple_of(base) {
             return false;
         }
 

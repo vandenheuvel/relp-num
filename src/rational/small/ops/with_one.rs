@@ -10,7 +10,6 @@ macro_rules! impls {
     ($name:ty) => {
         impl From<One> for $name {
             #[inline]
-            #[must_use]
             fn from(_: One) -> Self {
                 num_traits::One::one()
             }
@@ -18,7 +17,6 @@ macro_rules! impls {
 
         impl From<&One> for $name {
             #[inline]
-            #[must_use]
             fn from(_: &One) -> Self {
                 num_traits::One::one()
             }
@@ -28,7 +26,6 @@ macro_rules! impls {
             type Output = Self;
 
             #[inline]
-            #[must_use]
             fn add(mut self, _: One) -> Self::Output {
                 AddAssign::add_assign(&mut self, One);
                 self
@@ -39,7 +36,6 @@ macro_rules! impls {
             type Output = Self;
 
             #[inline]
-            #[must_use]
             fn add(mut self, _: &One) -> Self::Output {
                 AddAssign::add_assign(&mut self, &One);
                 self
@@ -85,7 +81,6 @@ macro_rules! impls {
         impl Sub<One> for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn sub(mut self, _: One) -> Self::Output {
                 SubAssign::sub_assign(&mut self, One);
@@ -96,7 +91,6 @@ macro_rules! impls {
         impl Sub<&One> for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn sub(mut self, _: &One) -> Self::Output {
                 SubAssign::sub_assign(&mut self, One);
@@ -144,7 +138,6 @@ macro_rules! impls {
             type Output = Self;
 
             #[inline]
-            #[must_use]
             fn mul(self, _: One) -> Self::Output {
                 self
             }
@@ -154,7 +147,6 @@ macro_rules! impls {
             type Output = Self;
 
             #[inline]
-            #[must_use]
             fn mul(self, _: &One) -> Self::Output {
                 self
             }
@@ -164,7 +156,6 @@ macro_rules! impls {
             type Output = $name;
 
             #[inline]
-            #[must_use]
             fn mul(self, _: &One) -> Self::Output {
                 self.clone()
             }
@@ -174,7 +165,6 @@ macro_rules! impls {
             type Output = $name;
 
             #[inline]
-            #[must_use]
             fn mul(self, _: One) -> Self::Output {
                 self.clone()
             }
@@ -197,7 +187,6 @@ macro_rules! impls {
             type Output = Self;
 
             #[inline]
-            #[must_use]
             fn div(self, _: One) -> Self::Output {
                 self
             }
@@ -207,7 +196,6 @@ macro_rules! impls {
             type Output = Self;
 
             #[inline]
-            #[must_use]
             fn div(self, _: &One) -> Self::Output {
                 self
             }
@@ -217,7 +205,6 @@ macro_rules! impls {
             type Output = $name;
 
             #[inline]
-            #[must_use]
             fn div(self, _: &One) -> Self::Output {
                 self.clone()
             }
@@ -227,7 +214,6 @@ macro_rules! impls {
             type Output = $name;
 
             #[inline]
-            #[must_use]
             fn div(self, _: One) -> Self::Output {
                 self.clone()
             }

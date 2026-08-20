@@ -7,7 +7,6 @@ use crate::integer::big::ops::building_blocks::is_well_formed;
 use crate::Signed;
 
 impl<const S: usize> NonZero for Ubig<S> {
-    #[must_use]
     #[inline]
     fn is_not_zero(&self) -> bool {
         !self.0.is_empty()
@@ -15,7 +14,6 @@ impl<const S: usize> NonZero for Ubig<S> {
 }
 
 impl<const S: usize> NonZero for NonZeroUbig<S> {
-    #[must_use]
     #[inline]
     fn is_not_zero(&self) -> bool {
         true
@@ -68,25 +66,25 @@ impl<const S: usize> Signed for NonZeroUbig<S> {
 
 impl<const S: usize> Ord for NonZeroUbig<S> {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+        cmp(&self.0, &other.0)
     }
 }
 
 impl<const S: usize> Ord for Ubig<S> {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+        cmp(&self.0, &other.0)
     }
 }
 
 impl<const S: usize> PartialOrd for NonZeroUbig<S> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(cmp(&self.0, &other.0))
+        Some(self.cmp(other))
     }
 }
 
 impl<const S: usize> PartialOrd for Ubig<S> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(cmp(&self.0, &other.0))
+        Some(self.cmp(other))
     }
 }
 

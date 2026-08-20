@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::intrinsics::assume;
+use std::hint::assert_unchecked;
 use std::num::NonZeroU64;
 
 use gcd::Gcd;
@@ -17,11 +17,11 @@ use crate::Prime;
 ///
 /// * `NR_SMALL_PRIMES`: The number of odd small primes to do trial division with.
 /// * `TRIAL_DIVISION_LIMIT`: Largest odd number to do trial division with after small primes are
-/// exhausted. If it is zero, this method is not used.
+///   exhausted. If it is zero, this method is not used.
 /// * `RHO_BASE_LIMIT`: Number of rounds to use with Pollard's rho method. If it is zero, this
-/// method is not used.
+///   method is not used.
 /// * `KEEP_RESIDUAL`: Whether the (potentially non-prime) remainder after the previous three
-/// methods should be added as a factor.
+///   methods should be added as a factor.
 pub fn factorize<
     const NR_SMALL_PRIMES: usize,
     const TRIAL_DIVISION_LIMIT: u64,
@@ -44,10 +44,10 @@ pub fn factorize<
         // smallest
         for divisor in &SMALL_ODD_PRIMES[..NR_SMALL_PRIMES] {
             let divisor = *divisor as u64;
-            unsafe { assume(divisor != 0); }
+            unsafe { assert_unchecked(divisor != 0); }
 
             let mut counter = 0;
-            while x % divisor == 0 {
+            while x.is_multiple_of(divisor) {
                 x /= divisor;
                 counter += 1;
             }
@@ -70,22 +70,20 @@ pub fn factorize<
             }
         }
 
-        if KEEP_RESIDUAL {
-            if x.is_prime() {
+        if KEEP_RESIDUAL
+            && x.is_prime() {
                 factors.push((x, 1));
                 break 'odd;
             }
-        }
 
         if RHO_BASE_LIMIT != 0 {
             x = pollards_rho::<RHO_BASE_LIMIT>(x, &mut factors);
         }
 
-        if KEEP_RESIDUAL {
-            if x > 1 {
+        if KEEP_RESIDUAL
+            && x > 1 {
                 factors.push((x, 1));
             }
-        }
     }
 
     factors
@@ -97,11 +95,11 @@ fn trial_division<const END: u64>(mut x: u64, start: u64, factors: &mut Vec<(u64
     let mut sqrt = ((x as f64).sqrt() + 2_f64) as u64;
     while x > 1 && divisor < END && divisor <= sqrt && !x.is_prime() {
         unsafe {
-            assume(divisor != 0);
+            assert_unchecked(divisor != 0);
         }
 
         let mut counter = 0;
-        while x % divisor == 0 {
+        while x.is_multiple_of(divisor) {
             x /= divisor;
             counter += 1;
         }

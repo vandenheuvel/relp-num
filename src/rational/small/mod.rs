@@ -20,7 +20,6 @@ macro_rules! rational {
         impl Neg for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn neg(mut self) -> Self::Output {
                 Negateable::negate(&mut self.sign);
@@ -31,7 +30,6 @@ macro_rules! rational {
         impl Neg for &$name {
             type Output = $name;
 
-            #[must_use]
             #[inline]
             fn neg(self) -> Self::Output {
                 Self::Output {
@@ -325,14 +323,18 @@ mod test {
         assert_eq!(Rational64::new_signed(Sign::Negative, 9, 18), -R64!(1, 2));
     }
 
+    // The invariants below are checked with `debug_assert!`, so they only panic when debug
+    // assertions are enabled.
     #[test]
     #[should_panic]
+    #[cfg(debug_assertions)]
     fn test_new_signed_panic_1() {
         Rational64::new_signed(Sign::Zero, 1, 1);
     }
 
     #[test]
     #[should_panic]
+    #[cfg(debug_assertions)]
     fn test_new_signed_panic_2() {
         Rational64::new_signed(Sign::Positive, 0, 1);
     }

@@ -1,4 +1,4 @@
-use std::intrinsics::assume;
+use std::hint::assert_unchecked;
 use std::ops::{Add, AddAssign, Mul};
 
 use num_traits::Zero;
@@ -16,7 +16,6 @@ pub mod normalize;
 impl<const S: usize> Add for Ubig<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn add(self, rhs: Self) -> Self::Output {
         let (mut left, right) = if rhs.0.len() > self.0.len() {
@@ -45,7 +44,6 @@ impl<const S: usize> Add for Ubig<S> {
 impl<const S: usize> Add for NonZeroUbig<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn add(self, rhs: Self) -> Self::Output {
         let (mut left, right) = if rhs.0.len() > self.0.len() {
@@ -73,8 +71,8 @@ impl<const S: usize> AddAssign<&Self> for NonZeroUbig<S> {
     fn add_assign(&mut self, rhs: &Self) {
         unsafe {
             // SAFETY: Is non zero so not empty
-            assume(!self.0.is_empty());
-            assume(!rhs.0.is_empty());
+            assert_unchecked(!self.0.is_empty());
+            assert_unchecked(!rhs.0.is_empty());
         }
         add_assign(&mut self.0, &rhs.0);
     }

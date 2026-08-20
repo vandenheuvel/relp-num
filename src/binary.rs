@@ -13,9 +13,10 @@ use crate::NonZero;
 /// Note that addition works like addition in the group GF(2).
 ///
 /// See also the documentation in relp::algorithm::two_phase::tableau::kind::artificial::Cost.
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(Eq, PartialEq, Copy, Clone, Debug, Default)]
 #[allow(missing_docs)]
 pub enum Binary {
+    #[default]
     Zero,
     One,
 }
@@ -42,12 +43,6 @@ impl num_traits::Zero for Binary {
 impl num_traits::One for Binary {
     fn one() -> Self {
         Self::One
-    }
-}
-
-impl Default for Binary {
-    fn default() -> Self {
-        Self::Zero
     }
 }
 

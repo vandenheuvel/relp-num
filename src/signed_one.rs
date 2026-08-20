@@ -8,9 +8,10 @@ use crate::NonZero;
 ///
 /// Can be used when a type from the `MatrixProvider` can only have the value `1` or `-1`, such as
 /// with some network problems, where an arc is either incoming or outgoing.
-#[derive(Eq, PartialEq, Copy, Clone)]
+#[derive(Eq, PartialEq, Copy, Clone, Default)]
 pub enum SignedOne {
     /// +1.
+    #[default]
     PlusOne,
     /// -1.
     MinusOne,
@@ -18,15 +19,8 @@ pub enum SignedOne {
 
 impl num_traits::One for SignedOne {
     #[inline]
-    #[must_use]
     fn one() -> Self {
         Self::PlusOne
-    }
-}
-
-impl Default for SignedOne {
-    fn default() -> Self {
-        SignedOne::PlusOne
     }
 }
 
@@ -34,7 +28,6 @@ impl Mul<SignedOne> for SignedOne {
     type Output = Self;
 
     #[inline]
-    #[must_use]
     fn mul(self, rhs: SignedOne) -> Self::Output {
         match (self, rhs) {
             (Self::PlusOne, Self::PlusOne) => Self::PlusOne,
@@ -47,7 +40,6 @@ impl Mul<SignedOne> for SignedOne {
 
 impl NonZero for SignedOne {
     #[inline]
-    #[must_use]
     fn is_not_zero(&self) -> bool {
         true
     }

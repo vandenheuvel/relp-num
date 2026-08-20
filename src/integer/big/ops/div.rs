@@ -180,7 +180,7 @@ pub unsafe fn div_assign_one_word<const S: usize>(values: &mut SmallVec<[usize; 
             };
 
             let divisor = rhs << divisor_zeros;
-            let bits_per_word_minus_divisor_zeros = BITS_PER_WORD as u32 - divisor_zeros;
+            let bits_per_word_minus_divisor_zeros = BITS_PER_WORD - divisor_zeros;
 
             let divisor_inverse = invert(divisor);
             let mut edit_higher = *values.last().unwrap();

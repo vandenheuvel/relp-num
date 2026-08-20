@@ -1,6 +1,5 @@
-coverate:
+coverage:
     status:
         project:
             default:
                 threshold: 0.1%
-

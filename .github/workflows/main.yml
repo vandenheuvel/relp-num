@@ -1,36 +1,175 @@
 name: build
 
-on: 
-  [push, pull_request]
+on:
+  push:
+  pull_request:
+  # This crate tracks nightly Rust, so a regression can arrive without any commit
+  # of ours. Run weekly to catch that before a user does.
+  schedule:
+    - cron: '0 6 * * 1'
 
 env:
   CARGO_TERM_COLOR: always
-  
+  RUST_BACKTRACE: 1
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  check:
-    name: Rust project
+  # Lib tests, doc tests, examples, and the criterion benchmarks (which `--all-targets`
+  # runs once each in test mode). Both profiles matter: `debug_assert!` guards several
+  # invariants, and release is what actually exercises the optimiser against the
+  # hand-written assembly.
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: debug
+            flags: ''
+          - name: release
+            flags: '--release'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: test-${{ matrix.name }}
+
+      - name: Build all targets
+        run: cargo build --all-targets ${{ matrix.flags }}
+
+      - name: Test all targets
+        run: cargo test --all-targets ${{ matrix.flags }}
+
+      - name: Doc tests
+        run: cargo test --doc ${{ matrix.flags }}
+
+  # The crate is full of `unsafe` and calls into hand-written x86-64 assembly, so an
+  # ASan run over the test suite is worth more here than it would be in a safe crate.
+  # Needs `-Zbuild-std` so that std is instrumented too.
+  sanitizer:
+    name: AddressSanitizer
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Install nightly toolchain
-        uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@nightly
         with:
-          toolchain: nightly
-          override: true
-          
-      - name: Run cargo test
-        uses: actions-rs/cargo@v1
+          components: rust-src
+
+      - uses: Swatinem/rust-cache@v2
         with:
-          command: test
+          key: asan
 
-      - name: Run cargo-tarpaulin
-        uses: actions-rs/tarpaulin@v0.1
+      - name: Test under AddressSanitizer
+        run: cargo test -Zbuild-std --target x86_64-unknown-linux-gnu --lib
+        env:
+          RUSTFLAGS: -Zsanitizer=address
+
+  # `missing_docs` is warn-by-default in lib.rs; this turns that and any broken
+  # intra-doc link into a failure, which is roughly what docs.rs will do.
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
         with:
-          version: '0.22.0'
-          args: '--ignore-tests -- --test-threads 1'
+          key: docs
 
-      - name: Upload to codecov.io
-        uses: codecov/codecov-action@v3
+      - name: Build documentation
+        run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -D warnings
 
+  # Guards against a broken publish: catches missing files, a malformed manifest, and
+  # anything in the packaged tarball that does not build from a clean checkout.
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: package
+
+      - name: Verify the published tarball
+        run: cargo package
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: coverage
+
+      - uses: taiki-e/install-action@cargo-tarpaulin
+
+      - name: Collect coverage
+        run: cargo tarpaulin --lib --ignore-tests --out xml -- --test-threads 1
+
+      - uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+  # Non-blocking. The crate itself no longer uses any `#![feature(..)]`, but two
+  # dependencies still force nightly:
+  #   * index-utils, which uses `#![feature(is_sorted)]` (stabilised in Rust 1.82);
+  #   * smallvec's `specialization` feature, enabled in Cargo.toml.
+  # This job goes green on its own once both are resolved; until then it documents
+  # exactly how far away stable is.
+  stable:
+    name: Stable Rust (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: stable
+
+      - name: Build on stable
+        run: cargo build --lib
+
+  # Blocking: the lint backlog has been worked through, so the tree is clippy-clean
+  # under `-D warnings`. The remaining suppressions are deliberate and annotated at
+  # their definition: the `cfg(test)` allows in src/lib.rs cover test-only idioms,
+  # and the per-impl allows in the rational `Div`/`DivAssign` impls cover clippy
+  # reading `sign * sign` as a mistake.
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: clippy
+
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings

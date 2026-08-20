@@ -105,7 +105,6 @@ impl<const S: usize, const I: usize> TryFrom<[usize; I]> for NonZeroUbig<S> {
 }
 
 impl<const S: usize> Zero for Ubig<S> {
-    #[must_use]
     #[inline]
     fn zero() -> Self {
         Self(smallvec![])
@@ -116,7 +115,6 @@ impl<const S: usize> Zero for Ubig<S> {
         self.0.clear();
     }
 
-    #[must_use]
     #[inline]
     fn is_zero(&self) -> bool {
         self.0.is_empty()
@@ -124,7 +122,6 @@ impl<const S: usize> Zero for Ubig<S> {
 }
 
 impl<const S: usize> One for Ubig<S> {
-    #[must_use]
     #[inline]
     fn one() -> Self {
         Self(smallvec![1])
@@ -136,7 +133,6 @@ impl<const S: usize> One for Ubig<S> {
         self.0.push(1);
     }
 
-    #[must_use]
     #[inline]
     fn is_one(&self) -> bool {
         self.0.len() == 1 && self.0[0] == 1
@@ -144,7 +140,6 @@ impl<const S: usize> One for Ubig<S> {
 }
 
 impl<const S: usize> One for NonZeroUbig<S> {
-    #[must_use]
     #[inline]
     fn one() -> Self {
         Self(smallvec![1])
@@ -156,7 +151,6 @@ impl<const S: usize> One for NonZeroUbig<S> {
         *unsafe { self.0.get_unchecked_mut(0) } = 1;
     }
 
-    #[must_use]
     #[inline]
     fn is_one(&self) -> bool {
         *unsafe { self.0.get_unchecked(0) } == 1 && self.0.len() == 1
@@ -185,14 +179,13 @@ impl<const S: usize> FromStr for NonZeroUbig<S> {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         from_str_radix::<10, S>(s)
-            .map(|inner| {
+            .and_then(|inner| {
                 if !inner.is_empty() {
                     Ok(unsafe { Self(inner) })
                 } else {
                     Err("Zero value")
                 }
             })
-            .flatten()
     }
 }
 

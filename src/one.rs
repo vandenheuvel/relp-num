@@ -16,7 +16,6 @@ pub struct One;
 
 impl num_traits::One for One {
     #[inline]
-    #[must_use]
     fn one() -> Self {
         Self
     }
@@ -32,7 +31,6 @@ impl Mul<One> for One {
     type Output = Self;
 
     #[inline]
-    #[must_use]
     fn mul(self, _rhs: One) -> Self::Output {
         Self
     }
@@ -40,7 +38,6 @@ impl Mul<One> for One {
 
 impl NonZero for One {
     #[inline]
-    #[must_use]
     fn is_not_zero(&self) -> bool {
         true
     }

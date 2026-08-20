@@ -18,7 +18,6 @@ macro_rules! forwards {
         impl<const S: usize> Add<$ty> for $large {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn add(mut self, rhs: $ty) -> Self::Output {
                 AddAssign::add_assign(&mut self, rhs);
@@ -29,7 +28,6 @@ macro_rules! forwards {
         impl<const S: usize> Add<&$ty> for $large {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn add(mut self, rhs: &$ty) -> Self::Output {
                 AddAssign::add_assign(&mut self, rhs);
@@ -40,7 +38,6 @@ macro_rules! forwards {
         impl<const S: usize> Add<$ty> for &$large {
             type Output = $large;
 
-            #[must_use]
             #[inline]
             fn add(self, rhs: $ty) -> Self::Output {
                 Add::add(self.clone(), rhs)
@@ -50,7 +47,6 @@ macro_rules! forwards {
         impl<const S: usize> Add<&$ty> for &$large {
             type Output = $large;
 
-            #[must_use]
             #[inline]
             fn add(self, rhs: &$ty) -> Self::Output {
                 Add::add(self, *rhs)
@@ -67,7 +63,6 @@ macro_rules! forwards {
         impl<const S: usize> Sub<$ty> for $large {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn sub(mut self, rhs: $ty) -> Self::Output {
                 SubAssign::sub_assign(&mut self, rhs);
@@ -78,7 +73,6 @@ macro_rules! forwards {
         impl<const S: usize> Sub<&$ty> for $large {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn sub(mut self, rhs: &$ty) -> Self::Output {
                 SubAssign::sub_assign(&mut self, rhs);
@@ -89,7 +83,6 @@ macro_rules! forwards {
         impl<const S: usize> Sub<$ty> for &$large {
             type Output = $large;
 
-            #[must_use]
             #[inline]
             fn sub(self, rhs: $ty) -> Self::Output {
                 Sub::sub(self.clone(), rhs)
@@ -99,7 +92,6 @@ macro_rules! forwards {
         impl<const S: usize> Sub<&$ty> for &$large {
             type Output = $large;
 
-            #[must_use]
             #[inline]
             fn sub(self, rhs: &$ty) -> Self::Output {
                 Sub::sub(self, *rhs)
@@ -116,7 +108,6 @@ macro_rules! forwards {
         impl<const S: usize> Mul<$ty> for $large {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn mul(mut self, rhs: $ty) -> Self::Output {
                 MulAssign::mul_assign(&mut self, rhs);
@@ -127,7 +118,6 @@ macro_rules! forwards {
         impl<const S: usize> Mul<&$ty> for $large {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn mul(mut self, rhs: &$ty) -> Self::Output {
                 MulAssign::mul_assign(&mut self, rhs);
@@ -138,7 +128,6 @@ macro_rules! forwards {
         impl<const S: usize> Mul<$ty> for &$large {
             type Output = $large;
 
-            #[must_use]
             #[inline]
             fn mul(self, rhs: $ty) -> Self::Output {
                 Mul::mul(self.clone(), rhs)
@@ -148,7 +137,6 @@ macro_rules! forwards {
         impl<const S: usize> Mul<&$ty> for &$large {
             type Output = $large;
 
-            #[must_use]
             #[inline]
             fn mul(self, rhs: &$ty) -> Self::Output {
                 Mul::mul(self, *rhs)
@@ -165,7 +153,6 @@ macro_rules! forwards {
         impl<const S: usize> Div<$ty> for $large {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn div(mut self, rhs: $ty) -> Self::Output {
                 DivAssign::div_assign(&mut self, rhs);
@@ -176,7 +163,6 @@ macro_rules! forwards {
         impl<const S: usize> Div<&$ty> for $large {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn div(mut self, rhs: &$ty) -> Self::Output {
                 DivAssign::div_assign(&mut self, rhs);
@@ -187,7 +173,6 @@ macro_rules! forwards {
         impl<const S: usize> Div<$ty> for &$large {
             type Output = $large;
 
-            #[must_use]
             #[inline]
             fn div(self, rhs: $ty) -> Self::Output {
                 Div::div(self.clone(), rhs)
@@ -197,7 +182,6 @@ macro_rules! forwards {
         impl<const S: usize> Div<&$ty> for &$large {
             type Output = $large;
 
-            #[must_use]
             #[inline]
             fn div(self, rhs: &$ty) -> Self::Output {
                 Div::div(self, *rhs)
@@ -751,7 +735,7 @@ mod test {
         assert_eq!(RB!(2, 3) + 2, RB!(8, 3));
         assert_eq!(RB!(5, 6) + 7, RB!(7 * 6 + 5, 6));
         assert_eq!(RB!(5, 6) - 7, RB!(-7 * 6 + 5, 6));
-        assert_eq!(RB!(5, 6) + (-7) as i32, RB!(-7 * 6 + 5, 6));
+        assert_eq!(RB!(5, 6) + -7_i32, RB!(-7 * 6 + 5, 6));
         assert_eq!(RB!(-5, 6) + 7, RB!(7 * 6 - 5, 6));
         assert_eq!(RB!(-5, 6) + (-7), -RB!(7 * 6 + 5, 6));
         assert_eq!(RB!(-2, 3) + 2, RB!(4, 3));
