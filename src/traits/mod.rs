@@ -11,25 +11,21 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssi
 use crate::non_zero::NonZeroSigned;
 
 pub mod factorization;
-mod signed_unsigned;
 
 /// The simplex algorithm is defined over the ordered fields.
 ///
 /// All methods containing algorithmic logic should be defined to work an ordered field (or a field,
 /// if they don't need the ordering). All methods representing a matrix should be defined over a
 /// field, because they don't need the additional ordering.
-pub trait OrderedField =
-    Ord +
-    NonZeroSigned +
-    Field +
-    Sized +
-;
+pub trait OrderedField: Ord + NonZeroSigned + Field + Sized {}
+impl<T: Ord + NonZeroSigned + Field + Sized> OrderedField for T {}
 
 /// A reference to an ordered field.
-pub trait OrderedFieldRef<Deref> = Ord + FieldRef<Deref>;
+pub trait OrderedFieldRef<Deref>: Ord + FieldRef<Deref> {}
+impl<Deref, T: Ord + FieldRef<Deref>> OrderedFieldRef<Deref> for T {}
 
 /// Basic field operations with Self and with references to Self.
-pub trait Field =
+pub trait Field:
     PartialEq + // Equivalence relation
     Eq +
     PartialOrd +
@@ -65,13 +61,50 @@ pub trait Field =
     Display +
     ToString +
     Debug +
-;
+{}
+impl<T> Field for T where T:
+    PartialEq + // Equivalence relation
+    Eq +
+    PartialOrd +
+    num_traits::Zero + // Additive identity
+    Neg<Output=Self> + // Additive inverse
+    num_traits::One + // Multiplicative identity
+    // First operation
+    Add<Self, Output=Self> +
+    for<'r> Add<&'r Self, Output=Self> +
+    AddAssign<Self> +
+    for<'r> AddAssign<&'r Self> +
+    Sum +
+    // First operation inverse
+    Sub<Self, Output=Self> +
+    for<'r> Sub<&'r Self, Output=Self> +
+    SubAssign<Self> +
+    for<'r> SubAssign<&'r Self> +
+    // Second operation
+    Mul<Self, Output=Self> +
+    for<'r> Mul<&'r Self, Output=Self> +
+    MulAssign<Self> +
+    for<'r> MulAssign<&'r Self> +
+    // Second operation inverse
+    Div<Self, Output=Self> +
+    for<'r> Div<&'r Self, Output=Self> +
+    DivAssign<Self> +
+    for<'r> DivAssign<&'r Self> +
+    // TODO: MulAdd should be possible. Only in specialization?
+    //  + MulAdd
+
+    // Practicalities
+    Clone +
+    Display +
+    ToString +
+    Debug +
+{}
 
 /// A reference to a variable that is in a `Field`.
 ///
 /// TODO: Can less HRTB be used? Can the be written down less often? Can this trait be integrated
 ///  with the `Field` trait?
-pub trait FieldRef<Deref> =
+pub trait FieldRef<Deref>:
     // Equivalence relation
     PartialEq<Self> +
     Neg<Output=Deref> +  // Additive inverse
@@ -97,7 +130,34 @@ pub trait FieldRef<Deref> =
     Debug +
     // Necessary for the Add, Sub, Mul and Div traits. References are sized anyways.
     Sized +
-;
+{}
+impl<Deref, T> FieldRef<Deref> for T where T:
+    // Equivalence relation
+    PartialEq<Self> +
+    Neg<Output=Deref> +  // Additive inverse
+    // First operation
+    Add<Deref, Output=Deref> +
+    Add<Output=Deref> +
+    // First operation inverse
+    Sub<Deref, Output=Deref> +
+    Sub<Output=Deref> +
+    // Second operation
+    Mul<Deref, Output=Deref> +
+    Mul<Output=Deref> +
+    // Second operation inverse
+    Div<Deref, Output=Deref> +
+    Div<Output=Deref> +
+    // TODO: MulAdd should be possible. Only in specialization?
+    //  + MulAdd
+
+    // Practicalities
+    Copy +
+    Clone +
+    Display +
+    Debug +
+    // Necessary for the Add, Sub, Mul and Div traits. References are sized anyways.
+    Sized +
+{}
 
 /// Absolute value of a number.
 ///

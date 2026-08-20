@@ -12,7 +12,7 @@ pub fn is_well_formed(values: &[usize]) -> bool {
 
 #[must_use]
 pub fn is_well_formed_non_zero(values: &[usize]) -> bool {
-    values.last().map_or(false, |&last| last != 0)
+    values.last().is_some_and(|&last| last != 0)
 }
 
 #[must_use]

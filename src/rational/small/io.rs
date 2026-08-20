@@ -138,7 +138,6 @@ macro_rules! creation {
         }
 
         impl num_traits::FromPrimitive for $name {
-            #[must_use]
             #[inline]
             fn from_i64(n: i64) -> Option<Self> {
                 if n.unsigned_abs() <= <$uty>::MAX as u64 {
@@ -152,7 +151,6 @@ macro_rules! creation {
                 }
             }
 
-            #[must_use]
             #[inline]
             fn from_u64(n: u64) -> Option<Self> {
                 if n <= <$uty>::MAX as u64 {
@@ -166,13 +164,11 @@ macro_rules! creation {
                 }
             }
 
-            #[must_use]
             #[inline]
             fn from_f32(n: f32) -> Option<Self> {
                 Big::<8>::from_f32(n).map(Self::from_big_if_it_fits).flatten()
             }
 
-            #[must_use]
             #[inline]
             fn from_f64(n: f64) -> Option<Self> {
                 Big::<16>::from_f64(n).map(Self::from_big_if_it_fits).flatten()
@@ -271,7 +267,6 @@ macro_rules! creation {
         }
 
         impl From<&$name> for $name {
-            #[must_use]
             #[inline]
             fn from(other: &$name) -> Self {
                 *other
@@ -279,7 +274,6 @@ macro_rules! creation {
         }
 
         impl num_traits::Zero for $name {
-            #[must_use]
             #[inline]
             fn zero() -> Self {
                 Self {
@@ -296,7 +290,6 @@ macro_rules! creation {
                 self.denominator = 1;
             }
 
-            #[must_use]
             #[inline]
             fn is_zero(&self) -> bool {
                 self.sign == Sign::Zero
@@ -315,7 +308,6 @@ creation!(RationalUsize, isize, usize, gcd_usize, simplify_usize);
 macro_rules! impl_one {
     ($name:ident, $sign:ident) => {
         impl num_traits::One for $name {
-            #[must_use]
             #[inline]
             fn one() -> Self {
                 Self {
@@ -332,7 +324,6 @@ macro_rules! impl_one {
                 self.denominator = 1;
             }
 
-            #[must_use]
             #[inline]
             fn is_one(&self) -> bool {
                 self.numerator == 1 && self.denominator == 1 && self.sign == $sign::Positive
@@ -356,7 +347,6 @@ impl_one!(NonZeroRationalUsize, NonZeroSign);
 macro_rules! size_dependent_unsigned {
     ($name:ty, $uty:ty, $other:ty, $simplify:ident) => {
         impl From<$other> for $name {
-            #[must_use]
             #[inline]
             fn from(other: $other) -> Self {
                 Self {
@@ -367,7 +357,6 @@ macro_rules! size_dependent_unsigned {
             }
         }
         impl From<&$other> for $name {
-            #[must_use]
             #[inline]
             fn from(other: &$other) -> Self {
                 Self {
@@ -378,7 +367,6 @@ macro_rules! size_dependent_unsigned {
             }
         }
         impl From<($other, $other)> for $name {
-            #[must_use]
             #[inline]
             fn from(other: ($other, $other)) -> Self {
                 assert_ne!(other.1, 0, "attempt to divide by zero");
@@ -414,7 +402,6 @@ size_dependent_unsigned!(Rational128, u128, u128, simplify128);
 macro_rules! size_dependent_signed {
     ($name:ty, $uty:ty, $other_signed:ty, $simplify:ident) => {
         impl From<$other_signed> for $name {
-            #[must_use]
             #[inline]
             fn from(other: $other_signed) -> Self {
                 Self {
@@ -425,7 +412,6 @@ macro_rules! size_dependent_signed {
             }
         }
         impl From<&$other_signed> for $name {
-            #[must_use]
             #[inline]
             fn from(other: &$other_signed) -> Self {
                 Self {
@@ -436,7 +422,6 @@ macro_rules! size_dependent_signed {
             }
         }
         impl From<($other_signed, $other_signed)> for $name {
-            #[must_use]
             #[inline]
             fn from(other: ($other_signed, $other_signed)) -> Self {
                 assert_ne!(other.1, 0, "attempt to divide by zero");

@@ -2,13 +2,16 @@
 //!
 //! Number types for the [RELP](https://crates.io/crates/relp) crate.
 #![warn(missing_docs)]
-
-#![feature(min_specialization)]
-#![feature(trait_alias)]
-#![feature(result_flattening)]
-#![feature(core_intrinsics)]
-#![feature(nonzero_ops)]
-#![feature(bigint_helper_methods)]
+// The tests deliberately exercise the operator impls in ways clippy reads as mistakes: calling the
+// by-reference impls (`op_ref`), asserting the exact boolean a comparison yields on `Sign`, which
+// is a genuinely partial order (`bool_assert_comparison`), using `x = x + y` to test `Add` rather
+// than `AddAssign` (`assign_op_pattern`), and multiplying by zero (`erasing_op`).
+#![cfg_attr(test, allow(
+    clippy::op_ref,
+    clippy::bool_assert_comparison,
+    clippy::assign_op_pattern,
+    clippy::erasing_op,
+))]
 
 mod binary;
 pub use binary::Binary;

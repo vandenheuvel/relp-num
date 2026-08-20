@@ -9,4 +9,5 @@ criterion_main! {
     primes::group,
     factors::group,
     rational_big::add::group,
+    rational_small::add::group,
 }

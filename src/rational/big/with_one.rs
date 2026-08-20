@@ -9,7 +9,6 @@ use crate::rational::big::Big;
 
 impl<const S: usize> From<One> for Big<S> {
     #[inline]
-    #[must_use]
     fn from(_: One) -> Self {
         num_traits::One::one()
     }
@@ -17,7 +16,6 @@ impl<const S: usize> From<One> for Big<S> {
 
 impl<const S: usize> From<&One> for Big<S> {
     #[inline]
-    #[must_use]
     fn from(_: &One) -> Self {
         num_traits::One::one()
     }
@@ -27,7 +25,6 @@ impl<const S: usize> Add<One> for Big<S> {
     type Output = Self;
 
     #[inline]
-    #[must_use]
     fn add(mut self, _: One) -> Self::Output {
         <Self as AddAssign<One>>::add_assign(&mut self, One);
         self
@@ -38,7 +35,6 @@ impl<const S: usize> Add<&One> for Big<S> {
     type Output = Self;
 
     #[inline]
-    #[must_use]
     fn add(mut self, _: &One) -> Self::Output {
         <Self as AddAssign<&One>>::add_assign(&mut self, &One);
         self
@@ -91,7 +87,6 @@ impl<const S: usize> AddAssign<&One> for Big<S> {
 impl<const S: usize> Sub<One> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn sub(mut self, _: One) -> Self::Output {
         SubAssign::sub_assign(&mut self, One);
@@ -102,7 +97,6 @@ impl<const S: usize> Sub<One> for Big<S> {
 impl<const S: usize> Sub<&One> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn sub(mut self, _: &One) -> Self::Output {
         SubAssign::sub_assign(&mut self, One);
@@ -156,7 +150,6 @@ impl<const S: usize> Mul<One> for Big<S> {
     type Output = Self;
 
     #[inline]
-    #[must_use]
     fn mul(self, _: One) -> Self::Output {
         self
     }
@@ -166,7 +159,6 @@ impl<const S: usize> Mul<&One> for Big<S> {
     type Output = Self;
 
     #[inline]
-    #[must_use]
     fn mul(self, _: &One) -> Self::Output {
         self
     }
@@ -176,7 +168,6 @@ impl<const S: usize> Mul<One> for &Big<S> {
     type Output = Big<S>;
 
     #[inline]
-    #[must_use]
     fn mul(self, _: One) -> Self::Output {
         self.clone()
     }
@@ -186,7 +177,6 @@ impl<const S: usize> Mul<&One> for &Big<S> {
     type Output = Big<S>;
 
     #[inline]
-    #[must_use]
     fn mul(self, _: &One) -> Self::Output {
         self.clone()
     }
@@ -208,7 +198,6 @@ impl<const S: usize> Div<One> for Big<S> {
     type Output = Self;
 
     #[inline]
-    #[must_use]
     fn div(self, _: One) -> Self::Output {
         self
     }
@@ -218,7 +207,6 @@ impl<const S: usize> Div<&One> for Big<S> {
     type Output = Self;
 
     #[inline]
-    #[must_use]
     fn div(self, _: &One) -> Self::Output {
         self
     }
@@ -228,7 +216,6 @@ impl<const S: usize> Div<One> for &Big<S> {
     type Output = Big<S>;
 
     #[inline]
-    #[must_use]
     fn div(self, _: One) -> Self::Output {
         self.clone()
     }
@@ -238,7 +225,6 @@ impl<const S: usize> Div<&One> for &Big<S> {
     type Output = Big<S>;
 
     #[inline]
-    #[must_use]
     fn div(self, _: &One) -> Self::Output {
         self.clone()
     }

@@ -18,7 +18,6 @@ macro_rules! forwards {
             type Factor = $uty;
             type Power = u32;
 
-            #[must_use]
             fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power> {
                 let as_non_zero = <$nzity>::new(*self)
                     .expect("attempt to factorize zero");
@@ -30,7 +29,6 @@ macro_rules! forwards {
             type Factor = $uty;
             type Power = u32;
 
-            #[must_use]
             fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power> {
                 let sign = self.non_zero_signum();
                 let factors = $method_name(self.unsigned_abs());
@@ -43,7 +41,6 @@ macro_rules! forwards {
             type Factor = $uty;
             type Power = u32;
 
-            #[must_use]
             fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power> {
                 let as_non_zero = <$nzuty>::new(*self)
                     .expect("attempt to factorize zero");
@@ -56,7 +53,6 @@ macro_rules! forwards {
             type Factor = $uty;
             type Power = u32;
 
-            #[must_use]
             fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power> {
                 NonZeroFactorization { sign: NonZeroSign::Positive, factors: $method_name(*self) }
             }

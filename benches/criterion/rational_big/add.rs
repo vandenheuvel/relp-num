@@ -1,6 +1,8 @@
+use std::str::FromStr;
+
 use criterion::{black_box, Criterion, criterion_group};
 
-use relp_num::RB;
+use relp_num::{RationalBig, RB};
 
 fn small_with_zero(c: &mut Criterion) {
     c.bench_function("RationalBig: small + zero", |b| b.iter(|| {

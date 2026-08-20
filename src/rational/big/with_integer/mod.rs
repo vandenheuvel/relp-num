@@ -15,7 +15,6 @@ mod small;
 impl<const S: usize> Add<Ubig<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn add(mut self, rhs: Ubig<S>) -> Self::Output {
         AddAssign::add_assign(&mut self, rhs);
@@ -26,7 +25,6 @@ impl<const S: usize> Add<Ubig<S>> for Big<S> {
 impl<const S: usize> Add<&Ubig<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn add(mut self, rhs: &Ubig<S>) -> Self::Output {
         AddAssign::add_assign(&mut self, rhs);
@@ -57,7 +55,6 @@ impl<const S: usize> AddAssign<&Ubig<S>> for Big<S> {
 impl<const S: usize> Add<NonZeroUbig<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn add(mut self, rhs: NonZeroUbig<S>) -> Self::Output {
         AddAssign::add_assign(&mut self, rhs);
@@ -68,7 +65,6 @@ impl<const S: usize> Add<NonZeroUbig<S>> for Big<S> {
 impl<const S: usize> Add<&NonZeroUbig<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn add(mut self, rhs: &NonZeroUbig<S>) -> Self::Output {
         AddAssign::add_assign(&mut self, rhs);
@@ -124,7 +120,6 @@ impl<const S: usize> Big<S> {
 impl<const S: usize> Sub<Ubig<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn sub(mut self, rhs: Ubig<S>) -> Self::Output {
         SubAssign::sub_assign(&mut self, rhs);
@@ -135,7 +130,6 @@ impl<const S: usize> Sub<Ubig<S>> for Big<S> {
 impl<const S: usize> Sub<&Ubig<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn sub(mut self, rhs: &Ubig<S>) -> Self::Output {
         SubAssign::sub_assign(&mut self, rhs);
@@ -166,7 +160,6 @@ impl<const S: usize> SubAssign<&Ubig<S>> for Big<S> {
 impl<const S: usize> Sub<NonZeroUbig<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn sub(mut self, rhs: NonZeroUbig<S>) -> Self::Output {
         SubAssign::sub_assign(&mut self, rhs);
@@ -177,7 +170,6 @@ impl<const S: usize> Sub<NonZeroUbig<S>> for Big<S> {
 impl<const S: usize> Sub<&NonZeroUbig<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn sub(mut self, rhs: &NonZeroUbig<S>) -> Self::Output {
         SubAssign::sub_assign(&mut self, rhs);
@@ -234,7 +226,6 @@ impl<const S: usize> Big<S> {
 impl<const S: usize> Mul<Ubig<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn mul(mut self, rhs: Ubig<S>) -> Self::Output {
         MulAssign::mul_assign(&mut self, rhs);
@@ -264,7 +255,6 @@ impl<const S: usize> MulAssign<Ubig<S>> for Big<S> {
 impl<const S: usize> Mul<NonZeroUbig<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn mul(mut self, rhs: NonZeroUbig<S>) -> Self::Output {
         MulAssign::mul_assign(&mut self, rhs);
@@ -290,7 +280,6 @@ impl<const S: usize> MulAssign<NonZeroUbig<S>> for Big<S> {
 impl<const S: usize> Mul<NonZeroUbig<S>> for NonZeroBig<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn mul(mut self, rhs: NonZeroUbig<S>) -> Self::Output {
         MulAssign::mul_assign(&mut self, rhs);
@@ -314,7 +303,6 @@ impl<const S: usize> MulAssign<NonZeroUbig<S>> for NonZeroBig<S> {
 impl<const S: usize> Mul<&NonZeroUbig<S>> for NonZeroBig<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn mul(mut self, rhs: &NonZeroUbig<S>) -> Self::Output {
         MulAssign::mul_assign(&mut self, rhs);
@@ -353,7 +341,6 @@ impl<const S: usize> MulAssign<&NonZeroUbig<S>> for Big<S> {
 impl<const S: usize> Div<NonZeroUbig<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn div(mut self, rhs: NonZeroUbig<S>) -> Self::Output {
         DivAssign::div_assign(&mut self, rhs);
@@ -394,7 +381,6 @@ impl<const S: usize> DivAssign<&NonZeroUbig<S>> for Big<S> {
 impl<const S: usize> Div<Ubig<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn div(mut self, rhs: Ubig<S>) -> Self::Output {
         DivAssign::div_assign(&mut self, rhs);
@@ -422,7 +408,6 @@ impl<const S: usize> DivAssign<Ubig<S>> for Big<S> {
 impl<const S: usize> Div<NonZeroUbig<S>> for NonZeroBig<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn div(mut self, rhs: NonZeroUbig<S>) -> Self::Output {
         MulAssign::mul_assign(&mut self, rhs);
@@ -446,7 +431,6 @@ impl<const S: usize> DivAssign<NonZeroUbig<S>> for NonZeroBig<S> {
 impl<const S: usize> Div<&NonZeroUbig<S>> for NonZeroBig<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn div(mut self, rhs: &NonZeroUbig<S>) -> Self::Output {
         MulAssign::mul_assign(&mut self, rhs);

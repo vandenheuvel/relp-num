@@ -52,7 +52,6 @@ pub fn cmp_single(large: &[usize], small: usize) -> Ordering {
 }
 
 impl<const S: usize> PartialEq for Big<S> {
-    #[must_use]
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         match (self.sign, other.sign) {
@@ -70,7 +69,6 @@ impl<const S: usize> PartialEq for Big<S> {
 impl<const S: usize> Eq for Big<S> {}
 
 impl<const S: usize> PartialEq for NonZeroBig<S> {
-    #[must_use]
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.sign == other.sign && self.numerator == other.numerator && self.denominator == other.denominator
@@ -80,19 +78,17 @@ impl<const S: usize> Eq for NonZeroBig<S> {}
 
 macro_rules! rational {
     ($name:ident, $sign:ident) => {
-        impl<const S: usize> Ord for $name<S> {
-            #[must_use]
+        impl<const S: usize> PartialOrd for $name<S> {
             #[inline]
-            fn cmp(&self, other: &Self) -> Ordering {
-                self.partial_cmp(other).unwrap()
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                Some(self.cmp(other))
             }
         }
 
-        impl<const S: usize> PartialOrd for $name<S> {
-            #[must_use]
+        impl<const S: usize> Ord for $name<S> {
             #[inline]
             #[allow(unreachable_patterns)]
-            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            fn cmp(&self, other: &Self) -> Ordering {
                 let by_sign = self.sign.partial_cmp(&other.sign);
 
                 let by_length = by_sign.or_else(|| {
@@ -142,7 +138,7 @@ macro_rules! rational {
                     }
                 });
 
-                Some(by_product)
+                by_product
             }
         }
     }

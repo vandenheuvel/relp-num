@@ -1,4 +1,4 @@
-//! # Non-standard impl<const S: usize>ementations
+//! # Non-standard implementations
 //!
 //! Operations with specific types from this crate.
 use std::ops::Add;

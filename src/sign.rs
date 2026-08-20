@@ -77,7 +77,6 @@ impl Negateable for Sign {
 impl Neg for Sign {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn neg(self) -> Self::Output {
         match self {
@@ -91,7 +90,6 @@ impl Neg for Sign {
 impl Not for Sign {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn not(self) -> Self::Output {
         match self {
@@ -103,7 +101,6 @@ impl Not for Sign {
 }
 
 impl NonZero for Sign {
-    #[must_use]
     #[inline]
     fn is_not_zero(&self) -> bool {
         *self != Sign::Zero
@@ -124,7 +121,6 @@ impl MulAssign for Sign {
 impl Mul for Sign {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn mul(mut self, rhs: Self) -> Self::Output {
         self *= rhs;
@@ -133,7 +129,6 @@ impl Mul for Sign {
 }
 
 impl PartialOrd for Sign {
-    #[must_use]
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
@@ -146,7 +141,6 @@ impl PartialOrd for Sign {
 }
 
 impl From<NonZeroSign> for Sign {
-    #[must_use]
     #[inline]
     fn from(sign: NonZeroSign) -> Self {
         match sign {

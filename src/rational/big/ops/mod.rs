@@ -11,7 +11,6 @@ mod mul_div;
 pub(super) mod building_blocks;
 
 impl<const S: usize> Sum for Big<S> {
-    #[must_use]
     #[inline]
     fn sum<I: Iterator<Item=Self>>(mut iter: I) -> Self {
         let first = iter.next();
@@ -31,7 +30,6 @@ impl<const S: usize> Sum for Big<S> {
 impl<const S: usize> Neg for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn neg(mut self) -> Self::Output {
         self.sign.negate();
@@ -42,7 +40,6 @@ impl<const S: usize> Neg for Big<S> {
 impl<const S: usize> Neg for &Big<S> {
     type Output = Big<S>;
 
-    #[must_use]
     #[inline]
     fn neg(self) -> Self::Output {
         Self::Output {

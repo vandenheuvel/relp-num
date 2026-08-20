@@ -18,7 +18,7 @@ pub fn factorize(value: NonZeroU8) -> Vec<(u8, u32)> {
 
     for divisor in SMALL_ODD_PRIMES_8 {
         let mut count = 0;
-        while x % divisor == 0 {
+        while x.is_multiple_of(divisor) {
             x /= divisor;
             count += 1;
         }

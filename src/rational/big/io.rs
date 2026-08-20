@@ -2,7 +2,6 @@ use std::{fmt, mem};
 use std::cmp::{min, Ordering};
 use std::convert::TryFrom;
 use std::convert::TryInto;
-use std::iter::repeat;
 use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
 use std::num::{NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize};
 use std::str::FromStr;
@@ -200,7 +199,6 @@ from_integer_signed_non_zero!(NonZeroIsize);
 macro_rules! impl_from_iu {
     ($numerator:ty, $denominator:ty, $simplify:ident) => {
         impl<const S: usize> From<($numerator, $denominator)> for Big<S> {
-            #[must_use]
             #[inline]
             fn from((numerator, denominator): ($numerator, $denominator)) -> Self {
                 // This is for tests only at the moment, do a run time assert
@@ -239,7 +237,6 @@ impl_from_iu!(i128, u128, simplify128);
 macro_rules! impl_from_ii {
     ($ty:ty) => {
         impl<const S: usize> From<($ty, $ty)> for Big<S> {
-            #[must_use]
             #[inline]
             fn from((numerator, denominator): ($ty, $ty)) -> Self {
                 // This is for tests only at the moment, do a run time assert
@@ -444,7 +441,7 @@ pub fn from_float_helper<const S: usize>(power: i32, fraction: NonZeroU64) -> (U
             let size = words_shift + 1;
             let mut denominator = SmallVec::with_capacity(size as usize);
 
-            denominator.extend(repeat(0).take(words_shift as usize));
+            denominator.extend(std::iter::repeat_n(0, words_shift as usize));
             denominator.push(1 << bits_shift);
 
             let numerator = unsafe {
@@ -469,7 +466,7 @@ pub fn from_float_helper<const S: usize>(power: i32, fraction: NonZeroU64) -> (U
             let size = 1 + words_shift + if overflows { 1 } else { 0 };
             let mut numerator = SmallVec::with_capacity(size as usize);
 
-            numerator.extend(repeat(0).take(words_shift as usize));
+            numerator.extend(std::iter::repeat_n(0, words_shift as usize));
 
             numerator.push((fraction.get() as usize) << bits_shift);
             if overflows {
@@ -606,7 +603,7 @@ impl<const S: usize> FromStr for Big<S> {
                 let (sign, s) = match &s[..1] {
                     "+" => (Sign::Positive, &s[1..]),
                     "-" => (Sign::Negative, &s[1..]),
-                    _ => (Sign::Positive, &s[..]),
+                    _ => (Sign::Positive, s),
                 };
 
                 match s.find('/') {

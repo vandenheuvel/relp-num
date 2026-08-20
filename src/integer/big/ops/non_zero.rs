@@ -1,5 +1,4 @@
 use std::cmp::{min, Ordering};
-use std::iter::repeat;
 use std::num::NonZeroUsize;
 use std::ptr;
 
@@ -81,11 +80,11 @@ pub fn shl_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, 
         let overflows = bits > values.last().unwrap().leading_zeros();
         if overflows {
             // These values will be overwritten
-            values.extend(repeat(0).take(words + 1));
+            values.extend(std::iter::repeat_n(0, words + 1));
             *values.last_mut().unwrap() = values[original_length - 1] >> (BITS_PER_WORD - bits);
         } else {
             // These values will be overwritten
-            values.extend(repeat(0).take(words));
+            values.extend(std::iter::repeat_n(0, words));
         }
 
         for i in (1..original_length).rev() {
@@ -216,11 +215,11 @@ pub(crate) fn mul_assign_single_non_zero<const S: usize>(
 ) {
     debug_assert!(!values.is_empty());
     
-    let (low, mut previous_high) = values[0].widening_mul(rhs);
+    let (low, mut previous_high) = values[0].carrying_mul(rhs, 0);
     values[0] = low;
     let mut carry = false;
     for i in 1..values.len() {
-        let (low, high) = values[i].widening_mul(rhs);
+        let (low, high) = values[i].carrying_mul(rhs, 0);
         let (value_new, carry_new) = previous_high.carrying_add(low, carry);
         values[i] = value_new;
         carry = carry_new;
@@ -281,7 +280,7 @@ pub unsafe fn sub<const S: usize>(
 
     let mut result = SmallVec::with_capacity(values.len());
     // Will be overwritten in the unsafe block, but this is safe and extends the length
-    result.extend(repeat(0).take(rhs.len()));
+    result.extend(std::iter::repeat_n(0, rhs.len()));
 
     let mut carry = {
         sub_n(&mut result, values, rhs, rhs.len() as i32) > 0
@@ -310,8 +309,8 @@ pub unsafe fn sub<const S: usize>(
 /// # Arguments
 ///
 /// * `values`: is larger than `rhs` but might have the most significant word(s) already removed, if
-/// they were equal to `rhs`. It is as such not necessarily well formed and can't be easily compared
-/// to `rhs`.
+///   they were equal to `rhs`. It is as such not necessarily well formed and can't be easily compared
+///   to `rhs`.
 /// * `rhs`: value to subtract.
 #[inline]
 pub unsafe fn sub_assign_result_positive<const S: usize>(
@@ -644,12 +643,12 @@ mod test {
         let expected: SV = smallvec![0, 0, 0, 1];
         assert_eq!(x, expected);
 
-        let mut x: SV = smallvec![0, 0, 2_usize.pow((BITS_PER_WORD - 2) as u32)];
+        let mut x: SV = smallvec![0, 0, 2_usize.pow(BITS_PER_WORD - 2)];
         shl_mut(&mut x, 1,1);
-        let expected: SV = smallvec![0, 0, 0, 2_usize.pow((BITS_PER_WORD - 1) as u32)];
+        let expected: SV = smallvec![0, 0, 0, 2_usize.pow(BITS_PER_WORD - 1)];
         assert_eq!(x, expected);
 
-        let mut x: SV = smallvec![0, 0, 2_usize.pow((BITS_PER_WORD - 1) as u32)];
+        let mut x: SV = smallvec![0, 0, 2_usize.pow(BITS_PER_WORD - 1)];
         shl_mut(&mut x, 2,1);
         let expected: SV = smallvec![0, 0, 0, 0, 0, 1];
         assert_eq!(x, expected);

@@ -15,7 +15,6 @@ macro_rules! define_interations {
                 use super::*;
 
                 impl<const S: usize> From<$small> for Big<S> {
-                    #[must_use]
                     #[inline]
                     fn from(value: $small) -> Self {
                         Self {
@@ -30,7 +29,6 @@ macro_rules! define_interations {
                 }
 
                 impl<const S: usize> From<&$small> for Big<S> {
-                    #[must_use]
                     #[inline]
                     fn from(value: &$small) -> Self {
                         Self {
@@ -78,7 +76,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Add<$small> for Big<S> {
                         type Output = Self;
 
-                        #[must_use]
                         #[inline]
                         fn add(mut self, rhs: $small) -> Self::Output {
                             AddAssign::add_assign(&mut self, &rhs);
@@ -89,7 +86,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Add<&$small> for Big<S> {
                         type Output = Self;
 
-                        #[must_use]
                         #[inline]
                         fn add(mut self, rhs: &$small) -> Self::Output {
                             AddAssign::add_assign(&mut self, rhs);
@@ -100,7 +96,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Add<Option<&$small>> for Big<S> {
                         type Output = Self;
 
-                        #[must_use]
                         #[inline]
                         fn add(self, rhs: Option<&$small>) -> Self::Output {
                             match rhs {
@@ -113,7 +108,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Add<&$small> for &Big<S> {
                         type Output = Big<S>;
 
-                        #[must_use]
                         #[inline]
                         fn add(self, rhs: &$small) -> Self::Output {
                             // TODO(PERFORMANCE): Make sure that this is just as efficient as a native algorithm.
@@ -126,7 +120,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Add<Option<&$small>> for &Big<S> {
                         type Output = Big<S>;
 
-                        #[must_use]
                         #[inline]
                         fn add(self, rhs: Option<&$small>) -> Self::Output {
                             // TODO(PERFORMANCE): Make sure that this is just as efficient as a native algorithm.
@@ -204,7 +197,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Sub<$small> for Big<S> {
                         type Output = Self;
 
-                        #[must_use]
                         #[inline]
                         fn sub(mut self, rhs: $small) -> Self::Output {
                             SubAssign::sub_assign(&mut self, &rhs);
@@ -215,7 +207,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Sub<&$small> for Big<S> {
                         type Output = Self;
 
-                        #[must_use]
                         #[inline]
                         fn sub(mut self, rhs: &$small) -> Self::Output {
                             SubAssign::sub_assign(&mut self, rhs);
@@ -226,7 +217,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Sub<Option<&$small>> for Big<S> {
                         type Output = Self;
 
-                        #[must_use]
                         #[inline]
                         fn sub(self, rhs: Option<&$small>) -> Self::Output {
                             match rhs {
@@ -239,7 +229,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Sub<&$small> for &Big<S> {
                         type Output = Big<S>;
 
-                        #[must_use]
                         #[inline]
                         fn sub(self, rhs: &$small) -> Self::Output {
                             // TODO(PERFORMANCE): Make sure that this is just as efficient as a native algorithm.
@@ -252,7 +241,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Sub<Option<&$small>> for &Big<S> {
                         type Output = Big<S>;
 
-                        #[must_use]
                         #[inline]
                         fn sub(self, rhs: Option<&$small>) -> Self::Output {
                             // TODO(PERFORMANCE): Make sure that this is just as efficient as a native algorithm.
@@ -330,7 +318,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Mul<$small> for Big<S> {
                         type Output = Self;
 
-                        #[must_use]
                         #[inline]
                         fn mul(self, rhs: $small) -> Self::Output {
                             Mul::mul(self, &rhs)
@@ -340,7 +327,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Mul<&$small> for Big<S> {
                         type Output = Self;
 
-                        #[must_use]
                         #[inline]
                         fn mul(mut self, rhs: &$small) -> Self::Output {
                             MulAssign::mul_assign(&mut self, rhs);
@@ -351,7 +337,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Mul<&$small> for &Big<S> {
                         type Output = Big<S>;
 
-                        #[must_use]
                         #[inline]
                         fn mul(self, rhs: &$small) -> Self::Output {
                             // TODO(PERFORMANCE): Make sure that this is just as efficient as a native algorithm.
@@ -362,7 +347,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Mul<Option<&$small>> for Big<S> {
                         type Output = Big<S>;
 
-                        #[must_use]
                         #[inline]
                         fn mul(mut self, rhs: Option<&$small>) -> Self::Output {
                             match rhs {
@@ -378,7 +362,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Mul<Option<&$small>> for &Big<S> {
                         type Output = Big<S>;
 
-                        #[must_use]
                         #[inline]
                         fn mul(self, rhs: Option<&$small>) -> Self::Output {
                             match rhs {
@@ -427,7 +410,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Div<$small> for Big<S> {
                         type Output = Big<S>;
 
-                        #[must_use]
                         #[inline]
                         fn div(mut self, rhs: $small) -> Self::Output {
                             DivAssign::div_assign(&mut self, rhs);
@@ -438,7 +420,6 @@ macro_rules! define_interations {
                     impl<const S: usize> Div<&$small> for Big<S> {
                         type Output = Big<S>;
 
-                        #[must_use]
                         #[inline]
                         fn div(mut self, rhs: &$small) -> Self::Output {
                             DivAssign::div_assign(&mut self, rhs);
@@ -453,6 +434,8 @@ macro_rules! define_interations {
                         }
                     }
 
+                    // The sign of a quotient is the product of the signs, so `*` is correct here.
+                    #[allow(clippy::suspicious_op_assign_impl)]
                     impl<const S: usize> DivAssign<&$small> for Big<S> {
                         #[inline]
                         fn div_assign(&mut self, rhs: &$small) {

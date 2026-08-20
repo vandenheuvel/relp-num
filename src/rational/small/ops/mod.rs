@@ -129,10 +129,11 @@ macro_rules! rational {
             }
         }
 
+        // The sign of a quotient is the product of the signs, so `*` is correct here.
+        #[allow(clippy::suspicious_arithmetic_impl)]
         impl Div<$name> for &$name {
             type Output = $name;
 
-            #[must_use]
             #[inline]
             fn div(self, mut rhs: $name) -> Self::Output {
                 match (self.sign, rhs.sign) {
@@ -154,6 +155,8 @@ macro_rules! rational {
             }
         }
 
+        // The sign of a quotient is the product of the signs, so `*` is correct here.
+        #[allow(clippy::suspicious_op_assign_impl)]
         impl DivAssign<&$name> for $name {
             #[inline]
             fn div_assign(&mut self, rhs: &Self) {
@@ -242,10 +245,11 @@ macro_rules! rational_non_zero {
                 $mul_name(&mut self.numerator, &mut self.denominator, rhs.numerator, rhs.denominator);
             }
         }
+        // The sign of a quotient is the product of the signs, so `*` is correct here.
+        #[allow(clippy::suspicious_arithmetic_impl)]
         impl Div<$name> for &$name {
             type Output = $name;
 
-            #[must_use]
             #[inline]
             fn div(self, mut rhs: $name) -> Self::Output {
                 let sign = self.sign * rhs.sign;
@@ -257,6 +261,8 @@ macro_rules! rational_non_zero {
                 }
             }
         }
+        // The sign of a quotient is the product of the signs, so `*` is correct here.
+        #[allow(clippy::suspicious_op_assign_impl)]
         impl DivAssign<&$name> for $name {
             #[inline]
             fn div_assign(&mut self, rhs: &Self) {
@@ -268,7 +274,6 @@ macro_rules! rational_non_zero {
         impl Neg for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn neg(mut self) -> Self::Output {
                 self.sign.negate();
@@ -279,7 +284,6 @@ macro_rules! rational_non_zero {
         impl Neg for &$name {
             type Output = $name;
 
-            #[must_use]
             #[inline]
             fn neg(self) -> Self::Output {
                 Self::Output {
@@ -300,19 +304,17 @@ rational_non_zero!(NonZeroRationalUsize, add_usize, sub_usize, mul_usize);
 
 macro_rules! rational_requiring_wide {
     ($name:ident, $uty:ty, $BITS:literal, $wide:ty, $sign:ident) => {
-        impl Ord for $name {
-            #[must_use]
+        impl PartialOrd for $name {
             #[inline]
-            fn cmp(&self, other: &Self) -> Ordering {
-                self.partial_cmp(other).unwrap()
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                Some(self.cmp(other))
             }
         }
 
-        impl PartialOrd for $name {
-            #[must_use]
+        impl Ord for $name {
             #[inline]
             #[allow(unreachable_patterns)]
-            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            fn cmp(&self, other: &Self) -> Ordering {
                 self.sign.partial_cmp(&other.sign).or_else(|| {
                     debug_assert_eq!(self.sign, other.sign);
                     debug_assert!(self.is_not_zero());
@@ -331,7 +333,7 @@ macro_rules! rational_requiring_wide {
                         (Ordering::Greater, $sign::Positive) | (Ordering::Less, $sign::Negative) => Ordering::Greater,
                         _ => panic!("Zero case would have been equal or nonzero type"),
                     })
-                })
+                }).expect("bug: the fallback branch always yields an ordering")
             }
         }
     }
@@ -350,7 +352,6 @@ macro_rules! rational_forward {
         impl<'a> Add<&'a $name> for &'a $name {
             type Output = $name;
 
-            #[must_use]
             #[inline]
             fn add(self, rhs: Self) -> Self::Output {
                 Add::add(self.clone(), rhs)
@@ -360,7 +361,6 @@ macro_rules! rational_forward {
         impl Add for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn add(mut self, rhs: Self) -> Self::Output {
                 AddAssign::add_assign(&mut self, rhs);
@@ -371,7 +371,6 @@ macro_rules! rational_forward {
         impl Add<&$name> for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn add(mut self, rhs: &Self) -> Self::Output {
                 AddAssign::add_assign(&mut self, rhs);
@@ -382,7 +381,6 @@ macro_rules! rational_forward {
         impl Add<$name> for &$name {
             type Output = $name;
 
-            #[must_use]
             #[inline]
             fn add(self, rhs: $name) -> Self::Output {
                 Add::add(rhs, self)
@@ -399,7 +397,6 @@ macro_rules! rational_forward {
         impl Sub for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn sub(mut self, rhs: Self) -> Self::Output {
                 SubAssign::sub_assign(&mut self, rhs);
@@ -410,7 +407,6 @@ macro_rules! rational_forward {
         impl<'a> Sub<&'a $name> for &'a $name {
             type Output = $name;
 
-            #[must_use]
             #[inline]
             fn sub(self, rhs: Self) -> Self::Output {
                 Sub::sub(self.clone(), rhs)
@@ -420,7 +416,6 @@ macro_rules! rational_forward {
         impl Sub<&$name> for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn sub(mut self, rhs: &Self) -> Self::Output {
                 SubAssign::sub_assign(&mut self, rhs);
@@ -431,7 +426,6 @@ macro_rules! rational_forward {
         impl Sub<$name> for &$name {
             type Output = $name;
 
-            #[must_use]
             #[inline]
             fn sub(self, rhs: $name) -> Self::Output {
                 -Sub::sub(rhs, self)
@@ -448,7 +442,6 @@ macro_rules! rational_forward {
         impl Mul<&$name> for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn mul(mut self, rhs: &Self) -> Self::Output {
                 MulAssign::mul_assign(&mut self, rhs);
@@ -459,7 +452,6 @@ macro_rules! rational_forward {
         impl<'a> Mul<&'a $name> for &'a $name {
             type Output = $name;
 
-            #[must_use]
             #[inline]
             fn mul(self, rhs: Self) -> Self::Output {
                 Mul::mul(self.clone(), rhs)
@@ -469,7 +461,6 @@ macro_rules! rational_forward {
         impl Mul for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn mul(mut self, rhs: Self) -> Self::Output {
                 MulAssign::mul_assign(&mut self, rhs);
@@ -487,7 +478,6 @@ macro_rules! rational_forward {
         impl Mul<$name> for &$name {
             type Output = $name;
 
-            #[must_use]
             #[inline]
             fn mul(self, rhs: $name) -> Self::Output {
                 Mul::mul(rhs, self)
@@ -497,7 +487,6 @@ macro_rules! rational_forward {
         impl Div for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn div(mut self, rhs: Self) -> Self::Output {
                 DivAssign::div_assign(&mut self, rhs);
@@ -508,7 +497,6 @@ macro_rules! rational_forward {
         impl Div<&$name> for $name {
             type Output = Self;
 
-            #[must_use]
             #[inline]
             fn div(mut self, rhs: &Self) -> Self::Output {
                 DivAssign::div_assign(&mut self, rhs);
@@ -519,7 +507,6 @@ macro_rules! rational_forward {
         impl<'a> Div<&'a $name> for &'a $name {
             type Output = $name;
 
-            #[must_use]
             #[inline]
             fn div(self, rhs: Self) -> Self::Output {
                 Div::div(self.clone(), rhs)

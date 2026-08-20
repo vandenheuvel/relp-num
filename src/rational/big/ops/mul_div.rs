@@ -9,7 +9,6 @@ use crate::Sign;
 impl<const S: usize> Mul for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn mul(mut self, rhs: Self) -> Self::Output {
         MulAssign::mul_assign(&mut self, rhs);
@@ -20,7 +19,6 @@ impl<const S: usize> Mul for Big<S> {
 impl<const S: usize> Mul for NonZeroBig<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn mul(mut self, rhs: Self) -> Self::Output {
         MulAssign::mul_assign(&mut self, rhs);
@@ -31,7 +29,6 @@ impl<const S: usize> Mul for NonZeroBig<S> {
 impl<const S: usize> Mul<&Big<S>> for Big<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn mul(mut self, rhs: &Big<S>) -> Self::Output {
         // TODO(PERFORMANCE): Should cloning be avoided?
@@ -43,7 +40,6 @@ impl<const S: usize> Mul<&Big<S>> for Big<S> {
 impl<const S: usize> Mul<Big<S>> for &Big<S> {
     type Output = Big<S>;
 
-    #[must_use]
     #[inline]
     fn mul(self, rhs: Big<S>) -> Self::Output {
         Mul::mul(rhs, self)
@@ -53,7 +49,6 @@ impl<const S: usize> Mul<Big<S>> for &Big<S> {
 impl<const S: usize> Mul<&Big<S>> for &Big<S> {
     type Output = Big<S>;
 
-    #[must_use]
     #[inline]
     fn mul(self, rhs: &Big<S>) -> Self::Output {
         let mut x = self.clone();
@@ -106,7 +101,6 @@ impl<const S: usize> MulAssign for NonZeroBig<S> {
 impl<const S: usize> Mul<&NonZeroBig<S>> for NonZeroBig<S> {
     type Output = Self;
 
-    #[must_use]
     #[inline]
     fn mul(mut self, rhs: &NonZeroBig<S>) -> Self::Output {
         // TODO(PERFORMANCE): Should cloning be avoided?
@@ -118,7 +112,6 @@ impl<const S: usize> Mul<&NonZeroBig<S>> for NonZeroBig<S> {
 impl<const S: usize> Mul for &NonZeroBig<S> {
     type Output = NonZeroBig<S>;
 
-    #[must_use]
     #[inline]
     fn mul(self, rhs: &NonZeroBig<S>) -> Self::Output {
         let mut x = self.clone();
@@ -221,7 +214,6 @@ impl<const S: usize> DivAssign<&Big<S>> for Big<S> {
 impl<const S: usize> Div<&NonZeroBig<S>> for &NonZeroBig<S> {
     type Output = NonZeroBig<S>;
 
-    #[must_use]
     #[inline]
     fn div(self, rhs: &NonZeroBig<S>) -> Self::Output {
         let mut x = self.clone();
@@ -231,6 +223,8 @@ impl<const S: usize> Div<&NonZeroBig<S>> for &NonZeroBig<S> {
     }
 }
 
+// The sign of a quotient is the product of the signs, so `*` is correct here.
+#[allow(clippy::suspicious_op_assign_impl)]
 impl<const S: usize> DivAssign for Big<S> {
     #[inline]
     fn div_assign(&mut self, rhs: Self) {
@@ -253,6 +247,8 @@ impl<const S: usize> DivAssign for Big<S> {
     }
 }
 
+// The sign of a quotient is the product of the signs, so `*` is correct here.
+#[allow(clippy::suspicious_op_assign_impl)]
 impl<const S: usize> DivAssign for NonZeroBig<S> {
     #[inline]
     fn div_assign(&mut self, rhs: Self) {
@@ -269,6 +265,8 @@ impl<const S: usize> DivAssign for NonZeroBig<S> {
     }
 }
 
+// The sign of a quotient is the product of the signs, so `*` is correct here.
+#[allow(clippy::suspicious_op_assign_impl)]
 impl<const S: usize> DivAssign<&NonZeroBig<S>> for NonZeroBig<S> {
     #[inline]
     fn div_assign(&mut self, rhs: &Self) {
