@@ -33,7 +33,7 @@ pub unsafe fn is_coprime_non_zero(left: &[usize], right: &[usize]) -> bool {
     }
 
     // SAFETY: As above: index zero is in bounds for both.
-    let both_even = unsafe { *left.get_unchecked(0) % 2 == 0 && *right.get_unchecked(0) % 2 == 0 };
+    let both_even = unsafe { left.get_unchecked(0).is_multiple_of(2) && right.get_unchecked(0).is_multiple_of(2) };
     if both_even {
         return false;
     }

@@ -1193,7 +1193,7 @@ mod invert_test {
         // `invert` requires the top bit to be set.
         let mut cases = vec![usize::MAX, usize::MAX - 1, 1 << (usize::BITS - 1)];
         cases.push((1 << (usize::BITS - 1)) + 1);
-        cases.push(usize::MAX / 3 * 2 | (1 << (usize::BITS - 1)));
+        cases.push((usize::MAX / 3 * 2) | (1 << (usize::BITS - 1)));
 
         // A deterministic spread over the valid half of the range.
         let mut state = 0x2545_f491_4f6c_dd1d_usize;

@@ -599,9 +599,11 @@ mod test {
                 let big = RationalBig::from(small);
                 for other in -4_i64..=4 {
                     let other = Rational64::new(other, denominator).unwrap();
+                    #[allow(clippy::cmp_owned, reason = "comparing after conversion is what is being tested")]
+                    let converted = big == RationalBig::from(other);
                     assert_eq!(
                         big == other,
-                        big == RationalBig::from(other),
+                        converted,
                         "{numerator}/{denominator} vs {other}",
                     );
                 }
