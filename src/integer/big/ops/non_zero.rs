@@ -5,7 +5,7 @@ use std::ptr;
 use smallvec::SmallVec;
 
 use crate::integer::big::BITS_PER_WORD;
-use crate::integer::big::ops::building_blocks::{addmul_1, borrowing_sub_mut, carrying_add_mut, is_well_formed, is_well_formed_non_zero, mul_1, sub_assign_slice, sub_n, to_twos_complement};
+use crate::integer::big::ops::building_blocks::{add_assign_slice, addmul_1, borrowing_sub_mut, carrying_add_mut, is_well_formed, is_well_formed_non_zero, mul_1, sub_assign_slice, sub_from_slice, sub_n, to_twos_complement};
 use crate::integer::big::properties::cmp;
 use crate::rational::big::properties::cmp_single;
 
@@ -177,13 +177,9 @@ pub fn add_assign<const S: usize>(values: &mut SmallVec<[usize; S]>, rhs: &[usiz
     debug_assert!(is_well_formed(values));
     debug_assert!(is_well_formed(rhs));
 
-    let mut i = 0;
-
-    let mut carry = false;
-    while i < values.len() && i < rhs.len() {
-        carrying_add_mut(&mut values[i], rhs[i], &mut carry);
-        i += 1;
-    }
+    let shared = min(values.len(), rhs.len());
+    let mut carry = add_assign_slice(&mut values[..shared], &rhs[..shared]);
+    let mut i = shared;
 
     while i < rhs.len() {
         let (new_value, new_carry) = rhs[i].overflowing_add(carry as usize);
@@ -385,15 +381,8 @@ pub(crate) fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, r
 
     match left.len().cmp(&right.len()) {
         Ordering::Less => {
-            let mut carry = false;
-            let mut i = 0;
-            while i < left.len() {
-                // TODO(PERFORMANCE): Is assembler faster?
-                let (new_value, new_carry) = right[i].borrowing_sub(left[i], carry);
-                left[i] = new_value;
-                carry = new_carry;
-                i += 1;
-            }
+            let mut i = left.len();
+            let mut carry = sub_from_slice(left, &right[..i]);
 
             while carry {
                 let (new_value, new_carry) = right[i].borrowing_sub(0, true);
@@ -411,18 +400,11 @@ pub(crate) fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, r
             Ordering::Less
         }
         Ordering::Equal => {
-            let mut carry = false;
-            for i in 0..left.len() {
-                // TODO(PERFORMANCE): Is assembler faster?
-                borrowing_sub_mut(&mut left[i], right[i], &mut carry);
-            }
+            let carry = sub_assign_slice(left, right);
 
             if carry {
-                // result is negative
+                // result is negative; `to_twos_complement` also normalizes
                 to_twos_complement(left);
-                while *left.last().unwrap() == 0 {
-                    left.pop();
-                }
                 Ordering::Less
             } else {
                 // result is zero or positive

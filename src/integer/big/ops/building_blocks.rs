@@ -5,8 +5,9 @@
 //!
 //! Four of them, [`sub_n`], [`mul_1`], [`addmul_1`] and [`submul_1`], are the inner loops those
 //! types spend most of their time in, and are written against what the code generator makes of a
-//! carry chain rather than in the most obvious way. Each is compared against a straightforward
-//! reference implementation in the tests at the bottom of this file.
+//! carry chain rather than in the most obvious way; on x86_64 the addition and subtraction chains
+//! go through the carry flag intrinsics (see [`sub_word`]). Each is compared against a
+//! straightforward reference implementation in the tests at the bottom of this file.
 
 use smallvec::SmallVec;
 
@@ -46,11 +47,66 @@ pub fn sub_2(left_high: usize, left_low: usize, right_high: usize, right_low: us
 /// The number of words the inner loops below handle at a time.
 ///
 /// A carry chain is serial: every word waits on the flag the word before it produced, so there is
-/// no parallelism to unlock here. What a block buys is the loop overhead it amortises, and, for
-/// the subtraction, that the borrow stays in a register across the block instead of being written
-/// out and tested again at every back edge. Eight words is where the measurements stopped
-/// improving.
+/// no parallelism to unlock here. What a block buys is the loop overhead it amortises, and that
+/// the carry crosses the block in the processor's carry flag, touching a register only at the
+/// back edge, where updating the loop counter clobbers the flag anyway. Eight words is where the
+/// measurements stopped improving.
 const BLOCK: usize = 8;
+
+/// A carry or borrow between two words of a chain, always zero or one.
+///
+/// On x86_64 this is the byte the carry flag intrinsics in [`sub_word`] and [`add_word`] traffic
+/// in, everywhere else the `bool` of the `carrying_add` family.
+#[cfg(target_arch = "x86_64")]
+type Flag = u8;
+#[cfg(not(target_arch = "x86_64"))]
+type Flag = bool;
+
+/// One link of a subtraction chain: `left - right - borrow`, and the borrow out.
+///
+/// This is [`usize::borrowing_sub`], and on most platforms that is also how it is written. On
+/// x86_64 it goes through the carry flag intrinsic instead: handing the byte one `_subborrow_u64`
+/// returned straight to the next compiles to the borrow simply staying in the carry flag, one
+/// `sbb` per word, materialized into a register only where a loop back edge interrupts the chain.
+/// The `bool` version costs two comparisons at the head of every block to re-derive the flag,
+/// which is a few cycles of latency per block on a chain that otherwise moves a word per cycle.
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+fn sub_word(left: usize, right: usize, borrow: Flag) -> (usize, Flag) {
+    let mut value = 0;
+    // SAFETY: `sbb` is a baseline x86_64 instruction and the intrinsic has no preconditions.
+    // Recent toolchains make it a safe function, hence the `allow`.
+    #[allow(unused_unsafe)]
+    let borrow = unsafe { std::arch::x86_64::_subborrow_u64(borrow, left as u64, right as u64, &mut value) };
+
+    (value as usize, borrow)
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+#[inline(always)]
+fn sub_word(left: usize, right: usize, borrow: Flag) -> (usize, Flag) {
+    left.borrowing_sub(right, borrow)
+}
+
+/// One link of an addition chain: `left + right + carry`, and the carry out.
+///
+/// The addition counterpart of [`sub_word`], with `adc` in the place of `sbb`.
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+fn add_word(left: usize, right: usize, carry: Flag) -> (usize, Flag) {
+    let mut value = 0;
+    // SAFETY: as in `sub_word`.
+    #[allow(unused_unsafe)]
+    let carry = unsafe { std::arch::x86_64::_addcarry_u64(carry, left as u64, right as u64, &mut value) };
+
+    (value as usize, carry)
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+#[inline(always)]
+fn add_word(left: usize, right: usize, carry: Flag) -> (usize, Flag) {
+    left.carrying_add(right, carry)
+}
 
 /// The routines below accumulate the product of two words in a `u128`, which holds it exactly only
 /// while a word is at most half that wide.
@@ -69,15 +125,15 @@ pub fn sub_n(wp: &mut [usize], xp: &[usize], yp: &[usize], n: usize) -> usize {
     assert!(wp.len() >= n && xp.len() >= n && yp.len() >= n, "operand too short");
 
     let (wp, xp, yp) = (&mut wp[..n], &xp[..n], &yp[..n]);
-    let mut borrow = false;
+    let mut borrow = Flag::default();
 
     // Operands this short never fill a block, and the chunking is pure overhead for them.
     if n < BLOCK {
         for ((target, &left), &right) in wp.iter_mut().zip(xp).zip(yp) {
-            (*target, borrow) = left.borrowing_sub(right, borrow);
+            (*target, borrow) = sub_word(left, right, borrow);
         }
 
-        return borrow as usize;
+        return usize::from(borrow);
     }
 
     let (w_blocks, w_tail) = wp.as_chunks_mut::<BLOCK>();
@@ -86,14 +142,14 @@ pub fn sub_n(wp: &mut [usize], xp: &[usize], yp: &[usize], n: usize) -> usize {
 
     for ((target, left), right) in w_blocks.iter_mut().zip(x_blocks).zip(y_blocks) {
         for word in 0..BLOCK {
-            (target[word], borrow) = left[word].borrowing_sub(right[word], borrow);
+            (target[word], borrow) = sub_word(left[word], right[word], borrow);
         }
     }
     for ((target, &left), &right) in w_tail.iter_mut().zip(x_tail).zip(y_tail) {
-        (*target, borrow) = left.borrowing_sub(right, borrow);
+        (*target, borrow) = sub_word(left, right, borrow);
     }
 
-    borrow as usize
+    usize::from(borrow)
 }
 
 /// Multiply a slice by a single word, writing the result to a different slice.
@@ -308,18 +364,23 @@ fn mul_1_wide(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
 /// dependent). The result is normalized, that is, trailing zero words are removed.
 #[inline]
 pub fn to_twos_complement<const S: usize>(values: &mut SmallVec<[usize; S]>) {
-    // Negating is complementing after subtracting one: `-x == !x + 1 == !(x - 1)`.
-    let mut carry = true;
+    // Negating is complementing after subtracting one: `-x == !(x - 1)`. Words below the lowest
+    // set word are zero and stay zero, the borrow of the `- 1` dies in the lowest set word, which
+    // is thereby negated on its own, and every word above it is simply complemented; no carry
+    // travels between words at all.
+    let Some(lowest) = values.iter().position(|&value| value != 0) else {
+        // Only a zero value has no set word, which the contract excludes. Should it happen
+        // anyway, normalize to the empty representation of zero rather than leave a
+        // denormalized value behind.
+        debug_assert!(false, "should not be called on a zero value");
+        values.clear();
+        return;
+    };
 
-    for value in values.iter_mut() {
-        borrowing_sub_mut(value, 0, &mut carry);
+    values[lowest] = values[lowest].wrapping_neg();
+    for value in &mut values[lowest + 1..] {
         *value = !*value;
     }
-
-    // The borrow can only survive the loop when every word was zero, which the contract excludes.
-    // Should it happen anyway, all words are now zero and the loop below normalizes the value to
-    // the empty representation of zero, rather than leaving a denormalized value behind.
-    debug_assert!(!carry, "should not be called on a zero value");
 
     while let Some(0) = values.last() {
         values.pop();
@@ -338,12 +399,32 @@ pub fn to_twos_complement<const S: usize>(values: &mut SmallVec<[usize; S]>) {
 pub fn add_assign_slice(values: &mut [usize], rhs: &[usize]) -> bool {
     debug_assert_eq!(values.len(), rhs.len());
 
-    let mut carry = false;
-    for (value, rhs_value) in values.iter_mut().zip(rhs.iter()) {
-        carrying_add_mut(value, *rhs_value, &mut carry);
+    let shared = values.len().min(rhs.len());
+    let (values, rhs) = (&mut values[..shared], &rhs[..shared]);
+    let mut carry = Flag::default();
+
+    // Operands this short never fill a block, and the chunking is pure overhead for them.
+    if shared < BLOCK {
+        for (value, &rhs_value) in values.iter_mut().zip(rhs) {
+            (*value, carry) = add_word(*value, rhs_value, carry);
+        }
+
+        return usize::from(carry) == 1;
     }
 
-    carry
+    let (v_blocks, v_tail) = values.as_chunks_mut::<BLOCK>();
+    let (r_blocks, r_tail) = rhs.as_chunks::<BLOCK>();
+
+    for (value, rhs_value) in v_blocks.iter_mut().zip(r_blocks) {
+        for word in 0..BLOCK {
+            (value[word], carry) = add_word(value[word], rhs_value[word], carry);
+        }
+    }
+    for (value, &rhs_value) in v_tail.iter_mut().zip(r_tail) {
+        (*value, carry) = add_word(*value, rhs_value, carry);
+    }
+
+    usize::from(carry) == 1
 }
 
 /// Subtract `rhs` from `values` in place, both of the same length.
@@ -357,12 +438,72 @@ pub fn add_assign_slice(values: &mut [usize], rhs: &[usize]) -> bool {
 pub fn sub_assign_slice(values: &mut [usize], rhs: &[usize]) -> bool {
     debug_assert_eq!(values.len(), rhs.len());
 
-    let mut carry = false;
-    for (value, rhs_value) in values.iter_mut().zip(rhs.iter()) {
-        borrowing_sub_mut(value, *rhs_value, &mut carry);
+    let shared = values.len().min(rhs.len());
+    let (values, rhs) = (&mut values[..shared], &rhs[..shared]);
+    let mut borrow = Flag::default();
+
+    // Operands this short never fill a block, and the chunking is pure overhead for them.
+    if shared < BLOCK {
+        for (value, &rhs_value) in values.iter_mut().zip(rhs) {
+            (*value, borrow) = sub_word(*value, rhs_value, borrow);
+        }
+
+        return usize::from(borrow) == 1;
     }
 
-    carry
+    let (v_blocks, v_tail) = values.as_chunks_mut::<BLOCK>();
+    let (r_blocks, r_tail) = rhs.as_chunks::<BLOCK>();
+
+    for (value, rhs_value) in v_blocks.iter_mut().zip(r_blocks) {
+        for word in 0..BLOCK {
+            (value[word], borrow) = sub_word(value[word], rhs_value[word], borrow);
+        }
+    }
+    for (value, &rhs_value) in v_tail.iter_mut().zip(r_tail) {
+        (*value, borrow) = sub_word(*value, rhs_value, borrow);
+    }
+
+    usize::from(borrow) == 1
+}
+
+/// Subtract `values` from `rhs`, storing the result in `values`, both of the same length.
+///
+/// The mirror image of [`sub_assign_slice`]: it computes `values = rhs - values` where that one
+/// computes `values -= rhs`. Returns whether the subtraction borrows out of the top word.
+///
+/// # Panics
+///
+/// In debug mode, if the two slices have different lengths.
+#[inline]
+pub fn sub_from_slice(values: &mut [usize], rhs: &[usize]) -> bool {
+    debug_assert_eq!(values.len(), rhs.len());
+
+    let shared = values.len().min(rhs.len());
+    let (values, rhs) = (&mut values[..shared], &rhs[..shared]);
+    let mut borrow = Flag::default();
+
+    // Operands this short never fill a block, and the chunking is pure overhead for them.
+    if shared < BLOCK {
+        for (value, &rhs_value) in values.iter_mut().zip(rhs) {
+            (*value, borrow) = sub_word(rhs_value, *value, borrow);
+        }
+
+        return usize::from(borrow) == 1;
+    }
+
+    let (v_blocks, v_tail) = values.as_chunks_mut::<BLOCK>();
+    let (r_blocks, r_tail) = rhs.as_chunks::<BLOCK>();
+
+    for (value, rhs_value) in v_blocks.iter_mut().zip(r_blocks) {
+        for word in 0..BLOCK {
+            (value[word], borrow) = sub_word(rhs_value[word], value[word], borrow);
+        }
+    }
+    for (value, &rhs_value) in v_tail.iter_mut().zip(r_tail) {
+        (*value, borrow) = sub_word(rhs_value, *value, borrow);
+    }
+
+    usize::from(borrow) == 1
 }
 
 #[inline]
@@ -703,7 +844,7 @@ mod test {
     /// word at a time, with no block, no tail and no dispatch, so a mistake in any of that shows
     /// up as a disagreement here.
     mod against_reference {
-        use crate::integer::big::ops::building_blocks::{addmul_1, mul_1, sub_n, submul_1};
+        use crate::integer::big::ops::building_blocks::{add_assign_slice, addmul_1, mul_1, sub_assign_slice, sub_from_slice, sub_n, submul_1};
 
         use super::{cross_check_multipliers, cross_check_operands, cross_check_targets};
 
@@ -714,6 +855,24 @@ mod test {
             }
 
             borrow as usize
+        }
+
+        fn add_assign_reference(values: &mut [usize], rhs: &[usize]) -> bool {
+            let mut carry = false;
+            for (value, &rhs_value) in values.iter_mut().zip(rhs) {
+                (*value, carry) = value.carrying_add(rhs_value, carry);
+            }
+
+            carry
+        }
+
+        fn sub_assign_reference(values: &mut [usize], rhs: &[usize]) -> bool {
+            let mut borrow = false;
+            for (value, &rhs_value) in values.iter_mut().zip(rhs) {
+                (*value, borrow) = value.borrowing_sub(rhs_value, borrow);
+            }
+
+            borrow
         }
 
         fn mul_1_reference(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
@@ -762,6 +921,56 @@ mod test {
 
                     assert_eq!(routine, reference, "{left:?} - {right:?}, n = {n}");
                     assert_eq!(from_routine, from_reference, "{left:?} - {right:?}, n = {n}");
+                }
+            }
+        }
+
+        #[test]
+        fn test_add_assign_slice() {
+            for (left, right) in cross_check_operands() {
+                for n in 1..=left.len() {
+                    let mut from_routine = left.clone();
+                    let mut from_reference = left.clone();
+
+                    let routine = add_assign_slice(&mut from_routine[..n], &right[..n]);
+                    let reference = add_assign_reference(&mut from_reference[..n], &right[..n]);
+
+                    assert_eq!(routine, reference, "{left:?} += {right:?}, n = {n}");
+                    assert_eq!(from_routine, from_reference, "{left:?} += {right:?}, n = {n}");
+                }
+            }
+        }
+
+        #[test]
+        fn test_sub_assign_slice() {
+            for (left, right) in cross_check_operands() {
+                for n in 1..=left.len() {
+                    let mut from_routine = left.clone();
+                    let mut from_reference = left.clone();
+
+                    let routine = sub_assign_slice(&mut from_routine[..n], &right[..n]);
+                    let reference = sub_assign_reference(&mut from_reference[..n], &right[..n]);
+
+                    assert_eq!(routine, reference, "{left:?} -= {right:?}, n = {n}");
+                    assert_eq!(from_routine, from_reference, "{left:?} -= {right:?}, n = {n}");
+                }
+            }
+        }
+
+        #[test]
+        fn test_sub_from_slice() {
+            for (left, right) in cross_check_operands() {
+                for n in 1..=left.len() {
+                    let mut from_routine = left.clone();
+                    // The same subtraction through `sub_assign_slice`, with the operands the
+                    // other way around.
+                    let mut from_reference = right.clone();
+
+                    let routine = sub_from_slice(&mut from_routine[..n], &right[..n]);
+                    let reference = sub_assign_reference(&mut from_reference[..n], &left[..n]);
+
+                    assert_eq!(routine, reference, "{right:?} - {left:?}, n = {n}");
+                    assert_eq!(from_routine[..n], from_reference[..n], "{right:?} - {left:?}, n = {n}");
                 }
             }
         }
