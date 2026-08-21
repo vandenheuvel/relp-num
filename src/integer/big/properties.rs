@@ -92,34 +92,45 @@ impl<const S: usize> PartialOrd for Ubig<S> {
     }
 }
 
+/// Compare two well formed values by their words, most significant first.
+///
+/// The length is compared with an early return rather than in a `match` around the loop: writing
+/// it as a `match` makes the compiler compute the unequal length answer before it knows whether it
+/// needs it, which costs the equal length case, and that is the case that reaches the loop.
+///
+/// The loop zips before it reverses. Zipped slice iterators walk a single counter and read both
+/// words unchecked, so a word costs a load, a compare and a decrement, with no bounds check on
+/// either side. Reversing each side before zipping defeats that: it gives two independent cursors
+/// and roughly twice the loop body.
 #[must_use]
 #[inline]
 pub fn cmp(left: &[usize], right: &[usize]) -> Ordering {
     debug_assert!(is_well_formed(left));
     debug_assert!(is_well_formed(right));
 
-    match left.len().cmp(&right.len()) {
-        Ordering::Less => Ordering::Less,
-        Ordering::Equal => {
-            // TODO(PERFORMANCE): Check that bounds checks are not done twice.
-            for (left_word, right_word) in left.iter().zip(right.iter()).rev() {
-                match left_word.cmp(right_word) {
-                    Ordering::Less => return Ordering::Less,
-                    Ordering::Equal => {}
-                    Ordering::Greater => return Ordering::Greater,
-                }
-            }
-
-            Ordering::Equal
-        }
-        Ordering::Greater => Ordering::Greater,
+    // Neither value has a leading zero word, so the longer one is the larger one.
+    if left.len() != right.len() {
+        return left.len().cmp(&right.len());
     }
+
+    for (left_word, right_word) in left.iter().zip(right.iter()).rev() {
+        match left_word.cmp(right_word) {
+            Ordering::Less => return Ordering::Less,
+            Ordering::Equal => {}
+            Ordering::Greater => return Ordering::Greater,
+        }
+    }
+
+    Ordering::Equal
 }
 
 #[cfg(test)]
 mod test {
+    use std::cmp::Ordering;
+
     use crate::{NonZero, Sign, Signed, Ubig};
     use crate::integer::big::NonZeroUbig;
+    use crate::integer::big::properties::cmp;
 
     /// `Ubig` represents zero, so it is not unconditionally positive.
     ///
@@ -151,5 +162,33 @@ mod test {
             assert_eq!(big.signum(), Sign::Positive, "{value}");
             assert!(big.is_positive(), "{value}");
         }
+    }
+
+    /// Both halves of `cmp`: the word count decides, and only then the words themselves.
+    ///
+    /// The word loop runs from the most significant word down, so a difference high up decides the
+    /// comparison even when a lower word points the other way.
+    #[test]
+    fn test_cmp() {
+        assert_eq!(cmp(&[], &[]), Ordering::Equal);
+        assert_eq!(cmp(&[], &[1]), Ordering::Less);
+        assert_eq!(cmp(&[1], &[]), Ordering::Greater);
+
+        // A longer value is larger, whatever its words: neither has a leading zero word.
+        assert_eq!(cmp(&[1], &[usize::MAX, 1]), Ordering::Less);
+        assert_eq!(cmp(&[usize::MAX, 1], &[1]), Ordering::Greater);
+
+        assert_eq!(cmp(&[7], &[7]), Ordering::Equal);
+        assert_eq!(cmp(&[6], &[7]), Ordering::Less);
+        assert_eq!(cmp(&[7], &[6]), Ordering::Greater);
+
+        // The most significant word decides, against what the least significant one says.
+        assert_eq!(cmp(&[usize::MAX, 1], &[0, 2]), Ordering::Less);
+        assert_eq!(cmp(&[0, 2], &[usize::MAX, 1]), Ordering::Greater);
+
+        // Equal in the most significant word, decided by the one below it.
+        assert_eq!(cmp(&[1, 2, 3], &[2, 2, 3]), Ordering::Less);
+        assert_eq!(cmp(&[3, 2, 3], &[3, 1, 3]), Ordering::Greater);
+        assert_eq!(cmp(&[1, 2, 3], &[1, 2, 3]), Ordering::Equal);
     }
 }
