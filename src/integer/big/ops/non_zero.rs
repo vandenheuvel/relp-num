@@ -7,7 +7,6 @@ use smallvec::SmallVec;
 use crate::integer::big::BITS_PER_WORD;
 use crate::integer::big::ops::building_blocks::{add_assign_slice, addmul_1, borrowing_sub_mut, carrying_add_mut, is_well_formed, is_well_formed_non_zero, mul_1, sub_assign_slice, sub_from_slice, sub_n, to_twos_complement};
 use crate::integer::big::properties::cmp;
-use crate::rational::big::properties::cmp_single;
 
 #[inline]
 pub fn shr_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, bits: u32) {
@@ -347,31 +346,6 @@ pub unsafe fn sub_assign_result_positive<const S: usize>(
     }
 
     debug_assert!(is_well_formed(values));
-}
-
-#[inline]
-pub fn sub_assign_single_result_positive<const S: usize>(
-    values: &mut SmallVec<[usize; S]>, rhs: usize,
-) {
-    debug_assert!(is_well_formed_non_zero(values));
-    debug_assert_eq!(cmp_single(values, rhs), Ordering::Greater);
-
-    let mut carry = false;
-    borrowing_sub_mut(&mut values[0], rhs, &mut carry);
-    debug_assert!(is_well_formed_non_zero(values));
-
-    let mut index = 0;
-    while carry {
-        debug_assert!(values.len() > 1);
-        borrowing_sub_mut(&mut values[1 + index], 0, &mut carry);
-        index += 1;
-    }
-
-    while let Some(0) = values.last() {
-        values.pop();
-    }
-
-    debug_assert!(is_well_formed_non_zero(values));
 }
 
 #[inline]

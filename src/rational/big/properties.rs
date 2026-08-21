@@ -50,17 +50,6 @@ impl<const S: usize> Big<S> {
     }
 }
 
-#[inline]
-pub fn cmp_single(large: &[usize], small: usize) -> Ordering {
-    debug_assert!(!large.is_empty());
-
-    if large.len() > 1 {
-        Ordering::Greater
-    } else {
-        large[0].cmp(&small)
-    }
-}
-
 impl<const S: usize> PartialEq for Big<S> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {

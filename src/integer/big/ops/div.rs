@@ -248,6 +248,77 @@ pub unsafe fn div_assign_one_word<const S: usize>(values: &mut SmallVec<[usize; 
     }
 }
 
+/// The remainder of a division by a single word.
+///
+/// This is [`div_assign_one_word`] without the quotient: it neither writes to nor needs ownership
+/// of `values`, which is what a caller that only wants to reduce a value modulo a single word
+/// needs.
+///
+/// # Safety
+///
+/// `values` has to be well formed and not zero.
+#[inline]
+pub unsafe fn remainder_one_word(values: &[usize], rhs: usize) -> usize {
+    debug_assert!(is_well_formed_non_zero(values), "the operand has to be well formed and not zero");
+    debug_assert_ne!(rhs, 0);
+
+    if values.len() == 1 {
+        // SAFETY: There is exactly one word, so index zero is in bounds.
+        return unsafe { *values.get_unchecked(0) } % rhs;
+    }
+
+    // SAFETY: `values` is not empty, checked above, so the last word is in bounds.
+    let last = unsafe { *values.get_unchecked(values.len() - 1) };
+
+    let divisor_zeros = rhs.leading_zeros();
+    match divisor_zeros {
+        0 => {
+            // rhs > usize::MAX / 2, so the divisor is already normalized
+
+            // `div_preinv` needs a numerator whose quotient fits in a single word, so the running
+            // remainder has to start out smaller than the divisor.
+            let mut remainder = if last < rhs { last } else { last - rhs };
+
+            let rhs_inverse = invert(rhs);
+            for i in (0..(values.len() - 1)).rev() {
+                // SAFETY: `i` is smaller than the length.
+                let word = unsafe { *values.get_unchecked(i) };
+                (_, remainder) = div_preinv(remainder, word, rhs, rhs_inverse);
+            }
+
+            remainder
+        }
+        _ => {
+            // rhs <= usize::MAX / 2, so both operands are shifted left to normalize the divisor;
+            // the remainder comes out scaled by that same factor and is shifted back at the end.
+
+            let divisor = rhs << divisor_zeros;
+            let divisor_inverse = invert(divisor);
+            let bits_per_word_minus_divisor_zeros = BITS_PER_WORD - divisor_zeros;
+
+            // The word the shift pushes out of the top. It is smaller than `1 << (BITS_PER_WORD -
+            // 1)` and so smaller than the normalized divisor, as `div_preinv` requires.
+            let mut remainder = last >> bits_per_word_minus_divisor_zeros;
+            let mut higher = last;
+
+            for i in (1..values.len()).rev() {
+                // SAFETY: `i` is smaller than the length and at least one.
+                let lower = unsafe { *values.get_unchecked(i - 1) };
+                let shifted = (higher << divisor_zeros) | (lower >> bits_per_word_minus_divisor_zeros);
+                (_, remainder) = div_preinv(remainder, shifted, divisor, divisor_inverse);
+                higher = lower;
+            }
+
+            let (_, final_remainder) = div_preinv(
+                remainder, higher << divisor_zeros, divisor, divisor_inverse,
+            );
+
+            debug_assert_eq!(final_remainder & ((1 << divisor_zeros) - 1), 0);
+            final_remainder >> divisor_zeros
+        }
+    }
+}
+
 #[inline]
 pub fn div_preinv(high: usize, low: usize, divisor: usize, divisor_inverted: usize) -> (usize, usize) {
     let (quotient_low, quotient_high) = divisor_inverted.carrying_mul(high, 0);
@@ -331,6 +402,10 @@ pub fn div_assign_two_words<const S: usize>(
     mut divisor_high: usize, mut divisor_low: usize,
 ) {
     let zero_count = divisor_high.leading_zeros();
+    // The two arms are the same division; the first is worth stating separately because a divisor
+    // that is already normalized skips the shift of both operands entirely. Folding them together
+    // with an `unbounded_shr` for the shift that would be by a whole word costs that arm the
+    // specialisation, and measurably so: about four percent on a three to sixteen word operand.
     match zero_count {
         0 => {
             // divisor_high > usize::MAX / 2
@@ -605,9 +680,10 @@ pub fn divrem_3by2(
 mod test {
     use smallvec::{smallvec, SmallVec};
 
+    use crate::integer::big::BITS_PER_WORD;
     use crate::integer::big::io::from_str_radix;
     use crate::integer::big::ops::building_blocks::is_well_formed;
-    use crate::integer::big::ops::div::{div as div_by_odd_or_even, div_assign_n_words, div_assign_one_word, div_assign_two_words, div_preinv, invert};
+    use crate::integer::big::ops::div::{div as div_by_odd_or_even, div_assign_n_words, div_assign_one_word, div_assign_two_words, div_preinv, invert, remainder_one_word};
 
     #[test]
     fn test_div() {
@@ -809,10 +885,10 @@ mod test {
             // values that are a multiple of 2 ** 64 and so have a zero lowest word
             let low = match next() % 4 {
                 0 => 0,
-                1 => next().checked_shl((next() % 128) as u32).unwrap_or(0),
+                1 => next().unbounded_shl((next() % 128) as u32),
                 _ => next(),
             };
-            let high = next().checked_shr((next() % 128) as u32).unwrap_or(0);
+            let high = next().unbounded_shr((next() % 128) as u32);
             // Odd, nonzero, and of every magnitude, so all three branches are hit
             let divisor = (next() >> (next() % 64)) | 1;
 
@@ -1026,6 +1102,82 @@ mod test {
             div_assign_n_words(&mut y, &x);
             let expected = from_str_radix::<10, 8>("735738826730312422682248866495569766911262046946938858983516260451028363751515777406730177431644").unwrap();
             assert_eq!(y, expected);
+        }
+    }
+
+    /// Cross check `remainder_one_word` against `u128` arithmetic, over one and two word values.
+    ///
+    /// Both the normalized and the not normalized divisor branch are covered: the divisor is
+    /// shifted right by a random amount, so it is often small.
+    #[test]
+    fn test_remainder_one_word_against_u128() {
+        type SV = SmallVec<[usize; 8]>;
+
+        let mut state = 0x2545f4914f6cdd1d_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state as usize
+        };
+
+        for _ in 0..(1 << 14) {
+            let low = match next() % 4 {
+                0 => 0,
+                1 => next().unbounded_shl((next() % 128) as u32),
+                _ => next(),
+            };
+            let high = next().unbounded_shr((next() % 128) as u32);
+            let divisor = match next() % 4 {
+                // The two extremes of the normalized branch, and the boundary with the other one
+                0 => usize::MAX,
+                1 => 1 << (BITS_PER_WORD - 1),
+                2 => (1 << (BITS_PER_WORD - 1)) - 1,
+                _ => next() >> (next() % 64),
+            };
+            if divisor == 0 {
+                continue;
+            }
+
+            let mut values: SV = smallvec![low];
+            if high > 0 {
+                values.push(high);
+            } else if low == 0 {
+                continue;
+            }
+
+            let value = ((high as u128) << 64) | low as u128;
+            let expected = (value % divisor as u128) as usize;
+
+            assert_eq!(unsafe { remainder_one_word(&values, divisor) }, expected, "{value} % {divisor}");
+        }
+    }
+
+    /// A value of many words, so that the loops in `remainder_one_word` run more than once.
+    #[test]
+    fn test_remainder_one_word_many_words() {
+        type SV = SmallVec<[usize; 8]>;
+
+        // Both branches on a value that is a power of two, whose lowest words are all zero
+        let values: SV = smallvec![0, 0, 0, 1]; // 2 ** 192
+        // 2 ** 192 % 3 == 1, because 2 ** 192 == (3 - 1) ** 192 and the exponent is even
+        assert_eq!(unsafe { remainder_one_word(&values, 3) }, 1);
+        // 2 ** 192 has its top bit at position 192, so a divisor with its top bit set divides once
+        assert_eq!(unsafe { remainder_one_word(&values, 1 << (BITS_PER_WORD - 1)) }, 0);
+
+        // Cross check a five word value against repeated two word reductions
+        let values: SV = smallvec![
+            12384794773201432064, 64560677146, 18446744073709551615, 1, 7174888939365837514,
+        ];
+        for divisor in [3_usize, 7, 274177, usize::MAX, 1 << 63, (1 << 63) - 1] {
+            let mut expected = 0_u128;
+            for word in values.iter().rev() {
+                expected = ((expected << 64) | *word as u128) % divisor as u128;
+            }
+            assert_eq!(
+                unsafe { remainder_one_word(&values, divisor) }, expected as usize,
+                "divisor {divisor}",
+            );
         }
     }
 }

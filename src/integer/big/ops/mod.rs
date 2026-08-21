@@ -10,6 +10,8 @@ pub(crate) mod building_blocks;
 pub mod non_zero;
 pub mod div;
 pub mod normalize;
+#[cfg(test)]
+mod normalize_bench;
 
 
 impl<const S: usize> Add for Ubig<S> {

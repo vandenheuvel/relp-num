@@ -452,12 +452,12 @@ pub unsafe fn add_small<const S: usize>(
         } else {
             // SAFETY: The denominator is well formed and not zero by this function's contract,
             // and the right denominator is non zero because it is a fraction's denominator.
-            let (left, small, bits) = unsafe {
-                prepare_gcd_single::<S>(left_denominator, right_denominator)
+            let (small, bits) = unsafe {
+                prepare_gcd_single(left_denominator, right_denominator)
             };
-            // SAFETY: `prepare_gcd_single` returns the odd part of a well formed, non zero value,
-            // which is itself well formed and not zero.
-            let gcd = unsafe { gcd_single(left, small, bits) };
+            // SAFETY: The denominator is well formed and not zero, and `small` is the odd part of
+            // a non zero word and so odd itself.
+            let gcd = unsafe { gcd_single(left_denominator, small, bits) };
 
             mul_assign_single_non_zero(left_numerator, right_denominator / gcd);
 
@@ -583,12 +583,12 @@ pub unsafe fn sub_small<const S: usize>(
         } else {
             // SAFETY: The denominator is well formed and not zero by this function's contract,
             // and the right denominator is non zero because it is a fraction's denominator.
-            let (left, small, bits) = unsafe {
-                prepare_gcd_single::<S>(left_denominator, right_denominator)
+            let (small, bits) = unsafe {
+                prepare_gcd_single(left_denominator, right_denominator)
             };
-            // SAFETY: `prepare_gcd_single` returns the odd part of a well formed, non zero value,
-            // which is itself well formed and not zero.
-            let gcd = unsafe { gcd_single(left, small, bits) };
+            // SAFETY: The denominator is well formed and not zero, and `small` is the odd part of
+            // a non zero word and so odd itself.
+            let gcd = unsafe { gcd_single(left_denominator, small, bits) };
 
             mul_assign_single_non_zero(left_numerator, right_denominator / gcd);
 
