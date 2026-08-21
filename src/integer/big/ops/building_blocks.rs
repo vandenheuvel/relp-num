@@ -3,86 +3,12 @@
 //! Primitive operations on slices of words, used to implement the arbitrary precision integer
 //! types.
 //!
-//! A few of these operations have a hand written assembly implementation in
-//! `src/integer/big/ops/asm`. Those sources hard code the System V argument registers, an eight
-//! byte limb stride and ELF specific assembler directives, so `build.rs` compiles them only for
-//! 64 bit x86 ELF targets and sets the `ramp_asm` cfg exactly when it did. Every routine that has
-//! an assembly implementation also has a portable Rust implementation, suffixed `_fallback`, which
-//! is compiled unconditionally: it is what is called on every other target, it is what the
-//! cross-check tests at the bottom of this file compare the assembly against, and it is what is
-//! called under Miri, which cannot execute foreign functions.
+//! Four of them, [`sub_n`], [`mul_1`], [`addmul_1`] and [`submul_1`], are the inner loops those
+//! types spend most of their time in, and are written against what the code generator makes of a
+//! carry chain rather than in the most obvious way. Each is compared against a straightforward
+//! reference implementation in the tests at the bottom of this file.
 
 use smallvec::SmallVec;
-
-/// The assembly implementations, compiled from `src/integer/big/ops/asm/*.S` by `build.rs`.
-///
-/// The wrappers are safe: each checks the preconditions of the routine it calls, which are not
-/// checked by the assembly itself. `ramp_sub_n` falls through to a three word tail when `n == 0`,
-/// reading and writing out of bounds, while `ramp_mul_1`, `ramp_addmul_1` and `ramp_submul_1`
-/// always process a first word and then decrement `n`, looping about `2 ** 32` times when it
-/// started out as zero.
-#[cfg(all(ramp_asm, not(miri)))]
-mod asm {
-    unsafe extern "C" {
-        /// `wp[..n] = xp[..n] - yp[..n]`, returning the borrow out.
-        ///
-        /// `n` is declared `usize` rather than a 32 bit type on purpose: the routine does
-        /// `shr $2, %rcx` and `jrcxz` on the full 64 bit register, while the System V ABI leaves
-        /// the upper half of a register holding a 32 bit argument undefined.
-        fn ramp_sub_n(wp: *mut usize, xp: *const usize, yp: *const usize, n: usize) -> usize;
-        /// `wp[..n] = xp[..n] * vl`, returning the high word.
-        ///
-        /// `n` is declared `u32` because the routine reads it as `%edx` only; a `usize` argument
-        /// would be silently truncated. The wrapper rejects lengths that do not fit.
-        fn ramp_mul_1(wp: *mut usize, xp: *const usize, n: u32, vl: usize) -> usize;
-        /// `wp[..n] += xp[..n] * vl`, returning the carry out. `n` is read as `%edx` only.
-        fn ramp_addmul_1(wp: *mut usize, xp: *const usize, n: u32, vl: usize) -> usize;
-        /// `wp[..n] -= xp[..n] * vl`, returning the borrow out. `n` is read as `%edx` only.
-        fn ramp_submul_1(wp: *mut usize, xp: *const usize, n: u32, vl: usize) -> usize;
-    }
-
-    #[inline]
-    pub fn sub_n(wp: &mut [usize], xp: &[usize], yp: &[usize], n: usize) -> usize {
-        assert!(n >= 1, "the assembly reads out of bounds for a zero length operand");
-        assert!(wp.len() >= n && xp.len() >= n && yp.len() >= n, "operand too short");
-
-        // SAFETY: All three slices are at least `n` words long and `n` is not zero.
-        unsafe { ramp_sub_n(wp.as_mut_ptr(), xp.as_ptr(), yp.as_ptr(), n) }
-    }
-
-    #[inline]
-    pub fn mul_1(wp: &mut [usize], xp: &[usize], n: usize, vl: usize) -> usize {
-        let n = check(wp, xp, n);
-
-        // SAFETY: Both slices are at least `n` words long and `n` is neither zero nor truncated.
-        unsafe { ramp_mul_1(wp.as_mut_ptr(), xp.as_ptr(), n, vl) }
-    }
-
-    #[inline]
-    pub fn addmul_1(wp: &mut [usize], xp: &[usize], n: usize, vl: usize) -> usize {
-        let n = check(wp, xp, n);
-
-        // SAFETY: Both slices are at least `n` words long and `n` is neither zero nor truncated.
-        unsafe { ramp_addmul_1(wp.as_mut_ptr(), xp.as_ptr(), n, vl) }
-    }
-
-    #[inline]
-    pub fn submul_1(wp: &mut [usize], xp: &[usize], n: usize, vl: usize) -> usize {
-        let n = check(wp, xp, n);
-
-        // SAFETY: Both slices are at least `n` words long and `n` is neither zero nor truncated.
-        unsafe { ramp_submul_1(wp.as_mut_ptr(), xp.as_ptr(), n, vl) }
-    }
-
-    /// Check the preconditions shared by the three multiplication routines.
-    #[inline]
-    fn check(wp: &[usize], xp: &[usize], n: usize) -> u32 {
-        assert!(n >= 1, "the assembly loops about `2 ** 32` times for a zero length operand");
-        assert!(wp.len() >= n && xp.len() >= n, "operand too short");
-        // Would need `2 ** 32` words, so 32 GiB, of operand; the assembly reads `n` as `%edx`.
-        u32::try_from(n).expect("operand length does not fit in the assembly's word count")
-    }
-}
 
 #[must_use]
 pub fn is_well_formed(values: &[usize]) -> bool {
@@ -117,6 +43,19 @@ pub fn sub_2(left_high: usize, left_low: usize, right_high: usize, right_low: us
     (high, low)
 }
 
+/// The number of words the inner loops below handle at a time.
+///
+/// A carry chain is serial: every word waits on the flag the word before it produced, so there is
+/// no parallelism to unlock here. What a block buys is the loop overhead it amortises, and, for
+/// the subtraction, that the borrow stays in a register across the block instead of being written
+/// out and tested again at every back edge. Eight words is where the measurements stopped
+/// improving.
+const BLOCK: usize = 8;
+
+/// The routines below accumulate the product of two words in a `u128`, which holds it exactly only
+/// while a word is at most half that wide.
+const _: () = assert!(usize::BITS <= 64);
+
 /// Copying subtraction (not necessarily in place).
 ///
 /// Computes `wp[..n] = xp[..n] - yp[..n]` and returns the borrow out, which is `0` or `1`.
@@ -126,24 +65,32 @@ pub fn sub_2(left_high: usize, left_low: usize, right_high: usize, right_low: us
 /// If `n` is zero, or if any of the three slices is shorter than `n`.
 #[inline]
 pub fn sub_n(wp: &mut [usize], xp: &[usize], yp: &[usize], n: usize) -> usize {
-    #[cfg(all(ramp_asm, not(miri)))]
-    { asm::sub_n(wp, xp, yp, n) }
-    #[cfg(not(all(ramp_asm, not(miri))))]
-    { sub_n_fallback(wp, xp, yp, n) }
-}
-
-/// Portable implementation of [`sub_n`].
-#[cfg_attr(all(ramp_asm, not(miri)), allow(dead_code, reason = "only the cross-check tests call it"))]
-#[inline]
-pub fn sub_n_fallback(wp: &mut [usize], xp: &[usize], yp: &[usize], n: usize) -> usize {
     assert!(n >= 1, "should not be called on an empty operand");
     assert!(wp.len() >= n && xp.len() >= n && yp.len() >= n, "operand too short");
 
+    let (wp, xp, yp) = (&mut wp[..n], &xp[..n], &yp[..n]);
     let mut borrow = false;
-    for ((target, &left), &right) in wp[..n].iter_mut().zip(&xp[..n]).zip(&yp[..n]) {
-        let (value, new_borrow) = left.borrowing_sub(right, borrow);
-        *target = value;
-        borrow = new_borrow;
+
+    // Operands this short never fill a block, and the chunking is pure overhead for them.
+    if n < BLOCK {
+        for ((target, &left), &right) in wp.iter_mut().zip(xp).zip(yp) {
+            (*target, borrow) = left.borrowing_sub(right, borrow);
+        }
+
+        return borrow as usize;
+    }
+
+    let (w_blocks, w_tail) = wp.as_chunks_mut::<BLOCK>();
+    let (x_blocks, x_tail) = xp.as_chunks::<BLOCK>();
+    let (y_blocks, y_tail) = yp.as_chunks::<BLOCK>();
+
+    for ((target, left), right) in w_blocks.iter_mut().zip(x_blocks).zip(y_blocks) {
+        for word in 0..BLOCK {
+            (target[word], borrow) = left[word].borrowing_sub(right[word], borrow);
+        }
+    }
+    for ((target, &left), &right) in w_tail.iter_mut().zip(x_tail).zip(y_tail) {
+        (*target, borrow) = left.borrowing_sub(right, borrow);
     }
 
     borrow as usize
@@ -159,30 +106,66 @@ pub fn sub_n_fallback(wp: &mut [usize], xp: &[usize], yp: &[usize], n: usize) ->
 #[inline]
 pub fn mul_1(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
     let n = xp.len();
+    assert!(n >= 1, "should not be called on an empty operand");
+    assert!(wp.len() >= n, "operand too short");
+    let wp = &mut wp[..n];
 
-    #[cfg(all(ramp_asm, not(miri)))]
-    { asm::mul_1(wp, xp, n, vl) }
-    #[cfg(not(all(ramp_asm, not(miri))))]
-    { mul_1_fallback(wp, xp, n, vl) }
+    // An operand this short does not reach a block to begin with, and would never earn back the
+    // load and branch of the feature test below.
+    if n < BLOCK {
+        return mul_1_words(wp, xp, vl, 0);
+    }
+
+    mul_1_long(wp, xp, vl)
 }
 
-/// Portable implementation of [`mul_1`].
-#[cfg_attr(all(ramp_asm, not(miri)), allow(dead_code, reason = "only the cross-check tests call it"))]
-#[inline]
-pub fn mul_1_fallback(wp: &mut [usize], xp: &[usize], n: usize, vl: usize) -> usize {
-    assert!(n >= 1, "should not be called on an empty operand");
-    assert!(wp.len() >= n && xp.len() >= n, "operand too short");
+/// The part of [`mul_1`] a short operand never reaches.
+///
+/// Kept out of line so that what is left of [`mul_1`] is small enough for its callers to inline,
+/// which on a one or two word operand is worth more than everything the block loop does. The other
+/// three routines here have one path fewer and no feature test, and stay under that bar as they
+/// are.
+fn mul_1_long(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
+    #[cfg(target_arch = "x86_64")]
+    if has_wide_multiply() {
+        // SAFETY: `bmi2` was just detected on this processor.
+        return unsafe { mul_1_wide(wp, xp, vl) };
+    }
 
-    let mut carry = 0;
-    for (target, &value) in wp[..n].iter_mut().zip(&xp[..n]) {
-        // Computes `value * vl + carry`, which is at most `(2 ** BITS - 1) ** 2 + 2 ** BITS - 1`
-        // and as such always fits in the two words returned.
-        let (low, high) = value.carrying_mul(vl, carry);
-        *target = low;
-        carry = high;
+    mul_1_blocks(wp, xp, vl)
+}
+
+/// [`mul_1`] one word at a time, picking up an incoming carry and returning the outgoing one.
+///
+/// The largest value the accumulator takes is `(2 ** BITS - 1) ** 2 + (2 ** BITS - 1)`, which is
+/// below `2 ** (2 * BITS)`, so the double width product never overflows.
+///
+/// Always inlined for the reason given on [`mul_1_wide`].
+#[inline(always)]
+fn mul_1_words(wp: &mut [usize], xp: &[usize], vl: usize, mut carry: usize) -> usize {
+    for (target, &value) in wp.iter_mut().zip(xp) {
+        let accumulator = value as u128 * vl as u128 + carry as u128;
+        *target = accumulator as usize;
+        carry = (accumulator >> usize::BITS) as usize;
     }
 
     carry
+}
+
+/// [`mul_1_words`] a block at a time, with a word at a time tail.
+///
+/// Always inlined for the reason given on [`mul_1_wide`].
+#[inline(always)]
+fn mul_1_blocks(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
+    let (w_blocks, w_tail) = wp.as_chunks_mut::<BLOCK>();
+    let (x_blocks, x_tail) = xp.as_chunks::<BLOCK>();
+
+    let mut carry = 0;
+    for (target, value) in w_blocks.iter_mut().zip(x_blocks) {
+        carry = mul_1_words(target, value, vl, carry);
+    }
+
+    mul_1_words(w_tail, x_tail, vl, carry)
 }
 
 /// Add the product of a slice and a single word to another slice.
@@ -195,28 +178,37 @@ pub fn mul_1_fallback(wp: &mut [usize], xp: &[usize], n: usize, vl: usize) -> us
 #[inline]
 pub fn addmul_1(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
     let n = xp.len();
-
-    #[cfg(all(ramp_asm, not(miri)))]
-    { asm::addmul_1(wp, xp, n, vl) }
-    #[cfg(not(all(ramp_asm, not(miri))))]
-    { addmul_1_fallback(wp, xp, n, vl) }
-}
-
-/// Portable implementation of [`addmul_1`].
-#[cfg_attr(all(ramp_asm, not(miri)), allow(dead_code, reason = "only the cross-check tests call it"))]
-#[inline]
-pub fn addmul_1_fallback(wp: &mut [usize], xp: &[usize], n: usize, vl: usize) -> usize {
     assert!(n >= 1, "should not be called on an empty operand");
-    assert!(wp.len() >= n && xp.len() >= n, "operand too short");
+    assert!(wp.len() >= n, "operand too short");
+    let wp = &mut wp[..n];
+
+    if n < BLOCK {
+        return addmul_1_words(wp, xp, vl, 0);
+    }
+
+    let (w_blocks, w_tail) = wp.as_chunks_mut::<BLOCK>();
+    let (x_blocks, x_tail) = xp.as_chunks::<BLOCK>();
 
     let mut carry = 0;
-    for (target, &value) in wp[..n].iter_mut().zip(&xp[..n]) {
-        let (low, high) = value.carrying_mul(vl, carry);
-        let (new_value, overflow) = target.overflowing_add(low);
-        *target = new_value;
-        // `high` equals `usize::MAX` only when `low` is zero, in which case the addition above
-        // does not overflow, so this addition never does either.
-        carry = high + overflow as usize;
+    for (target, value) in w_blocks.iter_mut().zip(x_blocks) {
+        carry = addmul_1_words(target, value, vl, carry);
+    }
+
+    addmul_1_words(w_tail, x_tail, vl, carry)
+}
+
+/// [`addmul_1`] one word at a time, picking up an incoming carry and returning the outgoing one.
+///
+/// One accumulator absorbs the product, the word it is added to and the incoming carry all at
+/// once: the largest value it can take is `(2 ** BITS - 1) ** 2 + 2 * (2 ** BITS - 1)`, which is
+/// exactly `2 ** (2 * BITS) - 1`. Splitting the product into two words first, and only then adding
+/// the target to the low one, means the same work plus an overflow to fold back into the carry.
+#[inline]
+fn addmul_1_words(wp: &mut [usize], xp: &[usize], vl: usize, mut carry: usize) -> usize {
+    for (target, &value) in wp.iter_mut().zip(xp) {
+        let accumulator = value as u128 * vl as u128 + *target as u128 + carry as u128;
+        *target = accumulator as usize;
+        carry = (accumulator >> usize::BITS) as usize;
     }
 
     carry
@@ -246,31 +238,68 @@ pub fn submul_slice(value: &mut [usize], rhs: &[usize], rhs_value: usize) -> usi
 #[inline]
 pub fn submul_1(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
     let n = xp.len();
-
-    #[cfg(all(ramp_asm, not(miri)))]
-    { asm::submul_1(wp, xp, n, vl) }
-    #[cfg(not(all(ramp_asm, not(miri))))]
-    { submul_1_fallback(wp, xp, n, vl) }
-}
-
-/// Portable implementation of [`submul_1`].
-#[cfg_attr(all(ramp_asm, not(miri)), allow(dead_code, reason = "only the cross-check tests call it"))]
-#[inline]
-pub fn submul_1_fallback(wp: &mut [usize], xp: &[usize], n: usize, vl: usize) -> usize {
     assert!(n >= 1, "should not be called on an empty operand");
-    assert!(wp.len() >= n && xp.len() >= n, "operand too short");
+    assert!(wp.len() >= n, "operand too short");
+    let wp = &mut wp[..n];
+
+    if n < BLOCK {
+        return submul_1_words(wp, xp, vl, 0);
+    }
+
+    let (w_blocks, w_tail) = wp.as_chunks_mut::<BLOCK>();
+    let (x_blocks, x_tail) = xp.as_chunks::<BLOCK>();
 
     let mut borrow = 0;
-    for (target, &value) in wp[..n].iter_mut().zip(&xp[..n]) {
-        let (low, high) = value.carrying_mul(vl, borrow);
-        let (new_value, overflow) = target.overflowing_sub(low);
-        *target = new_value;
-        // `high` equals `usize::MAX` only when `low` is zero, in which case the subtraction above
-        // does not underflow, so this addition never overflows.
-        borrow = high + overflow as usize;
+    for (target, value) in w_blocks.iter_mut().zip(x_blocks) {
+        borrow = submul_1_words(target, value, vl, borrow);
+    }
+
+    submul_1_words(w_tail, x_tail, vl, borrow)
+}
+
+/// [`submul_1`] one word at a time, picking up an incoming borrow and returning the outgoing one.
+///
+/// The product and the incoming borrow share an accumulator the way they do in [`addmul_1_words`],
+/// but the target cannot join them, because it is subtracted rather than added.
+#[inline]
+fn submul_1_words(wp: &mut [usize], xp: &[usize], vl: usize, mut borrow: usize) -> usize {
+    for (target, &value) in wp.iter_mut().zip(xp) {
+        let accumulator = value as u128 * vl as u128 + borrow as u128;
+        let (value, underflow) = target.overflowing_sub(accumulator as usize);
+        *target = value;
+        // The high word is `2 ** BITS - 1` only when the low word is zero, in which case the
+        // subtraction above cannot underflow, so this addition cannot overflow either.
+        borrow = (accumulator >> usize::BITS) as usize + underflow as usize;
     }
 
     borrow
+}
+
+/// Whether this processor has the wide multiply [`mul_1`] asks for.
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn has_wide_multiply() -> bool {
+    std::arch::is_x86_feature_detected!("bmi2")
+}
+
+/// [`mul_1_blocks`] compiled a second time, with `mulx` available.
+///
+/// `mul` writes the fixed `rdx:rax` pair, so neighbouring products cannot be in flight at the same
+/// time and each one needs a move to get its high word out of the way before the next. `mulx`
+/// names both of its outputs and leaves the flags alone, which on a long operand is worth more
+/// than everything else in this file put together. It is not part of the baseline `x86-64` target,
+/// so the only way to reach it is a second copy of the loop behind a runtime test.
+///
+/// The second copy only exists if the loop is inlined here: `#[target_feature]` applies to the
+/// body of this function, and the loop it calls is compiled for the baseline target like any
+/// other. Left to itself the code generator emits one shared copy of that loop and calls it from
+/// both places, which is correct, is not slow enough to look like a mistake, and quietly leaves no
+/// `mulx` in the binary at all. `#[inline]` is a hint and does not prevent that, while
+/// `#[inline(always)]` is a requirement and does, so the loop and everything it calls carry it.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "bmi2")]
+fn mul_1_wide(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
+    mul_1_blocks(wp, xp, vl)
 }
 
 /// Negate a value in place, interpreting it as a two's complement number.
@@ -354,7 +383,7 @@ pub fn borrowing_sub_mut(value: &mut usize, rhs: usize, carry: &mut bool) {
 mod test {
     use smallvec::{smallvec, SmallVec};
 
-    use crate::integer::big::ops::building_blocks::{add_2, addmul_1_fallback, is_well_formed, mul_1_fallback, sub_2, sub_n, sub_n_fallback, submul_1_fallback, to_twos_complement};
+    use crate::integer::big::ops::building_blocks::{add_2, addmul_1, is_well_formed, mul_1, sub_2, sub_n, submul_1, to_twos_complement};
 
     #[test]
     fn test_is_well_formed() {
@@ -443,6 +472,18 @@ mod test {
         to_twos_complement(&mut x);
         let expected: SV = smallvec![1];
         assert_eq!(x, expected);
+
+        // A borrow that propagates through the whole length
+        let mut x: SV = smallvec![0; 3];
+        assert_eq!(sub_n(&mut x, &[0, 0, 0], &[1, 0, 0], 3), 1);
+        let expected: SV = smallvec![usize::MAX; 3];
+        assert_eq!(x, expected);
+
+        // Only the first `n` words are touched
+        let mut x: SV = smallvec![7, 7, 7];
+        assert_eq!(sub_n(&mut x, &[5, 5, 5], &[1, 1, 1], 2), 0);
+        let expected: SV = smallvec![4, 4, 7];
+        assert_eq!(x, expected);
     }
 
     #[test]
@@ -500,7 +541,7 @@ mod test {
             vec![usize::MAX; 5],
             vec![usize::MAX; 6],
             vec![usize::MAX; 7],
-            // Longer than the four word unrolled loop of the assembly, with every tail length.
+            // Longer than one block, so that every tail length is covered.
             (1..=8).collect(),
             (1..=9).map(|i| usize::MAX - i).collect(),
             vec![usize::MAX; 11],
@@ -535,87 +576,65 @@ mod test {
     }
 
     #[test]
-    fn test_sub_n_fallback() {
-        type SV = SmallVec<[usize; 4]>;
-
-        let mut x: SV = smallvec![0, 0];
-        assert_eq!(sub_n_fallback(&mut x, &[2, 3], &[1, 1], 2), 0);
-        let expected: SV = smallvec![1, 2];
-        assert_eq!(x, expected);
-
-        // A borrow that propagates through the whole length
-        let mut x: SV = smallvec![0; 3];
-        assert_eq!(sub_n_fallback(&mut x, &[0, 0, 0], &[1, 0, 0], 3), 1);
-        let expected: SV = smallvec![usize::MAX; 3];
-        assert_eq!(x, expected);
-
-        // Only the first `n` words are touched
-        let mut x: SV = smallvec![7, 7, 7];
-        assert_eq!(sub_n_fallback(&mut x, &[5, 5, 5], &[1, 1, 1], 2), 0);
-        let expected: SV = smallvec![4, 4, 7];
-        assert_eq!(x, expected);
-    }
-
-    #[test]
-    fn test_mul_1_fallback() {
+    fn test_mul_1() {
         let mut x = vec![0; 3];
 
-        assert_eq!(mul_1_fallback(&mut x, &[1, 2, 3], 3, 0), 0);
+        assert_eq!(mul_1(&mut x, &[1, 2, 3], 0), 0);
         assert_eq!(x, vec![0, 0, 0]);
 
-        assert_eq!(mul_1_fallback(&mut x, &[1, 2, 3], 3, 1), 0);
+        assert_eq!(mul_1(&mut x, &[1, 2, 3], 1), 0);
         assert_eq!(x, vec![1, 2, 3]);
 
-        assert_eq!(mul_1_fallback(&mut x, &[usize::MAX, usize::MAX, usize::MAX], 3, usize::MAX), usize::MAX - 1);
+        assert_eq!(mul_1(&mut x, &[usize::MAX, usize::MAX, usize::MAX], usize::MAX), usize::MAX - 1);
         assert_eq!(x, vec![1, usize::MAX, usize::MAX]);
 
         let mut x = vec![0; 1];
-        assert_eq!(mul_1_fallback(&mut x, &[usize::MAX], 1, 2), 1);
+        assert_eq!(mul_1(&mut x, &[usize::MAX], 2), 1);
         assert_eq!(x, vec![usize::MAX - 1]);
     }
 
     #[test]
-    fn test_addmul_1_fallback() {
+    fn test_addmul_1() {
         // A carry that propagates through the whole length
         let mut x = vec![usize::MAX; 3];
-        assert_eq!(addmul_1_fallback(&mut x, &[1, 0, 0], 3, 1), 1);
+        assert_eq!(addmul_1(&mut x, &[1, 0, 0], 1), 1);
         assert_eq!(x, vec![0, 0, 0]);
 
         let mut x = vec![1, 2, 3];
-        assert_eq!(addmul_1_fallback(&mut x, &[1, 1, 1], 3, 0), 0);
+        assert_eq!(addmul_1(&mut x, &[1, 1, 1], 0), 0);
         assert_eq!(x, vec![1, 2, 3]);
 
         let mut x = vec![usize::MAX; 2];
-        assert_eq!(addmul_1_fallback(&mut x, &[usize::MAX, usize::MAX], 2, usize::MAX), usize::MAX);
-        // (2 ** 128 - 1) + (2 ** 64 - 1) * (2 ** 128 - 1) / ... checked against the assembly below
+        assert_eq!(addmul_1(&mut x, &[usize::MAX, usize::MAX], usize::MAX), usize::MAX);
+        // `(2 ** 128 - 1) + (2 ** 64 - 1) * (2 ** 128 - 1)`, truncated to two words
         assert_eq!(x, vec![0, usize::MAX]);
     }
 
     #[test]
-    fn test_submul_1_fallback() {
+    fn test_submul_1() {
         // A borrow that propagates through the whole length
         let mut x = vec![0; 3];
-        assert_eq!(submul_1_fallback(&mut x, &[1, 0, 0], 3, 1), 1);
+        assert_eq!(submul_1(&mut x, &[1, 0, 0], 1), 1);
         assert_eq!(x, vec![usize::MAX; 3]);
 
         let mut x = vec![1, 2, 3];
-        assert_eq!(submul_1_fallback(&mut x, &[1, 1, 1], 3, 0), 0);
+        assert_eq!(submul_1(&mut x, &[1, 1, 1], 0), 0);
         assert_eq!(x, vec![1, 2, 3]);
 
         let mut x = vec![usize::MAX; 3];
-        assert_eq!(submul_1_fallback(&mut x, &[usize::MAX, usize::MAX, usize::MAX], 3, 1), 0);
+        assert_eq!(submul_1(&mut x, &[usize::MAX, usize::MAX, usize::MAX], 1), 0);
         assert_eq!(x, vec![0, 0, 0]);
     }
 
-    /// Compare the portable implementations against a straightforward wide integer model.
+    /// Compare the routines against a straightforward wide integer model.
     ///
-    /// This is a second opinion on the fallbacks for targets without the assembly, where the
-    /// cross-check below does not run. The model is exact only while the operands fit in the
-    /// widest integer type, so it uses single word operands for the multiplications and at most
-    /// two word operands for the subtraction.
+    /// Where the cross-check below only says that two implementations agree, this says that they
+    /// are right. The model is exact only while the operands fit in the widest integer type, so it
+    /// uses single word operands for the multiplications and at most two word operands for the
+    /// subtraction.
     #[test]
     #[cfg(target_pointer_width = "64")]
-    fn test_fallback_against_model() {
+    fn test_against_model() {
         fn to_u128(words: &[usize]) -> u128 {
             words.iter().rev().fold(0_u128, |total, &word| (total << 64) | word as u128)
         }
@@ -632,7 +651,7 @@ mod test {
 
                         for n in 1..=2 {
                             let mut target = vec![0; n];
-                            let borrow = sub_n_fallback(&mut target, &left, &right, n);
+                            let borrow = sub_n(&mut target, &left, &right, n);
 
                             // Two words are as wide as the model gets, so the modulus is the
                             // largest value representable plus one, which doesn't fit itself.
@@ -651,14 +670,14 @@ mod test {
             for &multiplier in &words {
                 for &initial in &words {
                     let mut target = [0];
-                    let high = mul_1_fallback(&mut target, &[value], 1, multiplier);
+                    let high = mul_1(&mut target, &[value], multiplier);
                     assert_eq!(
                         to_u128(&target) + ((high as u128) << 64),
                         value as u128 * multiplier as u128,
                     );
 
                     let mut target = [initial];
-                    let carry = addmul_1_fallback(&mut target, &[value], 1, multiplier);
+                    let carry = addmul_1(&mut target, &[value], multiplier);
                     assert_eq!(
                         to_u128(&target) + ((carry as u128) << 64),
                         initial as u128 + value as u128 * multiplier as u128,
@@ -667,7 +686,7 @@ mod test {
                     // `initial - value * multiplier == target - borrow * 2 ** 64`, rearranged so
                     // that every term is non-negative and fits in a `u128`.
                     let mut target = [initial];
-                    let borrow = submul_1_fallback(&mut target, &[value], 1, multiplier);
+                    let borrow = submul_1(&mut target, &[value], multiplier);
                     assert_eq!(
                         initial as u128 + ((borrow as u128) << 64),
                         to_u128(&target) + value as u128 * multiplier as u128,
@@ -677,28 +696,72 @@ mod test {
         }
     }
 
-    /// Compare the portable implementations against the assembly on the same inputs.
+    /// Compare the routines against a reference implementation on the same inputs.
     ///
-    /// Only compiled where the assembly is compiled in, which is where both implementations exist.
-    #[cfg(all(ramp_asm, not(miri)))]
-    mod against_assembly {
-        use crate::integer::big::ops::building_blocks::{addmul_1_fallback, asm, mul_1_fallback, sub_n_fallback, submul_1_fallback};
+    /// The routines handle their words in blocks, and [`mul_1`] has a second copy of its loop for
+    /// processors with a wide multiply. The references below are the same arithmetic written one
+    /// word at a time, with no block, no tail and no dispatch, so a mistake in any of that shows
+    /// up as a disagreement here.
+    mod against_reference {
+        use crate::integer::big::ops::building_blocks::{addmul_1, mul_1, sub_n, submul_1};
 
         use super::{cross_check_multipliers, cross_check_operands, cross_check_targets};
+
+        fn sub_n_reference(wp: &mut [usize], xp: &[usize], yp: &[usize], n: usize) -> usize {
+            let mut borrow = false;
+            for ((target, &left), &right) in wp[..n].iter_mut().zip(&xp[..n]).zip(&yp[..n]) {
+                (*target, borrow) = left.borrowing_sub(right, borrow);
+            }
+
+            borrow as usize
+        }
+
+        fn mul_1_reference(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
+            let mut carry = 0;
+            for (target, &value) in wp.iter_mut().zip(xp) {
+                (*target, carry) = value.carrying_mul(vl, carry);
+            }
+
+            carry
+        }
+
+        fn addmul_1_reference(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
+            let mut carry = 0;
+            for (target, &value) in wp.iter_mut().zip(xp) {
+                let (low, high) = value.carrying_mul(vl, carry);
+                let (value, overflow) = target.overflowing_add(low);
+                *target = value;
+                carry = high + overflow as usize;
+            }
+
+            carry
+        }
+
+        fn submul_1_reference(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
+            let mut borrow = 0;
+            for (target, &value) in wp.iter_mut().zip(xp) {
+                let (low, high) = value.carrying_mul(vl, borrow);
+                let (value, underflow) = target.overflowing_sub(low);
+                *target = value;
+                borrow = high + underflow as usize;
+            }
+
+            borrow
+        }
 
         #[test]
         fn test_sub_n() {
             for (left, right) in cross_check_operands() {
                 for n in 1..=left.len() {
                     // Some extra words to catch writes past the end
-                    let mut from_asm = vec![0x5a; left.len() + 3];
-                    let mut from_rust = vec![0x5a; left.len() + 3];
+                    let mut from_routine = vec![0x5a; left.len() + 3];
+                    let mut from_reference = vec![0x5a; left.len() + 3];
 
-                    let asm_borrow = asm::sub_n(&mut from_asm, &left, &right, n);
-                    let rust_borrow = sub_n_fallback(&mut from_rust, &left, &right, n);
+                    let routine = sub_n(&mut from_routine, &left, &right, n);
+                    let reference = sub_n_reference(&mut from_reference, &left, &right, n);
 
-                    assert_eq!(asm_borrow, rust_borrow, "{left:?} - {right:?}, n = {n}");
-                    assert_eq!(from_asm, from_rust, "{left:?} - {right:?}, n = {n}");
+                    assert_eq!(routine, reference, "{left:?} - {right:?}, n = {n}");
+                    assert_eq!(from_routine, from_reference, "{left:?} - {right:?}, n = {n}");
                 }
             }
         }
@@ -708,14 +771,14 @@ mod test {
             for (left, _) in cross_check_operands() {
                 for multiplier in cross_check_multipliers() {
                     for n in 1..=left.len() {
-                        let mut from_asm = vec![0x5a; left.len() + 3];
-                        let mut from_rust = vec![0x5a; left.len() + 3];
+                        let mut from_routine = vec![0x5a; left.len() + 3];
+                        let mut from_reference = vec![0x5a; left.len() + 3];
 
-                        let asm_carry = asm::mul_1(&mut from_asm, &left, n, multiplier);
-                        let rust_carry = mul_1_fallback(&mut from_rust, &left, n, multiplier);
+                        let routine = mul_1(&mut from_routine, &left[..n], multiplier);
+                        let reference = mul_1_reference(&mut from_reference[..n], &left[..n], multiplier);
 
-                        assert_eq!(asm_carry, rust_carry, "{left:?} * {multiplier}, n = {n}");
-                        assert_eq!(from_asm, from_rust, "{left:?} * {multiplier}, n = {n}");
+                        assert_eq!(routine, reference, "{left:?} * {multiplier}, n = {n}");
+                        assert_eq!(from_routine, from_reference, "{left:?} * {multiplier}, n = {n}");
                     }
                 }
             }
@@ -727,14 +790,14 @@ mod test {
                 for multiplier in cross_check_multipliers() {
                     for n in 1..=left.len() {
                         for initial in cross_check_targets(left.len() + 3) {
-                            let mut from_asm = initial.clone();
-                            let mut from_rust = initial.clone();
+                            let mut from_routine = initial.clone();
+                            let mut from_reference = initial.clone();
 
-                            let asm_carry = asm::addmul_1(&mut from_asm, &left, n, multiplier);
-                            let rust_carry = addmul_1_fallback(&mut from_rust, &left, n, multiplier);
+                            let routine = addmul_1(&mut from_routine, &left[..n], multiplier);
+                            let reference = addmul_1_reference(&mut from_reference[..n], &left[..n], multiplier);
 
-                            assert_eq!(asm_carry, rust_carry, "{initial:?} += {left:?} * {multiplier}, n = {n}");
-                            assert_eq!(from_asm, from_rust, "{initial:?} += {left:?} * {multiplier}, n = {n}");
+                            assert_eq!(routine, reference, "{initial:?} += {left:?} * {multiplier}, n = {n}");
+                            assert_eq!(from_routine, from_reference, "{initial:?} += {left:?} * {multiplier}, n = {n}");
                         }
                     }
                 }
@@ -747,14 +810,14 @@ mod test {
                 for multiplier in cross_check_multipliers() {
                     for n in 1..=left.len() {
                         for initial in cross_check_targets(left.len() + 3) {
-                            let mut from_asm = initial.clone();
-                            let mut from_rust = initial.clone();
+                            let mut from_routine = initial.clone();
+                            let mut from_reference = initial.clone();
 
-                            let asm_borrow = asm::submul_1(&mut from_asm, &left, n, multiplier);
-                            let rust_borrow = submul_1_fallback(&mut from_rust, &left, n, multiplier);
+                            let routine = submul_1(&mut from_routine, &left[..n], multiplier);
+                            let reference = submul_1_reference(&mut from_reference[..n], &left[..n], multiplier);
 
-                            assert_eq!(asm_borrow, rust_borrow, "{initial:?} -= {left:?} * {multiplier}, n = {n}");
-                            assert_eq!(from_asm, from_rust, "{initial:?} -= {left:?} * {multiplier}, n = {n}");
+                            assert_eq!(routine, reference, "{initial:?} -= {left:?} * {multiplier}, n = {n}");
+                            assert_eq!(from_routine, from_reference, "{initial:?} -= {left:?} * {multiplier}, n = {n}");
                         }
                     }
                 }

@@ -17,18 +17,8 @@ gcd = "2.0"
 smallvec = { version = "1.6.1", features = ["const_generics"] }
 index-utils = "2.3"
 
-[features]
-default = ["asm"]
-# Hand written x86-64 assembly for the arbitrary precision integer inner loops. Every routine it
-# provides also has a portable Rust implementation, so turning this off costs speed, not
-# functionality, and drops the `cc` build dependency along with the need for a C toolchain.
-asm = ["dep:cc"]
-
 [dev-dependencies]
 criterion = "0.8.2"
-
-[build-dependencies]
-cc = { version = "1.0", optional = true }
 
 [[bench]]
 name = "criterion"
