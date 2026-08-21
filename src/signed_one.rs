@@ -1,20 +1,32 @@
 //! # Signed One
+//!
+//! A type that is always one or minus one.
+use std::cmp::Ordering;
 use std::fmt;
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
-use crate::NonZero;
+use crate::{Negateable, NonZero, Sign, Signed};
 
-/// A type representing the value `1` or `-1`.
+/// # SignedOne
+///
+/// A number that is either `1` or `-1`, stored in a single byte.
 ///
 /// Can be used when a type from the `MatrixProvider` can only have the value `1` or `-1`, such as
-/// with some network problems, where an arc is either incoming or outgoing.
-#[derive(Eq, PartialEq, Copy, Clone, Default)]
+/// with some network problems, where an arc is either incoming or outgoing. The incidence matrix of
+/// a network holds nothing but these two values, and storing a rational number for each of them
+/// wastes both space and time. This type stores the coefficient in a byte and lets
+/// [`Widen`](crate::Widen) apply it to a wide accumulator directly: multiplying by `PlusOne` is a
+/// clone, multiplying by `MinusOne` is a clone and a sign flip, never a multiplication.
+///
+/// The variants are *not* declared in increasing numeric order, so the derived [`Ord`] would be
+/// wrong; the impl below compares the discriminants instead, like [`Sign`] does.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Default)]
 pub enum SignedOne {
     /// +1.
     #[default]
-    PlusOne,
+    PlusOne = 1,
     /// -1.
-    MinusOne,
+    MinusOne = -1,
 }
 
 impl num_traits::One for SignedOne {
@@ -38,6 +50,38 @@ impl Mul<SignedOne> for SignedOne {
     }
 }
 
+/// This type is positive or negative; it is never zero.
+impl Signed for SignedOne {
+    #[inline]
+    fn signum(&self) -> Sign {
+        match self {
+            SignedOne::PlusOne => Sign::Positive,
+            SignedOne::MinusOne => Sign::Negative,
+        }
+    }
+}
+
+/// Both negations are representable: `PlusOne` and `MinusOne` are each other's additive inverse.
+impl Negateable for SignedOne {
+    #[inline]
+    fn negate(&mut self) {
+        *self = match self {
+            SignedOne::PlusOne => SignedOne::MinusOne,
+            SignedOne::MinusOne => SignedOne::PlusOne,
+        };
+    }
+}
+
+impl Neg for SignedOne {
+    type Output = Self;
+
+    #[inline]
+    fn neg(mut self) -> Self::Output {
+        Negateable::negate(&mut self);
+        self
+    }
+}
+
 impl NonZero for SignedOne {
     #[inline]
     fn is_not_zero(&self) -> bool {
@@ -45,6 +89,24 @@ impl NonZero for SignedOne {
     }
 }
 
+/// The variants are declared with `PlusOne` first, so a derived `Ord` would order `PlusOne` before
+/// `MinusOne`. Compare the discriminants instead, which gives `MinusOne < PlusOne`.
+impl Ord for SignedOne {
+    #[inline]
+    fn cmp(&self, other: &Self) -> Ordering {
+        (*self as i8).cmp(&(*other as i8))
+    }
+}
+
+impl PartialOrd for SignedOne {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// Debug forwards to `Display`, because `1` and `-1` read better in test output than the variant
+/// names.
 impl fmt::Debug for SignedOne {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self, f)
@@ -245,7 +307,76 @@ define_unsigned_ops!(u128);
 
 #[cfg(test)]
 mod test {
-    use crate::SignedOne;
+    use std::cmp::Ordering;
+
+    use crate::{Negateable, NonZero, Sign, Signed};
+    use crate::fixed::SignedOne;
+
+    #[test]
+    fn test_signed_one() {
+        assert_eq!(<SignedOne as num_traits::One>::one(), SignedOne::PlusOne);
+        assert_eq!(SignedOne::PlusOne * SignedOne::PlusOne, SignedOne::PlusOne);
+        assert_eq!(SignedOne::PlusOne * SignedOne::MinusOne, SignedOne::MinusOne);
+        assert_eq!(SignedOne::MinusOne * SignedOne::MinusOne, SignedOne::PlusOne);
+    }
+
+    #[test]
+    fn test_default() {
+        assert_eq!(SignedOne::default(), SignedOne::PlusOne);
+    }
+
+    #[test]
+    fn test_signum() {
+        assert_eq!(SignedOne::PlusOne.signum(), Sign::Positive);
+        assert_eq!(SignedOne::MinusOne.signum(), Sign::Negative);
+        assert!(SignedOne::PlusOne.is_positive());
+        assert!(!SignedOne::MinusOne.is_positive());
+        assert!(SignedOne::MinusOne.is_negative());
+        assert!(!SignedOne::PlusOne.is_negative());
+    }
+
+    #[test]
+    fn test_non_zero() {
+        assert!(SignedOne::PlusOne.is_not_zero());
+        assert!(SignedOne::MinusOne.is_not_zero());
+    }
+
+    #[test]
+    fn test_negate() {
+        assert_eq!(-SignedOne::PlusOne, SignedOne::MinusOne);
+        assert_eq!(-SignedOne::MinusOne, SignedOne::PlusOne);
+
+        let mut value = SignedOne::PlusOne;
+        value.negate();
+        assert_eq!(value, SignedOne::MinusOne);
+        value.negate();
+        assert_eq!(value, SignedOne::PlusOne);
+    }
+
+    /// A derived `Ord` would get this backwards, because `PlusOne` is declared first.
+    #[test]
+    fn test_ord() {
+        assert_eq!(SignedOne::MinusOne.cmp(&SignedOne::PlusOne), Ordering::Less);
+        assert_eq!(SignedOne::PlusOne.cmp(&SignedOne::MinusOne), Ordering::Greater);
+        assert!(SignedOne::MinusOne < SignedOne::PlusOne);
+
+        for a in [SignedOne::MinusOne, SignedOne::PlusOne] {
+            assert_eq!(a.cmp(&a), Ordering::Equal);
+            for b in [SignedOne::MinusOne, SignedOne::PlusOne] {
+                assert_eq!(a.partial_cmp(&b), Some(a.cmp(&b)));
+                assert_eq!(a.cmp(&b), b.cmp(&a).reverse());
+                assert_eq!(a == b, a.cmp(&b) == Ordering::Equal);
+            }
+        }
+    }
+
+    #[test]
+    fn test_display() {
+        assert_eq!(SignedOne::PlusOne.to_string(), "1");
+        assert_eq!(SignedOne::MinusOne.to_string(), "-1");
+        assert_eq!(format!("{:?}", SignedOne::PlusOne), "1");
+        assert_eq!(format!("{:?}", SignedOne::MinusOne), "-1");
+    }
 
     #[test]
     fn test_integer() {

@@ -3,6 +3,7 @@ name = "relp-num"
 version = "0.1.14"
 authors = ["Bram van den Heuvel <bram@vandenheuvel.online>"]
 edition = "2024"
+rust-version = "1.92"
 description = "Number types for the relp crate"
 repository = "https://github.com/vandenheuvel/relp-num"
 license = "GPL-3.0-only"
@@ -13,14 +14,21 @@ categories = ["algorithms", "science"]
 [dependencies]
 num-traits = "0.2.7"
 gcd = "2.0"
-smallvec = { version = "1.6.1", features = ["const_generics", "specialization"] }
-index-utils = "2.2.2"
+smallvec = { version = "1.6.1", features = ["const_generics"] }
+index-utils = "2.3"
+
+[features]
+default = ["asm"]
+# Hand written x86-64 assembly for the arbitrary precision integer inner loops. Every routine it
+# provides also has a portable Rust implementation, so turning this off costs speed, not
+# functionality, and drops the `cc` build dependency along with the need for a C toolchain.
+asm = ["dep:cc"]
 
 [dev-dependencies]
-criterion = { version = "0.8.2", features = ["real_blackbox"] }
+criterion = "0.8.2"
 
 [build-dependencies]
-cc = "1.0"
+cc = { version = "1.0", optional = true }
 
 [[bench]]
 name = "criterion"

@@ -1,4 +1,5 @@
-use criterion::{black_box, Criterion, criterion_group};
+use std::hint::black_box;
+use criterion::{Criterion, criterion_group};
 
 use relp_num::Prime;
 

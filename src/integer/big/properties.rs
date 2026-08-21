@@ -37,14 +37,18 @@ impl<const S: usize> Deref for NonZeroUbig<S> {
 }
 
 impl<const S: usize> Signed for Ubig<S> {
+    #[inline]
     fn signum(&self) -> Sign {
-        Sign::Positive
+        // Unlike `NonZeroUbig`, this type represents zero, so it is not always positive.
+        if self.is_not_zero() { Sign::Positive } else { Sign::Zero }
     }
 
+    #[inline]
     fn is_positive(&self) -> bool {
-        true
+        self.is_not_zero()
     }
 
+    #[inline]
     fn is_negative(&self) -> bool {
         false
     }

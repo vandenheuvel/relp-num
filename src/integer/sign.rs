@@ -4,6 +4,7 @@ use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZe
 use std::num::{NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize};
 
 use crate::Negateable;
+use crate::{NonZeroSign, NonZeroSigned};
 use crate::Sign;
 use crate::Signed;
 
@@ -66,6 +67,14 @@ macro_rules! non_zero_unsigned {
                 Sign::Positive
             }
         }
+
+        /// The type cannot represent zero, so there is no failure case.
+        impl NonZeroSigned for $ty {
+            #[inline]
+            fn non_zero_signum(&self) -> NonZeroSign {
+                NonZeroSign::Positive
+            }
+        }
     }
 }
 
@@ -96,6 +105,18 @@ macro_rules! non_zero_signed {
                     // SAFETY: Was non zero before, only sign gets flipped.
                     <$ty>::new_unchecked(-self.get())
                 };
+            }
+        }
+
+        /// The type cannot represent zero, so there is no failure case.
+        impl NonZeroSigned for $ty {
+            #[inline]
+            fn non_zero_signum(&self) -> NonZeroSign {
+                if self.get() > 0 {
+                    NonZeroSign::Positive
+                } else {
+                    NonZeroSign::Negative
+                }
             }
         }
     }

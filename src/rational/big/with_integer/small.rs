@@ -609,20 +609,32 @@ impl<const S: usize> Big<S> {
             Sign::Positive => {
                 let mut difference = self.denominator.inner().clone();
                 mul_assign_single_non_zero(&mut difference, rhs);
-                add_assign(self.numerator.inner_mut(), &difference)
+                // SAFETY: The `inner_mut` hands out the numerator's words. Adding a magnitude to a
+                // non zero numerator leaves it well formed and non zero, and leaves the fraction in
+                // lowest terms, because the added term is a multiple of the denominator and so
+                // shares no new factor with it.
+                unsafe { add_assign(self.numerator.inner_mut(), &difference) }
             },
             Sign::Zero => {
-                *self.numerator.inner_mut() = smallvec![rhs];
+                // SAFETY: `rhs` is not zero by the caller's guarantee, so a single word holding it
+                // is well formed. The denominator is one for a zero value, so the fraction stays in
+                // lowest terms, and the sign is set to match just below.
+                unsafe { *self.numerator.inner_mut() = smallvec![rhs] };
+                self.sign = Sign::Positive;
                 debug_assert!(self.denominator.is_one());
             }
             Sign::Negative => {
                 let mut difference = self.denominator.inner().clone();
                 mul_assign_single_non_zero(&mut difference, rhs);
-                let ordering = subtracting_cmp(self.numerator.inner_mut(), &difference);
+                // SAFETY: As in the positive arm, except that `subtracting_cmp` leaves the
+                // numerator holding the magnitude of the difference, which may be zero. The match
+                // below restores the sign, and with it the invariant, for each of the outcomes.
+                let ordering = unsafe { subtracting_cmp(self.numerator.inner_mut(), &difference) };
 
-                // ordering can't be equal
-                if ordering == Ordering::Less {
-                    self.sign.negate();
+                match ordering {
+                    Ordering::Less => self.sign.negate(),
+                    Ordering::Equal => self.set_zero(),
+                    Ordering::Greater => {}
                 }
             }
         }
@@ -636,22 +648,32 @@ impl<const S: usize> Big<S> {
             Sign::Positive => {
                 let mut difference = self.denominator.inner().clone();
                 mul_assign_single_non_zero(&mut difference, rhs);
-                let ordering = subtracting_cmp(self.numerator.inner_mut(), &difference);
+                // SAFETY: The `inner_mut` hands out the numerator's words, and `subtracting_cmp`
+                // leaves them holding the magnitude of the difference, which may be zero. The match
+                // below restores the sign, and with it the invariant, for each of the outcomes.
+                let ordering = unsafe { subtracting_cmp(self.numerator.inner_mut(), &difference) };
 
-                // ordering can't be equal
-                if ordering == Ordering::Less {
-                    self.sign.negate();
+                match ordering {
+                    Ordering::Less => self.sign.negate(),
+                    Ordering::Equal => self.set_zero(),
+                    Ordering::Greater => {}
                 }
             }
             Sign::Zero => {
-                *self.numerator.inner_mut() = smallvec![rhs];
+                // SAFETY: `rhs` is not zero by the caller's guarantee, so a single word holding it
+                // is well formed. The denominator is one for a zero value, so the fraction stays in
+                // lowest terms, and the sign is set to match just below.
+                unsafe { *self.numerator.inner_mut() = smallvec![rhs] };
                 self.sign = Sign::Negative;
                 debug_assert!(self.denominator.is_one());
             }
             Sign::Negative => {
                 let mut difference = self.denominator.inner().clone();
                 mul_assign_single_non_zero(&mut difference, rhs);
-                add_assign(self.numerator.inner_mut(), &difference)
+                // SAFETY: Adding a magnitude to a non zero numerator leaves it well formed and non
+                // zero, and the added term is a multiple of the denominator, so the fraction stays
+                // in lowest terms.
+                unsafe { add_assign(self.numerator.inner_mut(), &difference) }
             },
         }
     }
@@ -666,10 +688,17 @@ impl<const S: usize> NonZeroBig<S> {
 
         match self.sign {
             NonZeroSign::Positive => {
-                add_assign(self.numerator.inner_mut(), &difference)
+                // SAFETY: The `inner_mut` hands out the numerator's words. Adding a magnitude to a
+                // non zero numerator leaves it well formed and non zero, and the added term is a
+                // multiple of the denominator, so the fraction stays in lowest terms.
+                unsafe { add_assign(self.numerator.inner_mut(), &difference) }
             },
             NonZeroSign::Negative => {
-                let ordering = subtracting_cmp(self.numerator.inner_mut(), &difference);
+                // SAFETY: As above, except that `subtracting_cmp` leaves the numerator holding the
+                // magnitude of the difference. A `NonZeroBig` has no zero representation, so the
+                // equal case panics rather than leaving one behind, and the other two restore the
+                // sign to match the new magnitude.
+                let ordering = unsafe { subtracting_cmp(self.numerator.inner_mut(), &difference) };
 
                 match ordering {
                     Ordering::Less => self.sign.negate(),
@@ -688,7 +717,11 @@ impl<const S: usize> NonZeroBig<S> {
             NonZeroSign::Positive => {
                 let mut difference = self.denominator.inner().clone();
                 mul_assign_single_non_zero(&mut difference, rhs);
-                let ordering = subtracting_cmp(self.numerator.inner_mut(), &difference);
+                // SAFETY: The `inner_mut` hands out the numerator's words, and `subtracting_cmp`
+                // leaves them holding the magnitude of the difference. A `NonZeroBig` has no zero
+                // representation, so the equal case panics rather than leaving one behind, and the
+                // other two restore the sign to match the new magnitude.
+                let ordering = unsafe { subtracting_cmp(self.numerator.inner_mut(), &difference) };
 
                 match ordering {
                     Ordering::Less => self.sign.negate(),
@@ -699,7 +732,10 @@ impl<const S: usize> NonZeroBig<S> {
             NonZeroSign::Negative => {
                 let mut difference = self.denominator.inner().clone();
                 mul_assign_single_non_zero(&mut difference, rhs);
-                add_assign(self.numerator.inner_mut(), &difference)
+                // SAFETY: Adding a magnitude to a non zero numerator leaves it well formed and non
+                // zero, and the added term is a multiple of the denominator, so the fraction stays
+                // in lowest terms.
+                unsafe { add_assign(self.numerator.inner_mut(), &difference) }
             },
         }
     }
@@ -716,8 +752,11 @@ unsafe fn mul_assign_single_int_non_zero<const S: usize>(
     debug_assert!(is_well_formed_non_zero(denominator));
 
     if !rhs.is_one() {
-        if !is_one_non_zero(denominator) {
-            rhs = simplify_fraction_gcd_single(denominator, rhs);
+        // SAFETY: The denominator is non zero and so not empty.
+        if !unsafe { is_one_non_zero(denominator) } {
+            // SAFETY: The denominator is well formed, not empty and not one by the check above.
+            // `rhs` is not zero by the caller's guarantee and not one by the check above.
+            rhs = unsafe { simplify_fraction_gcd_single(denominator, rhs) };
         }
         mul_assign_single_non_zero(numerator, rhs);
     }
@@ -725,7 +764,7 @@ unsafe fn mul_assign_single_int_non_zero<const S: usize>(
 
 #[cfg(test)]
 mod test {
-    use num_traits::One;
+    use num_traits::{One, Zero};
 
     use crate::RB;
     use crate::rational::big::NonZeroBig;
@@ -767,5 +806,55 @@ mod test {
     #[allow(unused_must_use)]
     fn add_zero() {
         NonZeroBig::<1>::one() - 1;
+    }
+
+    /// `-a / b + n` can cancel exactly: `subtracting_cmp` then returns `Ordering::Equal` and leaves
+    /// the numerator empty, so the sign has to be reset as well.
+    #[test]
+    fn add_single_int_cancelling_to_zero() {
+        let mut x = RB!(-5);
+        x += 5_u64;
+        assert!(x.is_zero());
+        assert_eq!(x, RB!(0));
+        assert_eq!(format!("{:?}", x), "0");
+
+        // Same code path, reached through the signed subtraction of a positive value.
+        let mut y = RB!(5);
+        y += -5_i64;
+        assert!(y.is_zero());
+        assert_eq!(y, RB!(0));
+        assert_eq!(format!("{:?}", y), "0");
+    }
+
+    /// See `add_single_int_cancelling_to_zero`, the mirrored case `a / b - n`.
+    #[test]
+    fn sub_single_int_cancelling_to_zero() {
+        let mut x = RB!(5);
+        x -= 5_u64;
+        assert!(x.is_zero());
+        assert_eq!(x, RB!(0));
+        assert_eq!(format!("{:?}", x), "0");
+
+        let mut y = RB!(-5);
+        y -= -5_i64;
+        assert!(y.is_zero());
+        assert_eq!(y, RB!(0));
+        assert_eq!(format!("{:?}", y), "0");
+    }
+
+    /// Adding to zero has to set the sign, just like subtracting from zero does.
+    #[test]
+    fn add_single_int_to_zero_sets_sign() {
+        let mut x = RB!(0);
+        x += 1_u64;
+        assert!(!x.is_zero());
+        assert_eq!(x, RB!(1));
+        assert_eq!(format!("{:?}", x), "1");
+
+        let mut y = RB!(0);
+        y -= -7_i64;
+        assert!(!y.is_zero());
+        assert_eq!(y, RB!(7));
+        assert_eq!(format!("{:?}", y), "7");
     }
 }

@@ -3,7 +3,6 @@ use std::fmt;
 use std::fmt::Display;
 use std::ops::Neg;
 
-use crate::integer::big::ops::normalize::gcd_scalar;
 use crate::Negateable;
 use crate::non_zero::NonZeroSign;
 use crate::rational::Ratio;
@@ -318,25 +317,21 @@ mod test {
 
     #[test]
     fn test_new_signed() {
-        assert_eq!(Rational64::new_signed(Sign::Positive, 6, 18), R64!(1, 3));
-        assert_eq!(Rational64::new_signed(Sign::Zero, 0, 6), R64!(0));
-        assert_eq!(Rational64::new_signed(Sign::Negative, 9, 18), -R64!(1, 2));
+        assert_eq!(Rational64::new_signed(Sign::Positive, 6, 18), Some(R64!(1, 3)));
+        assert_eq!(Rational64::new_signed(Sign::Zero, 0, 6), Some(R64!(0)));
+        assert_eq!(Rational64::new_signed(Sign::Negative, 9, 18), Some(-R64!(1, 2)));
     }
 
-    // The invariants below are checked with `debug_assert!`, so they only panic when debug
-    // assertions are enabled.
+    /// A sign that disagrees with the numerator, or a zero denominator, has no value to return.
+    ///
+    /// These used to be `debug_assert!`s, so in release they built a value that violated the
+    /// type's invariant instead.
     #[test]
-    #[should_panic]
-    #[cfg(debug_assertions)]
-    fn test_new_signed_panic_1() {
-        Rational64::new_signed(Sign::Zero, 1, 1);
-    }
-
-    #[test]
-    #[should_panic]
-    #[cfg(debug_assertions)]
-    fn test_new_signed_panic_2() {
-        Rational64::new_signed(Sign::Positive, 0, 1);
+    fn test_new_signed_invalid() {
+        assert_eq!(Rational64::new_signed(Sign::Zero, 1, 1), None);
+        assert_eq!(Rational64::new_signed(Sign::Positive, 0, 1), None);
+        assert_eq!(Rational64::new_signed(Sign::Negative, 0, 1), None);
+        assert_eq!(Rational64::new_signed(Sign::Positive, 1, 0), None);
     }
 
     #[test]

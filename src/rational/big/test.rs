@@ -136,17 +136,18 @@ fn add() {
     let expected = Big8::from_str("76682181630963772103758511304607920049504288847839925168388021404881164840000000/80485319769746097976607076963162564582789311659779").unwrap();
     assert_eq!(&x + y, expected);
 
-    let mut x = Big8::try_from((
+    // Built unreduced on purpose, so that `simplify_fraction_gcd` has something to do
+    let mut x = Big8::from_raw_limbs(
         Sign::Positive,
         [13284626917187606528, 14353657804625640860, 11366567065457835548, 501247837944],
         [10945929334190035713, 13004504757950498814, 9],
-    )).unwrap();
+    );
     unsafe { simplify_fraction_gcd(x.numerator.inner_mut(), x.denominator.inner_mut()); }
-    let mut y = Big8::try_from((
+    let mut y = Big8::from_raw_limbs(
         Sign::Positive,
         [12384794773201432064, 64560677146],
         [12499693862731150083, 66111026448],
-    )).unwrap();
+    );
     unsafe { simplify_fraction_gcd(y.numerator.inner_mut(), y.denominator.inner_mut()); }
     let z = Big8::try_from((Sign::Negative, [4], [5])).unwrap();
 
@@ -410,11 +411,12 @@ fn test_display() {
     assert_eq!(RB!(1, 2).to_string(), "1/2");
     assert_eq!(RB!(-1, 2).to_string(), "-1/2");
 
-    let x = Big8::try_from((
+    // Deliberately not in lowest terms, to show the stored components
+    let x = Big8::from_raw_limbs(
         Sign::Positive,
         [13284626917187606528, 14353657804625640860, 11366567065457835548, 501247837944],
         [10945929334190035713, 13004504757950498814, 9],
-    )).unwrap();
+    );
     assert_eq!(x.to_string(), "3146383673420971972032023490593198871229613539715389096610302560000000/3302432073363697202172148890923583722241");
 
     let x = Big8::try_from((

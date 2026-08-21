@@ -8,9 +8,22 @@ pub enum SignChange {
     Zero,
 }
 
+// TODO(CORRECTNESS): The intermediate values below overflow for results that are representable.
+//
+// Bringing two fractions to a common denominator scales both numerators and the denominator up,
+// and each of those products is computed in the same narrow type that stores the result. The
+// result of `R8!(255, 2) + R8!(255, 2)` is `255`, which a `Rational8` represents without trouble,
+// but `255 * 2` does not fit in a `u8`: debug builds panic, release builds wrap and return `127`.
+// The same holds for the numerator products in `$sub_name` and for the denominator product that
+// follows them.
+//
+// Fixing this is a design decision that has to be made for the type as a whole: either every
+// intermediate is computed in a wider type (with no wider type available for the widest one), or
+// these functions report failure and the operators become checked. Until then, an operation whose
+// intermediates leave the range of the type is only correct by accident.
 macro_rules! rational {
     (
-        $add_name:ident, $sub_name:ident, $sub_direction_name:ident, $mul_name: ident, 
+        $add_name:ident, $sub_name:ident, $sub_direction_name:ident, $mul_name: ident,
         $uty:ty, $gcd_name:ident, $simplify_name:ident
     ) => {
         #[inline]
@@ -187,6 +200,17 @@ macro_rules! rational {
             debug_assert_ne!(left, 1);
             debug_assert_ne!(right, 1);
 
+            // Callers guarantee non zero arguments, as asserted above, but a zero that slips
+            // through in a release build would make the loop below spin forever: `x >> x.bits()`
+            // is a no-op, so `right` would never lose its factors of two and never reach `left`.
+            // `gcd(0, x) == gcd(x, 0) == x` in any case.
+            if left == 0 {
+                return right;
+            }
+            if right == 0 {
+                return left;
+            }
+
             let left_trailing = left.trailing_zeros();
             let right_trailing = right.trailing_zeros();
             let min_trailing = min(left_trailing, right_trailing);
@@ -219,3 +243,34 @@ rational!(add32, sub32, sub_direction32, mul32, u32, gcd32, simplify32);
 rational!(add64, sub64, sub_direction64, mul64, u64, gcd64, simplify64);
 rational!(add128, sub128, sub_direction128, mul128, u128, gcd128, simplify128);
 rational!(add_usize, sub_usize, sub_direction_usize, mul_usize, usize, gcd_usize, simplify_usize);
+
+#[cfg(test)]
+mod test {
+    use super::{gcd128, gcd16, gcd64, gcd8};
+
+    #[test]
+    fn test_gcd() {
+        assert_eq!(gcd8(4, 6), 2);
+        assert_eq!(gcd16(9, 6), 3);
+        assert_eq!(gcd64(2 * 3 * 5, 3 * 7), 3);
+        assert_eq!(gcd128(1 << 100, 1 << 60), 1 << 60);
+    }
+
+    /// Callers guarantee a non zero argument, so debug builds assert on it.
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic]
+    fn test_gcd_zero() {
+        gcd8(0, 6);
+    }
+
+    /// The assertions above are compiled out in release builds, where the loop wouldn't terminate
+    /// on a zero argument.
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn test_gcd_zero() {
+        assert_eq!(gcd8(0, 6), 6);
+        assert_eq!(gcd8(6, 0), 6);
+        assert_eq!(gcd64(0, 0), 0);
+    }
+}

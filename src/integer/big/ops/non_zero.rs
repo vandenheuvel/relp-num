@@ -33,7 +33,10 @@ pub fn shr_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, 
     } else {
         let remaining_words = original_number_words - words;
         unsafe {
-            ptr::copy(values[words..].as_ptr(), values.as_mut_ptr(), remaining_words);
+            // Derive both pointers from the same mutable borrow: evaluating `as_mut_ptr` would
+            // invalidate a pointer taken from a shared borrow of the same values.
+            let pointer = values.as_mut_ptr();
+            ptr::copy(pointer.add(words), pointer, remaining_words);
         }
         values.truncate(remaining_words);
     }
@@ -96,8 +99,13 @@ pub fn shl_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, 
         values.reserve(words);
         let old_length = values.len();
         unsafe {
+            // The words in `words..(words + old_length)` are uninitialized until the copy below
+            // fills them; `SmallVec::as_mut_ptr` does not build an intermediate slice over them.
+            // Both pointers are derived from the same mutable borrow, as evaluating `as_mut_ptr`
+            // would invalidate a pointer taken from a shared borrow of the same values.
             values.set_len(old_length + words);
-            ptr::copy(values.as_ptr(), values.as_mut_ptr().add(words),old_length);
+            let pointer = values.as_mut_ptr();
+            ptr::copy(pointer, pointer.add(words), old_length);
         }
     }
 
@@ -106,8 +114,13 @@ pub fn shl_mut<const S: usize>(values: &mut SmallVec<[usize; S]>, words: usize, 
     debug_assert!(is_well_formed_non_zero(values));
 }
 
+/// Shift left within the same number of words, returning the words that shift out of the top.
+///
+/// # Panics
+///
+/// In debug mode, if `bits` is zero or not smaller than the number of bits in a word.
 #[inline]
-pub unsafe fn shl_mut_overflowing<const S: usize>(values: &mut SmallVec<[usize; S]>, bits: u32) -> Option<NonZeroUsize> {
+pub fn shl_mut_overflowing<const S: usize>(values: &mut SmallVec<[usize; S]>, bits: u32) -> Option<NonZeroUsize> {
     debug_assert_ne!(bits, 0);
     debug_assert!(bits < BITS_PER_WORD);
 
@@ -123,9 +136,8 @@ pub unsafe fn shl_mut_overflowing<const S: usize>(values: &mut SmallVec<[usize; 
 
     for i in (1..original_number_words).rev() {
         values[i] <<= bits;
-        if bits > 0 {
-            values[i] |= values[i - 1] >> (BITS_PER_WORD - bits);
-        }
+        // `bits` is not zero, so this shift is not by the full width of a word.
+        values[i] |= values[i - 1] >> (BITS_PER_WORD - bits);
     }
 
     values[0] <<= bits;
@@ -214,7 +226,9 @@ pub(crate) fn mul_assign_single_non_zero<const S: usize>(
     values: &mut SmallVec<[usize; S]>, rhs: usize,
 ) {
     debug_assert!(!values.is_empty());
-    
+    // Multiplying by zero would leave a denormalized `[0, ..]` behind.
+    debug_assert_ne!(rhs, 0);
+
     let (low, mut previous_high) = values[0].carrying_mul(rhs, 0);
     values[0] = low;
     let mut carry = false;
@@ -226,12 +240,11 @@ pub(crate) fn mul_assign_single_non_zero<const S: usize>(
         previous_high = high;
     }
 
-    let (value_new, carry) = previous_high.carrying_add(0, carry);
+    // The high word of a product of two words is at most `usize::MAX - 1`, so adding the carry
+    // can't overflow and there is never a second word to push.
+    let value_new = previous_high + carry as usize;
     if value_new > 0 {
         values.push(value_new);
-        if carry {
-            values.push(1);
-        }
     }
 }
 
@@ -251,12 +264,20 @@ pub unsafe fn mul_non_zero<const S: usize>(values: &[usize], rhs: &[usize]) -> S
         (values, rhs)
     };
 
+    unsafe {
+        // The capacity reserved above covers these words. Setting the length before the
+        // multiplication is what gives the slice handed to `mul_1` provenance over the words it
+        // writes; every one of them is written there before it is read, and `usize` has no drop
+        // glue, so no value is dropped that was never initialized.
+        result.set_len(large.len());
+    }
     let carry = mul_1(&mut result, large, small[0]);
-    result.set_len(large.len());
     result.push(carry);
 
     for i in 1..small.len() {
-        let carry = addmul_1(&mut result[i..], large, large.len() as i32, small[i]);
+        // `result` is `large.len() + i` words long here, so this slice is exactly `large.len()`
+        // words, which is what `addmul_1` writes.
+        let carry = addmul_1(&mut result[i..], large, small[i]);
         result.push(carry);
     }
 
@@ -282,9 +303,7 @@ pub unsafe fn sub<const S: usize>(
     // Will be overwritten in the unsafe block, but this is safe and extends the length
     result.extend(std::iter::repeat_n(0, rhs.len()));
 
-    let mut carry = {
-        sub_n(&mut result, values, rhs, rhs.len() as i32) > 0
-    };
+    let mut carry = sub_n(&mut result, values, rhs, rhs.len()) > 0;
 
     while carry {
         debug_assert!(values.len() > rhs.len());
@@ -422,7 +441,7 @@ pub(crate) fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, r
             }
         }
         Ordering::Greater => {
-            let mut carry = unsafe { sub_assign_slice(&mut left[..right.len()], right) };
+            let mut carry = sub_assign_slice(&mut left[..right.len()], right);
             let mut i = 0;
             while carry && i + right.len() < left.len() {
                 borrowing_sub_mut(&mut left[i + right.len()], 0, &mut carry);
@@ -473,21 +492,31 @@ pub(crate) fn subtracting_cmp_ne_single<const S: usize>(left: &mut SmallVec<[usi
     }
 }
 
+/// # Safety
+///
+/// `values` must not be empty.
 #[must_use]
 #[inline]
 pub unsafe fn is_one_non_zero(values: &[usize]) -> bool {
     debug_assert!(is_well_formed(values));
     debug_assert!(!values.is_empty());
 
-    *values.get_unchecked(0) == 1 && values.len() == 1
+    // SAFETY: The caller guarantees that there is at least one word.
+    unsafe { *values.get_unchecked(0) == 1 && values.len() == 1 }
 }
 
+/// # Safety
+///
+/// Neither `left` nor `right` may be empty.
 #[inline]
 pub unsafe fn both_not_one_non_zero(left: &[usize], right: &[usize]) -> bool {
     debug_assert!(!left.is_empty());
     debug_assert!(!right.is_empty());
 
-    (*left.get_unchecked(0) != 1 || left.len() > 1) && (*right.get_unchecked(0) != 1 || right.len() > 1)
+    // SAFETY: The caller guarantees that both have at least one word.
+    unsafe {
+        (*left.get_unchecked(0) != 1 || left.len() > 1) && (*right.get_unchecked(0) != 1 || right.len() > 1)
+    }
 }
 
 #[cfg(test)]
@@ -595,25 +624,25 @@ mod test {
         type SV = SmallVec<[usize; 4]>;
 
         let mut x: SV = smallvec![0, 1];
-        let carry = unsafe { shl_mut_overflowing(&mut x, 1) };
+        let carry = shl_mut_overflowing(&mut x, 1);
         let expected: SV = smallvec![0, 2];
         assert_eq!(x, expected);
         assert_eq!(carry, None);
 
         let mut x: SV = smallvec![0, 0, 0, 1];
-        let carry = unsafe { shl_mut_overflowing(&mut x, 1) };
+        let carry = shl_mut_overflowing(&mut x, 1);
         let expected: SV = smallvec![0, 0, 0, 2];
         assert_eq!(x, expected);
         assert_eq!(carry, None);
 
         let mut x: SV = smallvec![0, 0, 2_usize.pow((mem::size_of::<usize>() * 8 - 2) as u32)];
-        let carry = unsafe { shl_mut_overflowing(&mut x, 1) };
+        let carry = shl_mut_overflowing(&mut x, 1);
         let expected: SV = smallvec![0, 0, 2_usize.pow((mem::size_of::<usize>() * 8 - 1) as u32)];
         assert_eq!(x, expected);
         assert_eq!(carry, None);
 
         let mut x: SV = smallvec![0, 0, 2_usize.pow((mem::size_of::<usize>() * 8 - 1) as u32)];
-        let carry = unsafe { shl_mut_overflowing(&mut x, 1) };
+        let carry = shl_mut_overflowing(&mut x, 1);
         let expected: SV = smallvec![0, 0, 0];
         assert_eq!(x, expected);
         assert_eq!(carry, Some(NonZeroUsize::new(1).unwrap()));

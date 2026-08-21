@@ -36,16 +36,52 @@ pub enum NonZeroSign {
     Negative = -1,
 }
 
-impl<T: NonZero + Signed> NonZeroSigned for T {
-    #[inline]
-    fn non_zero_signum(&self) -> NonZeroSign {
-        match self.signum() {
-            Sign::Positive => NonZeroSign::Positive,
-            Sign::Zero => panic!("attempt to convert a zero sign into a non zero sign"),
-            Sign::Negative => NonZeroSign::Negative,
+/// Derive the non zero sign from the general sign, panicking on zero.
+///
+/// Used for the number types that can represent zero, where the guarantee is a contract the
+/// caller has to keep rather than something the type enforces. Types that cannot be zero get a
+/// total implementation instead, and never reach a panic.
+macro_rules! non_zero_signed_by_panic {
+    ($($t:ty),+ $(,)?) => {$(
+        impl NonZeroSigned for $t {
+            #[inline]
+            #[track_caller]
+            fn non_zero_signum(&self) -> NonZeroSign {
+                match Signed::signum(self) {
+                    Sign::Positive => NonZeroSign::Positive,
+                    Sign::Negative => NonZeroSign::Negative,
+                    Sign::Zero => panic!(
+                        "attempt to take the non zero sign of a zero value of type {}",
+                        std::any::type_name::<$t>(),
+                    ),
+                }
+            }
+        }
+    )+}
+}
+
+non_zero_signed_by_panic!(i8, i16, i32, i64, i128, isize);
+non_zero_signed_by_panic!(u8, u16, u32, u64, u128, usize);
+non_zero_signed_by_panic!(Sign);
+
+/// Derive the non zero sign from a type that cannot represent zero.
+macro_rules! non_zero_signed_total {
+    ($t:ty, $sign:expr) => {
+        /// The type cannot represent zero, so there is no failure case.
+        impl NonZeroSigned for $t {
+            #[inline]
+            fn non_zero_signum(&self) -> NonZeroSign {
+                $sign(self)
+            }
         }
     }
 }
+
+non_zero_signed_total!(crate::fixed::One, |_: &crate::fixed::One| NonZeroSign::Positive);
+non_zero_signed_total!(crate::fixed::SignedOne, |value: &crate::fixed::SignedOne| match value {
+    crate::fixed::SignedOne::PlusOne => NonZeroSign::Positive,
+    crate::fixed::SignedOne::MinusOne => NonZeroSign::Negative,
+});
 
 impl Signed for NonZeroSign {
     fn signum(&self) -> Sign {
@@ -101,14 +137,18 @@ impl From<Sign> for NonZeroSign {
     }
 }
 
+/// Signs are totally ordered as `Negative < Positive`, matching the discriminants.
+impl Ord for NonZeroSign {
+    #[inline]
+    fn cmp(&self, other: &Self) -> Ordering {
+        (*self as i8).cmp(&(*other as i8))
+    }
+}
+
 impl PartialOrd for NonZeroSign {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match (self, other) {
-            (NonZeroSign::Positive, NonZeroSign::Positive) => None,
-            (NonZeroSign::Positive, NonZeroSign::Negative) => Some(Ordering::Greater),
-            (NonZeroSign::Negative, NonZeroSign::Positive) => Some(Ordering::Less),
-            (NonZeroSign::Negative, NonZeroSign::Negative) => None,
-        }
+        Some(self.cmp(other))
     }
 }
 
@@ -142,9 +182,25 @@ mod test {
     #[test]
     fn test_cmp() {
         assert!(NonZeroSign::Positive > NonZeroSign::Negative);
-        assert_eq!(NonZeroSign::Positive.partial_cmp(&NonZeroSign::Positive), None);
-        assert_eq!(NonZeroSign::Negative.partial_cmp(&NonZeroSign::Negative), None);
+        assert_eq!(NonZeroSign::Positive.partial_cmp(&NonZeroSign::Positive), Some(Ordering::Equal));
+        assert_eq!(NonZeroSign::Negative.partial_cmp(&NonZeroSign::Negative), Some(Ordering::Equal));
         assert_eq!(NonZeroSign::Negative.partial_cmp(&NonZeroSign::Positive), Some(Ordering::Less));
+    }
+
+    /// `a == b` must imply `partial_cmp(a, b) == Some(Equal)`.
+    #[test]
+    fn test_cmp_contract() {
+        for a in [NonZeroSign::Negative, NonZeroSign::Positive] {
+            assert_eq!(a.partial_cmp(&a), Some(Ordering::Equal));
+            assert!(a <= a);
+            assert!(a >= a);
+            for b in [NonZeroSign::Negative, NonZeroSign::Positive] {
+                assert_eq!(a == b, a.partial_cmp(&b) == Some(Ordering::Equal));
+                assert_eq!(a.partial_cmp(&b), Some(a.cmp(&b)));
+                assert_eq!(a.cmp(&b), b.cmp(&a).reverse());
+            }
+        }
+        assert!(NonZeroSign::Negative < NonZeroSign::Positive);
     }
 
     #[test]

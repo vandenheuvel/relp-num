@@ -3,8 +3,9 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 use num_traits::Zero;
 
-use crate::{One, Sign};
-use crate::integer::big::ops::non_zero::{add_assign, both_not_one_non_zero, is_one_non_zero, subtracting_cmp};
+use crate::Sign;
+use crate::fixed::One;
+use crate::integer::big::ops::non_zero::{add_assign, is_one_non_zero, subtracting_cmp};
 use crate::rational::big::Big;
 
 impl<const S: usize> From<One> for Big<S> {
@@ -63,21 +64,28 @@ impl<const S: usize> AddAssign<&One> for Big<S> {
                 debug_assert!(num_traits::One::is_one(&self.denominator));
             }
             Sign::Negative => {
-                let both_not_one = unsafe {
-                    // SAFETY: Both are non zero
-                    both_not_one_non_zero(&self.numerator, &self.denominator)
+                // `-a/b + 1 == 0` requires `a == b`, which in lowest terms means both are one.
+                // Testing only one of the two would cancel values such as `-1/2` and `-2`.
+                let is_minus_one = unsafe {
+                    // SAFETY: Both are well formed and non zero
+                    is_one_non_zero(self.numerator.inner())
+                        && is_one_non_zero(self.denominator.inner())
                 };
-                if both_not_one {
+                if is_minus_one {
+                    self.set_zero();
+                } else {
                     unsafe {
                         let sign_change = subtracting_cmp(
                             self.numerator.inner_mut(), self.denominator.inner(),
+                        );
+                        debug_assert_ne!(
+                            sign_change, Ordering::Equal,
+                            "only -1 + 1 cancels, and that was handled above",
                         );
                         if sign_change == Ordering::Less {
                             self.sign = Sign::Positive;
                         }
                     }
-                } else {
-                    self.set_zero();
                 }
             }
         }
@@ -239,5 +247,43 @@ impl<const S: usize> DivAssign<One> for Big<S> {
 impl<const S: usize> DivAssign<&One> for Big<S> {
     #[inline]
     fn div_assign(&mut self, _: &One) {
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::fixed::One;
+    use crate::{R8, RB, Rational8, RationalBig};
+
+    /// `-a/b + 1` is zero only when `a == b == 1`; every other negative value must survive.
+    ///
+    /// The guard used to fire whenever the numerator *or* the denominator was one, so values
+    /// such as `-1/2` and `-2` were silently collapsed to zero.
+    #[test]
+    fn add_one_to_negative() {
+        assert_eq!(RB!(-1) + One, RB!(0));
+        assert_eq!(RB!(-1, 2) + One, RB!(1, 2));
+        assert_eq!(RB!(-2) + One, RB!(-1));
+        assert_eq!(RB!(-3) + One, RB!(-2));
+        assert_eq!(RB!(-3, 2) + One, RB!(-1, 2));
+        assert_eq!(RB!(-1, 3) + One, RB!(2, 3));
+        assert_eq!(RB!(-5, 4) + One, RB!(-1, 4));
+        assert_eq!(RB!(-7, 3) + One, RB!(-4, 3));
+    }
+
+    /// The arbitrary precision and the fixed size implementations must agree.
+    #[test]
+    fn add_one_agrees_with_small() {
+        for numerator in -6_i8..=6 {
+            for denominator in 1_u8..=6 {
+                let small = Rational8::new(numerator, denominator).unwrap();
+                assert_eq!(
+                    RationalBig::from(small) + One,
+                    RationalBig::from(small + One),
+                    "{numerator}/{denominator} + 1",
+                );
+            }
+        }
+        assert_eq!(RB!(-1, 2) + One, RationalBig::from(R8!(-1, 2) + One));
     }
 }

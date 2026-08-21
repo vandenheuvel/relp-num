@@ -14,16 +14,25 @@
 ))]
 
 mod binary;
-pub use binary::Binary;
-
 mod zero;
-pub use zero::Zero;
-
 mod one;
-pub use one::One;
-
 mod signed_one;
-pub use signed_one::SignedOne;
+
+/// Number types whose value is fixed at compile time.
+///
+/// A matrix provider often stores coefficients that can only take one or two values: the incidence
+/// matrix of a network is nothing but `1`, `-1` and `0`. Storing such a coefficient in a rational
+/// number wastes both space and time, so these types store it in no space at all and let
+/// [`Widen`] apply it to a wide accumulator directly.
+///
+/// They live in their own module because [`One`](one::One) and [`Zero`](zero::Zero) would otherwise shadow the
+/// `num_traits` traits of the same name, which are in scope in most code that uses this crate.
+pub mod fixed {
+    pub use crate::binary::Binary;
+    pub use crate::one::One;
+    pub use crate::signed_one::SignedOne;
+    pub use crate::zero::Zero;
+}
 
 mod integer;
 pub use integer::factorization::prime::Prime;
@@ -56,10 +65,14 @@ pub use sign::Sign;
 pub use sign::Signed;
 pub use sign::Negateable;
 
+mod widen;
+pub use widen::Widen;
+
 mod traits;
 pub use traits::Abs;
 pub use traits::factorization::NonZeroFactorizable;
 pub use traits::factorization::NonZeroFactorization;
+pub use traits::factorization::FactorizationResidual;
 pub use traits::Field;
 pub use traits::FieldRef;
 pub use traits::OrderedField;
