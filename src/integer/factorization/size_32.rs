@@ -47,12 +47,20 @@ pub fn factorize(value: NonZeroU32) -> (Vec<(u32, u32)>, u32) {
         }
         // small
         let mut divisor = start(NR_SMALL_PRIMES) as u32;
-        let mut sqrt = ((x as f64).sqrt() + 2_f64) as u32;
         // `x` only changes when a factor is found, so its primality is only worth recomputing
         // there. Testing it in the loop condition instead costs a full Miller-Rabin per candidate
         // divisor, which dominates the loop by orders of magnitude.
+        //
+        // The square root of `x`, where trial division usually stops, is deliberately not
+        // computed: see `size_64::trial_division` for why the primality test already is that
+        // bound.
         let mut is_prime = x.is_prime();
-        while x > 1 && divisor <= sqrt && !is_prime {
+        while x > 1 && !is_prime {
+            debug_assert!(
+                divisor as u64 * divisor as u64 <= x as u64,
+                "a composite `x` always has a factor at or below its square root",
+            );
+
             let mut counter = 0;
             while x.is_multiple_of(divisor) {
                 x /= divisor;
@@ -61,7 +69,6 @@ pub fn factorize(value: NonZeroU32) -> (Vec<(u32, u32)>, u32) {
 
             if counter > 0 {
                 factors.push((divisor, counter));
-                sqrt = ((x as f64).sqrt() + 2_f64) as u32;
                 is_prime = x.is_prime();
             }
 

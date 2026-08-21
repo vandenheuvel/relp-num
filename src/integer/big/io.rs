@@ -491,9 +491,7 @@ impl<const S: usize> Ubig<S> {
                             // be larger than the number of bits in the fraction, a subnormal `f64`
                             // has an exponent of -1074.
                             let shift = as_ratio.exponent.unsigned_abs();
-                            let result = as_ratio.fraction.get()
-                                .checked_shr(shift)
-                                .unwrap_or(0);
+                            let result = as_ratio.fraction.get().unbounded_shr(shift);
 
                             Self::new_u128(result as u128)
                         }
@@ -547,7 +545,7 @@ pub(crate) fn bit_length(words: &[usize]) -> u32 {
 
     match words.last() {
         None => 0,
-        Some(&last) => (words.len() as u32 - 1) * BITS_PER_WORD + (BITS_PER_WORD - last.leading_zeros()),
+        Some(&last) => (words.len() as u32 - 1) * BITS_PER_WORD + last.bit_width(),
     }
 }
 
@@ -566,10 +564,11 @@ pub(crate) fn highest_word(words: &[usize]) -> (usize, u32) {
     debug_assert!(word_shift < words.len());
 
     let low = words[word_shift] >> bit_shift;
-    let high = if bit_shift > 0 && word_shift + 1 < words.len() {
-        words[word_shift + 1] << (BITS_PER_WORD - bit_shift)
-    } else {
-        0
+    // A `bit_shift` of zero would ask for a shift by the full width of a word, which is where
+    // `unbounded_shl` returns the zero the branch used to supply.
+    let high = match words.get(word_shift + 1) {
+        Some(&word) => word.unbounded_shl(BITS_PER_WORD - bit_shift),
+        None => 0,
     };
 
     (low | high, shift)
@@ -672,7 +671,7 @@ macro_rules! define_float_maker {
                 None => <$target>::zero(),
                 Some(last_value) => {
                     debug_assert_ne!(*last_value, 0);
-                    let bits_in_highest = BITS_PER_WORD - last_value.leading_zeros();
+                    let bits_in_highest = last_value.bit_width();
                     debug_assert!(bits_in_highest > 0);
                     let bits = (values.len() - 1) as u32 * BITS_PER_WORD + bits_in_highest;
                     debug_assert!(bits > 0);
@@ -686,7 +685,9 @@ macro_rules! define_float_maker {
                     let exponent = biased_exponent << $bits_in_fraction;
 
                     let mut copy = SmallVec::<[usize; S]>::from_slice(values);
-                    *copy.last_mut().unwrap() -= 1 << (bits_in_highest - 1);
+                    // The leading bit is implicit in the target's representation, so it is dropped
+                    // here rather than encoded.
+                    *copy.last_mut().unwrap() -= last_value.isolate_highest_one();
 
                     let remaining_bits = bits - 1;
                     let fraction = match remaining_bits.cmp(&$bits_in_fraction) {
@@ -700,15 +701,11 @@ macro_rules! define_float_maker {
                                 let (words, bits) = ((index / BITS_PER_WORD) as usize, index % BITS_PER_WORD);
                                 let highest_bit_lost = copy[words] & (1 << bits) > 0;
 
+                                // With `bits` at zero there is nothing below the bit that was
+                                // just tested, and the mask `unbounded_shr` returns is empty.
+                                let mask = usize::MAX.unbounded_shr(BITS_PER_WORD - bits);
                                 let any_other = copy[..words].iter().any(|&w| w != 0)
-                                    || {
-                                        if bits == 0 {
-                                            false
-                                        } else {
-                                            let mask = !0 >> (BITS_PER_WORD - bits);
-                                            mask & copy[words] > 0
-                                        }
-                                    };
+                                    || mask & copy[words] > 0;
 
                                 (highest_bit_lost, any_other)
                             };

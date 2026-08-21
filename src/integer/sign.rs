@@ -1,7 +1,6 @@
 //! # NonZero signs of integers
 use std::cmp::Ordering;
-use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
-use std::num::{NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize};
+use std::num::NonZero;
 
 use crate::Negateable;
 use crate::{NonZeroSign, NonZeroSigned};
@@ -9,7 +8,7 @@ use crate::Sign;
 use crate::Signed;
 
 macro_rules! unsigned {
-    ($ty:ty) => {
+    ($($ty:ty),+ $(,)?) => {$(
         impl Signed for $ty {
             #[inline]
             fn signum(&self) -> Sign {
@@ -20,18 +19,13 @@ macro_rules! unsigned {
                 }
             }
         }
-    }
+    )+}
 }
 
-unsigned!(u8);
-unsigned!(u16);
-unsigned!(u32);
-unsigned!(u64);
-unsigned!(u128);
-unsigned!(usize);
+unsigned!(u8, u16, u32, u64, u128, usize);
 
 macro_rules! signed {
-    ($ty:ty) => {
+    ($($ty:ty),+ $(,)?) => {$(
         impl Signed for $ty {
             #[inline]
             fn signum(&self) -> Sign {
@@ -57,19 +51,14 @@ macro_rules! signed {
                 }
             }
         }
-    }
+    )+}
 }
 
-signed!(i8);
-signed!(i16);
-signed!(i32);
-signed!(i64);
-signed!(i128);
-signed!(isize);
+signed!(i8, i16, i32, i64, i128, isize);
 
 macro_rules! non_zero_unsigned {
-    ($ty:ty) => {
-        impl Signed for $ty {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl Signed for NonZero<$ty> {
             #[inline]
             fn signum(&self) -> Sign {
                 Sign::Positive
@@ -77,25 +66,20 @@ macro_rules! non_zero_unsigned {
         }
 
         /// The type cannot represent zero, so there is no failure case.
-        impl NonZeroSigned for $ty {
+        impl NonZeroSigned for NonZero<$ty> {
             #[inline]
             fn non_zero_signum(&self) -> NonZeroSign {
                 NonZeroSign::Positive
             }
         }
-    }
+    )+}
 }
 
-non_zero_unsigned!(NonZeroU8);
-non_zero_unsigned!(NonZeroU16);
-non_zero_unsigned!(NonZeroU32);
-non_zero_unsigned!(NonZeroU64);
-non_zero_unsigned!(NonZeroU128);
-non_zero_unsigned!(NonZeroUsize);
+non_zero_unsigned!(u8, u16, u32, u64, u128, usize);
 
 macro_rules! non_zero_signed {
-    ($ty:ty) => {
-        impl Signed for $ty {
+    ($($ty:ty),+ $(,)?) => {$(
+        impl Signed for NonZero<$ty> {
             #[inline]
             fn signum(&self) -> Sign {
                 if self.get() > 0 {
@@ -106,7 +90,7 @@ macro_rules! non_zero_signed {
             }
         }
 
-        impl Negateable for $ty {
+        impl Negateable for NonZero<$ty> {
             #[inline]
             #[track_caller]
             fn negate(&mut self) {
@@ -116,15 +100,15 @@ macro_rules! non_zero_signed {
                 match self.get().checked_neg() {
                     Some(negated) => *self = unsafe {
                         // SAFETY: The negation of a non zero value is non zero.
-                        <$ty>::new_unchecked(negated)
+                        NonZero::new_unchecked(negated)
                     },
-                    None => panic!(concat!("cannot negate ", stringify!($ty), "::MIN")),
+                    None => panic!(concat!("cannot negate NonZero<", stringify!($ty), ">::MIN")),
                 }
             }
         }
 
         /// The type cannot represent zero, so there is no failure case.
-        impl NonZeroSigned for $ty {
+        impl NonZeroSigned for NonZero<$ty> {
             #[inline]
             fn non_zero_signum(&self) -> NonZeroSign {
                 if self.get() > 0 {
@@ -134,15 +118,10 @@ macro_rules! non_zero_signed {
                 }
             }
         }
-    }
+    )+}
 }
 
-non_zero_signed!(NonZeroI8);
-non_zero_signed!(NonZeroI16);
-non_zero_signed!(NonZeroI32);
-non_zero_signed!(NonZeroI64);
-non_zero_signed!(NonZeroI128);
-non_zero_signed!(NonZeroIsize);
+non_zero_signed!(i8, i16, i32, i64, i128, isize);
 
 #[cfg(test)]
 mod test {

@@ -359,49 +359,37 @@ macro_rules! rational_ord {
     }
 }
 
-/// Order a ratio whose magnitudes fit a doubled width integer.
-macro_rules! rational_requiring_wide {
-    ($name:ident, $uty:ty, $BITS:expr, $wide:ty, $sign:ident) => {
-        rational_ord!($name, $sign, |left: $uty, right: $uty| {
-            // The product of two `$uty` values always fits `$wide`, so this never overflows.
-            let wide = unsafe { (left as $wide).unchecked_mul(right as $wide) };
-            ((wide >> $BITS) as $uty, wide as $uty)
-        });
-    }
-}
-
-/// Order a ratio of `u128` magnitudes, for which no doubled width integer exists.
+/// Order a ratio by cross multiplying its magnitudes.
 ///
-/// The 256 bit products are computed as `(high, low)` pairs with [`u128::carrying_mul`] instead.
-/// That mirrors `rational_requiring_wide!` one width down, which forms the same pair by shifting a
-/// doubled width product, so both orders are the same cross multiplication and only the way the
-/// pair is obtained differs.
+/// The two products are the `(high, low)` pairs [`carrying_mul`](u64::carrying_mul) returns: with
+/// a zero carry it is a widening multiply, which every width has, including the widest one, where
+/// no doubled width integer exists to widen into.
 ///
 /// Comparing by the continued fraction expansion of the two ratios would avoid the wide product
 /// altogether, but it costs a division per term of the expansion rather than a single
 /// multiplication, and the number of terms is not bounded by anything better than the width.
-macro_rules! rational_widest {
-    ($name:ident, $sign:ident) => {
-        rational_ord!($name, $sign, |left: u128, right: u128| {
-            // `carrying_mul` returns the low half first; a zero carry makes it a widening multiply.
+macro_rules! rational_cross_multiplying_ord {
+    ($name:ident, $uty:ty, $sign:ident) => {
+        rational_ord!($name, $sign, |left: $uty, right: $uty| {
+            // `carrying_mul` returns the low half first.
             let (low, high) = left.carrying_mul(right, 0);
             (high, low)
         });
     }
 }
 
-rational_requiring_wide!(Rational8, u8, 8, u16, Sign);
-rational_requiring_wide!(Rational16, u16, 16, u32, Sign);
-rational_requiring_wide!(Rational32, u32, 32, u64, Sign);
-rational_requiring_wide!(Rational64, u64, 64, u128, Sign);
-rational_requiring_wide!(RationalUsize, usize, usize::BITS, u128, Sign);
-rational_widest!(Rational128, Sign);
-rational_requiring_wide!(NonZeroRational8, u8, 8, u16, NonZeroSign);
-rational_requiring_wide!(NonZeroRational16, u16, 16, u32, NonZeroSign);
-rational_requiring_wide!(NonZeroRational32, u32, 32, u64, NonZeroSign);
-rational_requiring_wide!(NonZeroRational64, u64, 64, u128, NonZeroSign);
-rational_requiring_wide!(NonZeroRationalUsize, usize, usize::BITS, u128, NonZeroSign);
-rational_widest!(NonZeroRational128, NonZeroSign);
+rational_cross_multiplying_ord!(Rational8, u8, Sign);
+rational_cross_multiplying_ord!(Rational16, u16, Sign);
+rational_cross_multiplying_ord!(Rational32, u32, Sign);
+rational_cross_multiplying_ord!(Rational64, u64, Sign);
+rational_cross_multiplying_ord!(RationalUsize, usize, Sign);
+rational_cross_multiplying_ord!(Rational128, u128, Sign);
+rational_cross_multiplying_ord!(NonZeroRational8, u8, NonZeroSign);
+rational_cross_multiplying_ord!(NonZeroRational16, u16, NonZeroSign);
+rational_cross_multiplying_ord!(NonZeroRational32, u32, NonZeroSign);
+rational_cross_multiplying_ord!(NonZeroRational64, u64, NonZeroSign);
+rational_cross_multiplying_ord!(NonZeroRationalUsize, usize, NonZeroSign);
+rational_cross_multiplying_ord!(NonZeroRational128, u128, NonZeroSign);
 
 macro_rules! rational_forward {
     ($name:ident) => {

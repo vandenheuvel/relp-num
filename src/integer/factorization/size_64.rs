@@ -102,12 +102,29 @@ pub fn factorize<
 // TODO(PERFORMANCE): Make `start` a const parameter
 fn trial_division<const END: u64>(mut x: u64, start: u64, factors: &mut Vec<(u64, u32)>) -> u64 {
     let mut divisor = start;
-    let mut sqrt = ((x as f64).sqrt() + 2_f64) as u64;
     // `x` only changes when a factor is found, so its primality is only worth recomputing there.
     // Testing it in the loop condition instead costs a full Miller-Rabin per candidate divisor,
     // which dominates the loop by orders of magnitude.
+    //
+    // Trial division normally also stops at the square root of `x`, because a composite has a
+    // factor at or below it. That bound is not computed here, because it can never be the one
+    // that ends the loop: every prime factor below `divisor` has already been divided out, so a
+    // composite `x` has a prime factor between `divisor` and its square root, which keeps
+    // `divisor` at or below the square root. `divisor` passing it therefore means `x` is prime,
+    // and `is_prime` says so first. The bound was recomputed at exactly the points the primality
+    // test is, so it never saved one of those calls and only added a square root to each. The
+    // `debug_assert` below is that argument, checked.
     let mut is_prime = x.is_prime();
-    while x > 1 && divisor < END && divisor <= sqrt && !is_prime {
+    while x > 1 && divisor < END && !is_prime {
+        debug_assert!(
+            divisor as u128 * divisor as u128 <= x as u128,
+            "a composite `x` always has a factor at or below its square root",
+        );
+
+        // `divisor` starts odd and grows by two, so it is never zero, which is what keeps the
+        // division below from carrying a check against it. Carrying the divisor as a `NonZero`
+        // instead measures the same and drops the `unsafe`, but only by paying for a `new` per
+        // candidate; dropping the hint without replacing it costs a few percent.
         unsafe {
             assert_unchecked(divisor != 0);
         }
@@ -120,7 +137,6 @@ fn trial_division<const END: u64>(mut x: u64, start: u64, factors: &mut Vec<(u64
 
         if counter > 0 {
             factors.push((divisor, counter));
-            sqrt = ((x as f64).sqrt() + 2_f64) as u64;
             is_prime = x.is_prime();
         }
 

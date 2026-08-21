@@ -163,7 +163,7 @@ fn trial_division<
     // The words are stored little endian, so the most significant word is the last one.
     let get_x_bits = |y: &[usize]| {
         let most_significant = *y.last().expect("the value is nonzero, so it has a word");
-        y.len() as u32 * BITS_PER_WORD - most_significant.leading_zeros()
+        (y.len() as u32 - 1) * BITS_PER_WORD + most_significant.bit_width()
     };
 
     let mut divisor = start;
@@ -172,7 +172,7 @@ fn trial_division<
         let not_one = unsafe { !is_one_non_zero(x) };
         let below_limit = divisor as u64 <= END;
         let below_sqrt = {
-            let divisor_bits = BITS_PER_WORD - divisor.leading_zeros();
+            let divisor_bits = divisor.bit_width();
             2 * divisor_bits <= x_bits
         };
 

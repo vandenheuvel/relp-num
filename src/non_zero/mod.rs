@@ -1,9 +1,6 @@
 //! # NonZero values
 //!
 //! Relp often works with sparse structures where many values are zero.
-use std::num::{NonZeroI128, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8, NonZeroIsize};
-use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
-
 pub use sign::NonZeroSign as NonZeroSign;
 pub use sign::NonZeroSigned as NonZeroSigned;
 
@@ -27,51 +24,34 @@ pub trait NonZero {
 }
 
 macro_rules! could_be_zero {
-    ($t:ty) => {
+    ($($t:ty),+ $(,)?) => {$(
         impl NonZero for $t {
             #[inline]
             fn is_not_zero(&self) -> bool {
                 !num_traits::Zero::is_zero(self)
             }
         }
-    }
+    )+}
 }
 
-could_be_zero!(i8);
-could_be_zero!(u8);
-could_be_zero!(i16);
-could_be_zero!(u16);
-could_be_zero!(i32);
-could_be_zero!(u32);
-could_be_zero!(i64);
-could_be_zero!(u64);
-could_be_zero!(i128);
-could_be_zero!(u128);
-could_be_zero!(isize);
-could_be_zero!(usize);
-could_be_zero!(f32);
-could_be_zero!(f64);
+could_be_zero!(i8, i16, i32, i64, i128, isize);
+could_be_zero!(u8, u16, u32, u64, u128, usize);
+could_be_zero!(f32, f64);
 
+/// The `std` counterparts, which state the same thing in their type.
+///
+/// Spelled `std::num::NonZero<..>` rather than imported, because the name would otherwise clash
+/// with the trait being implemented.
 macro_rules! can_not_be_zero {
-    ($t:ty) => {
-        impl NonZero for $t {
+    ($($t:ty),+ $(,)?) => {$(
+        impl NonZero for std::num::NonZero<$t> {
             #[inline]
             fn is_not_zero(&self) -> bool {
                 true
             }
         }
-    }
+    )+}
 }
 
-can_not_be_zero!(NonZeroI8);
-can_not_be_zero!(NonZeroI16);
-can_not_be_zero!(NonZeroI32);
-can_not_be_zero!(NonZeroI64);
-can_not_be_zero!(NonZeroI128);
-can_not_be_zero!(NonZeroIsize);
-can_not_be_zero!(NonZeroU8);
-can_not_be_zero!(NonZeroU16);
-can_not_be_zero!(NonZeroU32);
-can_not_be_zero!(NonZeroU64);
-can_not_be_zero!(NonZeroU128);
-can_not_be_zero!(NonZeroUsize);
+can_not_be_zero!(i8, i16, i32, i64, i128, isize);
+can_not_be_zero!(u8, u16, u32, u64, u128, usize);

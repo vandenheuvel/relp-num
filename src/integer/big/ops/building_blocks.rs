@@ -108,10 +108,6 @@ fn add_word(left: usize, right: usize, carry: Flag) -> (usize, Flag) {
     left.carrying_add(right, carry)
 }
 
-/// The routines below accumulate the product of two words in a `u128`, which holds it exactly only
-/// while a word is at most half that wide.
-const _: () = assert!(usize::BITS <= 64);
-
 /// Copying subtraction (not necessarily in place).
 ///
 /// Computes `wp[..n] = xp[..n] - yp[..n]` and returns the borrow out, which is `0` or `1`.
@@ -193,16 +189,14 @@ fn mul_1_long(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
 
 /// [`mul_1`] one word at a time, picking up an incoming carry and returning the outgoing one.
 ///
-/// The largest value the accumulator takes is `(2 ** BITS - 1) ** 2 + (2 ** BITS - 1)`, which is
-/// below `2 ** (2 * BITS)`, so the double width product never overflows.
+/// [`usize::carrying_mul`] is the whole of the operation: it is the double width product plus a
+/// word, split into the word to store and the carry to pass on, and cannot overflow.
 ///
 /// Always inlined for the reason given on [`mul_1_wide`].
 #[inline(always)]
 fn mul_1_words(wp: &mut [usize], xp: &[usize], vl: usize, mut carry: usize) -> usize {
     for (target, &value) in wp.iter_mut().zip(xp) {
-        let accumulator = value as u128 * vl as u128 + carry as u128;
-        *target = accumulator as usize;
-        carry = (accumulator >> usize::BITS) as usize;
+        (*target, carry) = value.carrying_mul(vl, carry);
     }
 
     carry
@@ -255,16 +249,14 @@ pub fn addmul_1(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
 
 /// [`addmul_1`] one word at a time, picking up an incoming carry and returning the outgoing one.
 ///
-/// One accumulator absorbs the product, the word it is added to and the incoming carry all at
-/// once: the largest value it can take is `(2 ** BITS - 1) ** 2 + 2 * (2 ** BITS - 1)`, which is
-/// exactly `2 ** (2 * BITS) - 1`. Splitting the product into two words first, and only then adding
-/// the target to the low one, means the same work plus an overflow to fold back into the carry.
+/// [`usize::carrying_mul_add`] takes the product, the word it is added to and the incoming carry
+/// all at once, which is exactly what a double width result has room for. Splitting the product
+/// into two words first, and only then adding the target to the low one, means the same work plus
+/// an overflow to fold back into the carry.
 #[inline]
 fn addmul_1_words(wp: &mut [usize], xp: &[usize], vl: usize, mut carry: usize) -> usize {
     for (target, &value) in wp.iter_mut().zip(xp) {
-        let accumulator = value as u128 * vl as u128 + *target as u128 + carry as u128;
-        *target = accumulator as usize;
-        carry = (accumulator >> usize::BITS) as usize;
+        (*target, carry) = value.carrying_mul_add(vl, *target, carry);
     }
 
     carry
@@ -315,17 +307,18 @@ pub fn submul_1(wp: &mut [usize], xp: &[usize], vl: usize) -> usize {
 
 /// [`submul_1`] one word at a time, picking up an incoming borrow and returning the outgoing one.
 ///
-/// The product and the incoming borrow share an accumulator the way they do in [`addmul_1_words`],
-/// but the target cannot join them, because it is subtracted rather than added.
+/// The product and the incoming borrow go into [`usize::carrying_mul`] the way they do in
+/// [`addmul_1_words`], but the target cannot join them, because it is subtracted rather than
+/// added.
 #[inline]
 fn submul_1_words(wp: &mut [usize], xp: &[usize], vl: usize, mut borrow: usize) -> usize {
     for (target, &value) in wp.iter_mut().zip(xp) {
-        let accumulator = value as u128 * vl as u128 + borrow as u128;
-        let (value, underflow) = target.overflowing_sub(accumulator as usize);
+        let (low, high) = value.carrying_mul(vl, borrow);
+        let (value, underflow) = target.overflowing_sub(low);
         *target = value;
         // The high word is `2 ** BITS - 1` only when the low word is zero, in which case the
         // subtraction above cannot underflow, so this addition cannot overflow either.
-        borrow = (accumulator >> usize::BITS) as usize + underflow as usize;
+        borrow = high + underflow as usize;
     }
 
     borrow
@@ -525,6 +518,10 @@ mod test {
     use smallvec::{smallvec, SmallVec};
 
     use crate::integer::big::ops::building_blocks::{add_2, addmul_1, is_well_formed, mul_1, sub_2, sub_n, submul_1, to_twos_complement};
+
+    /// The reference implementations below hold a pair of words in a `u128`, which is exact only
+    /// while a word is at most half that wide. The routines they check carry no such limit.
+    const _: () = assert!(usize::BITS <= 64);
 
     #[test]
     fn test_is_well_formed() {
