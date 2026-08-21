@@ -204,7 +204,13 @@ macro_rules! rational_non_zero {
                         match sign_change {
                             SignChange::None => {}
                             SignChange::Flip => self.sign.negate(),
-                            SignChange::Zero => panic!("attempt to add with overflow"),
+                            // Adding opposite signs subtracts the magnitudes, which can cancel
+                            // exactly. That is not an overflow: the result is zero, which this
+                            // type deliberately cannot represent.
+                            SignChange::Zero => panic!(concat!(
+                                "the result of this addition is zero, which ", stringify!($name),
+                                " cannot represent",
+                            )),
                         }
                     }
                 }
@@ -224,7 +230,11 @@ macro_rules! rational_non_zero {
                         match sign_change {
                             SignChange::None => {}
                             SignChange::Flip => self.sign.negate(),
-                            SignChange::Zero => panic!("attempt to subtract with overflow"),
+                            // Equal values subtract to zero, which this type cannot represent.
+                            SignChange::Zero => panic!(concat!(
+                                "the result of this subtraction is zero, which ", stringify!($name),
+                                " cannot represent",
+                            )),
                         }
                     }
                     (NonZeroSign::Positive, NonZeroSign::Negative) | (NonZeroSign::Negative, NonZeroSign::Positive) => {

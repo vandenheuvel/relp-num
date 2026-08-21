@@ -32,6 +32,12 @@ pub trait Signed {
 /// A number that can be negated, that is, who's sign can be flipped.
 pub trait Negateable: Signed {
     /// Negate the number, e.g. go from 1 to -1.
+    ///
+    /// # Panics
+    ///
+    /// When the negation is not representable. A two's complement integer has one more negative
+    /// value than positive ones, so `MIN` has no counterpart; every other implementation in this
+    /// crate is total, because a sign and magnitude representation negates by writing the sign.
     fn negate(&mut self);
 }
 

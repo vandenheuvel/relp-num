@@ -115,3 +115,41 @@ pub fn cmp(left: &[usize], right: &[usize]) -> Ordering {
         Ordering::Greater => Ordering::Greater,
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{NonZero, Sign, Signed, Ubig};
+    use crate::integer::big::NonZeroUbig;
+
+    /// `Ubig` represents zero, so it is not unconditionally positive.
+    ///
+    /// It used to report `Sign::Positive` for every value, including the zero that `NonZero` in
+    /// this same file correctly recognises, which contradicts the documented meaning of
+    /// `is_positive` as strictly greater than zero.
+    #[test]
+    fn test_signed_zero_is_not_positive() {
+        let zero = Ubig::<8>::from(0_u128);
+        assert!(!zero.is_not_zero());
+        assert_eq!(zero.signum(), Sign::Zero);
+        assert!(!zero.is_positive());
+        assert!(!zero.is_negative());
+
+        for value in [1_u128, 2, u64::MAX as u128, u128::MAX] {
+            let big = Ubig::<8>::from(value);
+            assert!(big.is_not_zero(), "{value}");
+            assert_eq!(big.signum(), Sign::Positive, "{value}");
+            assert!(big.is_positive(), "{value}");
+            assert!(!big.is_negative(), "{value}");
+        }
+    }
+
+    /// The non zero variant is positive by construction.
+    #[test]
+    fn test_non_zero_signed_is_positive() {
+        for value in [1_u128, 2, u128::MAX] {
+            let big = NonZeroUbig::<8>::new_u128(value).unwrap();
+            assert_eq!(big.signum(), Sign::Positive, "{value}");
+            assert!(big.is_positive(), "{value}");
+        }
+    }
+}

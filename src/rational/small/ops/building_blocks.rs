@@ -1,3 +1,35 @@
+//! # Arithmetic on the magnitudes of fixed width rationals
+//!
+//! Every operation here works on a coprime numerator and denominator pair and leaves another such
+//! pair behind. The sign lives with the caller.
+//!
+//! ## Why the intermediates are computed one type wider
+//!
+//! Bringing `a / b` and `c / d` to a common denominator forms `a * (d / g)`, `c * (b / g)` and
+//! `(b / g) * d`, where `g` is `gcd(b, d)`. Each of those products can be as large as `MAX * MAX`
+//! even when the reduced answer is small, so computing them in the storage type wraps: in release
+//! `R8!(255, 2) + R8!(255, 2)` used to return `127` where the answer `255` fits without trouble.
+//!
+//! Computing them in `$wide` instead is not just an improvement, it is exact and complete: it gets
+//! every representable result right and detects every unrepresentable one. Two facts make that
+//! work. The common denominator `(b / g) * d` is at most `MAX * MAX` and so always fits `$wide`.
+//! And the unreduced numerator `t` is coprime to both `b / g` and `d / g` by construction, so the
+//! only factor it can share with the common denominator divides `g` — see [`$reduce_name`]. A
+//! representable result therefore has `t <= MAX * g <= MAX * MAX`, which means a `t` that does not
+//! fit `$wide` was never going to be representable, and rejecting it loses nothing.
+//!
+//! ## The widest type
+//!
+//! `u128` has no wider type here, so `$wide` is `u128` again and the products are merely checked.
+//! `Rational128` is therefore the one width that can refuse a result it could have represented,
+//! namely one whose intermediates need more than 128 bits. It never returns a wrong answer, which
+//! is the property that matters; lifting the restriction needs 256 bit intermediates.
+//!
+//! ## Unrepresentable results panic
+//!
+//! Returning a wrapped number from an exact arithmetic library is the one outcome that cannot be
+//! defended, and debug builds already panicked on these paths. Release builds now agree with them.
+
 use std::cmp::min;
 use std::cmp::Ordering;
 use std::mem;
@@ -8,144 +40,207 @@ pub enum SignChange {
     Zero,
 }
 
-// TODO(CORRECTNESS): The intermediate values below overflow for results that are representable.
-//
-// Bringing two fractions to a common denominator scales both numerators and the denominator up,
-// and each of those products is computed in the same narrow type that stores the result. The
-// result of `R8!(255, 2) + R8!(255, 2)` is `255`, which a `Rational8` represents without trouble,
-// but `255 * 2` does not fit in a `u8`: debug builds panic, release builds wrap and return `127`.
-// The same holds for the numerator products in `$sub_name` and for the denominator product that
-// follows them.
-//
-// Fixing this is a design decision that has to be made for the type as a whole: either every
-// intermediate is computed in a wider type (with no wider type available for the widest one), or
-// these functions report failure and the operators become checked. Until then, an operation whose
-// intermediates leave the range of the type is only correct by accident.
 macro_rules! rational {
     (
-        $add_name:ident, $sub_name:ident, $sub_direction_name:ident, $mul_name: ident,
-        $uty:ty, $gcd_name:ident, $simplify_name:ident
+        $add_name:ident, $sub_name:ident, $common_name:ident, $reduce_name:ident,
+        $mul_name: ident, $uty:ty, $wide:ty, $gcd_name:ident, $simplify_name:ident
     ) => {
+        /// Bring two fractions over a common denominator, in a type the products fit.
+        ///
+        /// Returns the two scaled numerators, the common denominator `lcm(b, d)`, and the `g` that
+        /// [`$reduce_name`] needs: a bound on the factors the result can still be reduced by.
+        #[inline]
+        #[allow(clippy::unnecessary_cast, reason = "`$wide` is `$uty` for the widest type")]
+        fn $common_name(
+            left_numerator: $uty, left_denominator: $uty,
+            right_numerator: $uty, right_denominator: $uty,
+        ) -> ($wide, $wide, $wide, $uty) {
+            debug_assert_ne!(left_denominator, 0);
+            debug_assert_ne!(right_denominator, 0);
+
+            // Only reachable for the widest type, where `$wide` does not actually widen.
+            #[inline]
+            fn multiply(left: $uty, right: $uty) -> $wide {
+                match (left as $wide).checked_mul(right as $wide) {
+                    Some(product) => product,
+                    None => panic!(concat!(
+                        "an intermediate value of this ", stringify!($uty),
+                        " rational operation does not fit ", stringify!($wide),
+                    )),
+                }
+            }
+
+            if left_denominator == right_denominator {
+                // Already common. Anything the sum or difference shares with the denominator
+                // divides the denominator, which is what the last field is for.
+                (
+                    left_numerator as $wide,
+                    right_numerator as $wide,
+                    left_denominator as $wide,
+                    left_denominator,
+                )
+            } else if left_denominator == 1 {
+                // `(a * d +- c) / d` is already in lowest terms: it is congruent to `+-c` modulo
+                // `d`, and `c` is coprime to `d`. A `g` of one says there is nothing to divide out.
+                (
+                    multiply(left_numerator, right_denominator),
+                    right_numerator as $wide,
+                    right_denominator as $wide,
+                    1,
+                )
+            } else if right_denominator == 1 {
+                // Mirror of the previous branch, coprime for the same reason.
+                (
+                    left_numerator as $wide,
+                    multiply(right_numerator, left_denominator),
+                    left_denominator as $wide,
+                    1,
+                )
+            } else {
+                let g = $gcd_name(left_denominator, right_denominator);
+                let left_over_g = left_denominator / g;
+
+                (
+                    multiply(left_numerator, right_denominator / g),
+                    multiply(right_numerator, left_over_g),
+                    // `lcm(b, d)`, at most `MAX * MAX`
+                    multiply(left_over_g, right_denominator),
+                    g,
+                )
+            }
+        }
+
+        /// Reduce a fraction over a common denominator and narrow it back to the storage type.
+        ///
+        /// `g` bounds what is left to divide out, as produced by [`$common_name`]. The numerator is
+        /// coprime to `b / g` and to `d / g`, so every prime it shares with `(b / g) * d` divides
+        /// `g` with the same multiplicity, which makes `gcd(numerator, g)` the full common factor
+        /// and keeps the search inside the narrow type.
+        ///
+        /// # Panics
+        ///
+        /// When the reduced fraction does not fit the storage type.
+        #[inline]
+        #[allow(clippy::unnecessary_fallible_conversions, reason = "`$wide` is `$uty` for the widest type")]
+        fn $reduce_name(numerator: $wide, denominator: $wide, g: $uty) -> ($uty, $uty) {
+            debug_assert_ne!(numerator, 0);
+            debug_assert_ne!(denominator, 0);
+            debug_assert_ne!(g, 0);
+
+            let common = if g == 1 {
+                1
+            } else {
+                // Fits the narrow type because it is a remainder modulo `g`.
+                match (numerator % g as $wide) as $uty {
+                    0 => g,
+                    1 => 1,
+                    remainder => $gcd_name(remainder, g),
+                }
+            };
+
+            match (
+                <$uty>::try_from(numerator / common as $wide),
+                <$uty>::try_from(denominator / common as $wide),
+            ) {
+                (Ok(numerator), Ok(denominator)) => (numerator, denominator),
+                _ => panic!(concat!(
+                    "the result of this operation is not representable by a ", stringify!($uty),
+                    " rational",
+                )),
+            }
+        }
+
+        /// Add two magnitudes, both of which are non zero, so the sum is too.
         #[inline]
         pub fn $add_name(
-            left_numerator: &mut $uty, left_denominator: &mut $uty, 
+            left_numerator: &mut $uty, left_denominator: &mut $uty,
             right_numerator: $uty, right_denominator: $uty,
         ) {
-            if *left_denominator == right_denominator {
-                *left_numerator += right_numerator;
+            debug_assert_ne!(*left_numerator, 0);
+            debug_assert_ne!(right_numerator, 0);
 
-                // Numerator can't be zero
+            let (left, right, denominator, g) = $common_name(
+                *left_numerator, *left_denominator, right_numerator, right_denominator,
+            );
 
-                if left_numerator == left_denominator {
-                    *left_numerator = 1;
-                    *left_denominator = 1;
-                } else if *left_denominator != 1 {
-                    // numerator can't be 1 because two positive things were added
-                    let gcd = $gcd_name(*left_numerator, *left_denominator);
-                    *left_numerator /= gcd;
-                    *left_denominator /= gcd;
-                }
-            } else {
-                if *left_denominator == 1 {
-                    *left_numerator *= right_denominator;
-                    *left_numerator += right_numerator;
-                    *left_denominator = right_denominator;
-                } else if right_denominator == 1 {
-                    *left_numerator += right_numerator * *left_denominator;
-                } else {
-                    // Neither denominator is 1
-                    let gcd = $gcd_name(*left_denominator, right_denominator);
+            let numerator = match left.checked_add(right) {
+                Some(numerator) => numerator,
+                // Only reachable for the widest type: below it, both terms are at most `MAX * MAX`
+                // and a sum that leaves `$wide` cannot reduce back into the storage type anyway.
+                None => panic!(concat!(
+                    "the result of this operation is not representable by a ", stringify!($uty),
+                    " rational",
+                )),
+            };
 
-                    *left_numerator *= right_denominator / gcd;
-                    *left_denominator /= gcd;
-
-                    *left_numerator += right_numerator * *left_denominator;
-                    *left_denominator *= right_denominator;
-
-                    let (n, d) = $simplify_name(*left_numerator, *left_denominator);
-                    *left_numerator = n;
-                    *left_denominator = d;
-                }
-            }
+            let (numerator, denominator) = $reduce_name(numerator, denominator, g);
+            *left_numerator = numerator;
+            *left_denominator = denominator;
         }
+
+        /// Subtract two magnitudes, reporting what that does to the caller's sign.
         #[inline]
         pub fn $sub_name(
-            left_numerator: &mut $uty, left_denominator: &mut $uty, 
+            left_numerator: &mut $uty, left_denominator: &mut $uty,
             right_numerator: $uty, right_denominator: $uty,
         ) -> SignChange {
-            if *left_denominator == right_denominator {
-                let flip_sign = $sub_direction_name(left_numerator, left_denominator, right_numerator);
+            debug_assert_ne!(*left_numerator, 0);
+            debug_assert_ne!(right_numerator, 0);
 
-                if left_numerator == left_denominator {
-                    *left_numerator = 1;
-                    *left_denominator = 1;
-                } else if *left_denominator != 1 && *left_numerator != 1 {
-                    let gcd = $gcd_name(*left_numerator, *left_denominator);
-                    *left_numerator /= gcd;
-                    *left_denominator /= gcd;
-                }
+            let (left, right, denominator, g) = $common_name(
+                *left_numerator, *left_denominator, right_numerator, right_denominator,
+            );
 
-                flip_sign
-            } else {
-                if *left_denominator == 1 {
-                    *left_numerator *= right_denominator;
-                    *left_denominator = right_denominator;
-                    $sub_direction_name(left_numerator, left_denominator, right_numerator)
-                } else if right_denominator == 1 {
-                    $sub_direction_name(left_numerator, left_denominator, right_numerator * *left_denominator)
-                } else {
-                    // Neither denominator is 1
-                    let gcd = $gcd_name(*left_denominator, right_denominator);
-
-                    *left_numerator *= right_denominator / gcd;
-                    *left_denominator /= gcd;
-
-                    let rhs_numerator = right_numerator * *left_denominator;
-                    let sign_change = if *left_numerator < rhs_numerator {
-                        *left_numerator = rhs_numerator - *left_numerator;
-                        SignChange::Flip
-                    } else {
-                        // larger than, not zero
-                        *left_numerator -= rhs_numerator;
-                        SignChange::None
-                    };
-                    *left_denominator *= right_denominator;
-
-                    let (n, d) = $simplify_name(*left_numerator, *left_denominator);
-                    *left_numerator = n;
-                    *left_denominator = d;
-
-                    sign_change
-                }
-            }
-        }
-        #[inline]
-        fn $sub_direction_name(
-            left_numerator: &mut $uty, left_denominator: &mut $uty,
-            rhs_numerator: $uty,
-        ) -> SignChange {
-            match (*left_numerator).cmp(&rhs_numerator) {
-                Ordering::Less => {
-                    *left_numerator = rhs_numerator - *left_numerator;
-                    SignChange::Flip
-                }
+            // Both differences are at most `MAX * MAX`, so neither can leave `$wide`.
+            let (numerator, sign_change) = match left.cmp(&right) {
+                Ordering::Greater => (left - right, SignChange::None),
+                Ordering::Less => (right - left, SignChange::Flip),
                 Ordering::Equal => {
+                    // Exact cancellation. Zero is stored as `0 / 1`, and the caller owns the sign,
+                    // which is why this is reported rather than silently absorbed.
+                    //
+                    // Reachable only from the equal denominator branch: two reduced fractions are
+                    // equal exactly when both their numerators and their denominators are, so the
+                    // other branches cannot land here. It used to be reachable from all of them,
+                    // because a numerator that wrapped to zero looked like an ordinary result.
                     *left_numerator = 0;
                     *left_denominator = 1;
-                    SignChange::Zero
+                    return SignChange::Zero;
                 }
-                Ordering::Greater => {
-                    *left_numerator -= rhs_numerator;
-                    SignChange::None
-                }
-            }
+            };
+
+            let (numerator, denominator) = $reduce_name(numerator, denominator, g);
+            *left_numerator = numerator;
+            *left_denominator = denominator;
+
+            sign_change
         }
-        
+
+        /// Multiply two magnitudes, both of which are non zero, so the product is too.
+        ///
+        /// # Panics
+        ///
+        /// When the product is not representable. Unlike addition, the cross cancellation below is
+        /// already minimal, so a product that overflows had no representable answer to begin with.
         #[inline]
         pub fn $mul_name(
             left_numerator: &mut $uty, left_denominator: &mut $uty,
             mut rhs_numerator: $uty, mut rhs_denominator: $uty,
         ) {
+            debug_assert_ne!(*left_numerator, 0);
+            debug_assert_ne!(rhs_numerator, 0);
+
+            #[inline]
+            fn multiply(left: $uty, right: $uty) -> $uty {
+                match left.checked_mul(right) {
+                    Some(product) => product,
+                    None => panic!(concat!(
+                        "the result of this operation is not representable by a ", stringify!($uty),
+                        " rational",
+                    )),
+                }
+            }
+
             if *left_numerator != 1 && rhs_denominator != 1 {
                 if *left_numerator == rhs_denominator {
                     *left_numerator = rhs_numerator;
@@ -176,8 +271,11 @@ macro_rules! rational {
                 *left_denominator /= gcd_bc;
             }
 
-            *left_numerator *= rhs_numerator;
-            *left_denominator *= rhs_denominator;
+            // A zero denominator would poison the value: `to_i8` divides by it and panics, and
+            // `Ord` reads it as zero. Both operands are fully cancelled against each other by now,
+            // so an overflow here means the exact result is genuinely out of range.
+            *left_numerator = multiply(*left_numerator, rhs_numerator);
+            *left_denominator = multiply(*left_denominator, rhs_denominator);
         }
 
         #[inline]
@@ -237,12 +335,14 @@ macro_rules! rational {
         }
     }
 }
-rational!(add8, sub8, sub_direction8, mul8, u8, gcd8, simplify8);
-rational!(add16, sub16, direction16, mul16, u16, gcd16, simplify16);
-rational!(add32, sub32, sub_direction32, mul32, u32, gcd32, simplify32);
-rational!(add64, sub64, sub_direction64, mul64, u64, gcd64, simplify64);
-rational!(add128, sub128, sub_direction128, mul128, u128, gcd128, simplify128);
-rational!(add_usize, sub_usize, sub_direction_usize, mul_usize, usize, gcd_usize, simplify_usize);
+rational!(add8, sub8, common8, reduce8, mul8, u8, u16, gcd8, simplify8);
+rational!(add16, sub16, common16, reduce16, mul16, u16, u32, gcd16, simplify16);
+rational!(add32, sub32, common32, reduce32, mul32, u32, u64, gcd32, simplify32);
+rational!(add64, sub64, common64, reduce64, mul64, u64, u128, gcd64, simplify64);
+// No wider type available; see the module documentation.
+rational!(add128, sub128, common128, reduce128, mul128, u128, u128, gcd128, simplify128);
+// `usize` is at most 64 bits on every supported target, so `u128` widens it.
+rational!(add_usize, sub_usize, common_usize, reduce_usize, mul_usize, usize, u128, gcd_usize, simplify_usize);
 
 #[cfg(test)]
 mod test {

@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 use std::str::FromStr;
+use std::cmp::Ordering;
 
 use num_traits::Zero;
 use smallvec::smallvec;
@@ -401,6 +402,33 @@ fn test_div() {
     let y = Big8::try_from((Sign::Negative, [6093041683748885985, 1000], [1721078525850741390, 3])).unwrap();
     x /= y;
     assert_eq!(x, Big8::from_str("-16229381642834663314847732106441783006/1032297130200835312942712593365546686796500").unwrap());
+}
+
+/// `TryFrom` over raw limbs has to reduce, or the stored ratio breaks its own invariant.
+///
+/// A stored `2/4` makes `PartialEq` (which compares components) disagree with `Ord` (which cross
+/// multiplies), and reaches a `panic!` in the subtraction kernel that is documented as unreachable.
+#[test]
+fn test_try_from_limbs_reduces() {
+    let two_over_four = Big8::try_from((Sign::Positive, [2], [4])).unwrap();
+    let half = Big8::from_str("1/2").unwrap();
+
+    assert_eq!(two_over_four.to_string(), "1/2");
+    assert_eq!(two_over_four, half);
+    assert_eq!(two_over_four.cmp(&half), Ordering::Equal);
+    assert_eq!(&two_over_four - &half, Big8::from_str("0").unwrap());
+
+    // A shared factor spanning more than one word
+    let big = Big8::try_from((
+        Sign::Negative,
+        [0, 0, 6],
+        [0, 4],
+    )).unwrap();
+    assert_eq!(big, Big8::from_str("-3/2").unwrap() * Big8::from_str("18446744073709551616").unwrap());
+
+    // Already coprime input is left alone
+    let coprime = Big8::try_from((Sign::Positive, [3], [5])).unwrap();
+    assert_eq!(coprime.to_string(), "3/5");
 }
 
 #[test]
