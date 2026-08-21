@@ -10,6 +10,7 @@ use crate::sign::Sign;
 
 mod io;
 pub(crate) mod ops;
+mod absorb;
 
 macro_rules! rational {
     ($name:ident, $ity:ty, $uty:ty) => {

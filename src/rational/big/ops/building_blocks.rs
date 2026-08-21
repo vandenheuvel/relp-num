@@ -28,6 +28,48 @@ fn is_well_formed_fraction(left: &[usize], right: &[usize]) -> bool {
     ) || is_well_formed_fraction_non_zero(left, right)
 }
 
+/// Cancel the greatest common divisor of a numerator and a denominator.
+///
+/// [`simplify_fraction_gcd`] runs a binary gcd over both values in full, giving up about a bit per
+/// step while walking every word of both operands on each one. When either side fits in a single
+/// word, [`simplify_fraction_gcd_single`] reaches the same answer with one division pass followed
+/// by a scalar gcd, so the widths are worth checking before the general routine is entered.
+///
+/// Cancelling is symmetric, so it does not matter which of the two is the single word: the small
+/// side is passed by value and the large one is divided in place.
+///
+/// # Safety
+///
+/// Both operands have to be well formed and not zero, neither may be one, and they may not be
+/// equal.
+#[inline]
+unsafe fn simplify_fraction_gcd_dispatch<const S: usize>(
+    left: &mut SmallVec<[usize; S]>, right: &mut SmallVec<[usize; S]>,
+) {
+    debug_assert!(is_well_formed_non_zero(left));
+    debug_assert!(is_well_formed_non_zero(right));
+
+    if right.len() == 1 {
+        // SAFETY: `right` has exactly one word, so index zero is in bounds. That word is neither
+        // zero nor one, and `left` is well formed, not zero and not one, by this function's
+        // contract.
+        unsafe {
+            let reduced = simplify_fraction_gcd_single(left, *right.get_unchecked(0));
+            *right.get_unchecked_mut(0) = reduced;
+        }
+    } else if left.len() == 1 {
+        // SAFETY: As above with the two sides exchanged, which cancelling permits.
+        unsafe {
+            let reduced = simplify_fraction_gcd_single(right, *left.get_unchecked(0));
+            *left.get_unchecked_mut(0) = reduced;
+        }
+    } else {
+        // SAFETY: Both are well formed, not zero, not one and not equal by this function's
+        // contract.
+        unsafe { simplify_fraction_gcd(left, right) };
+    }
+}
+
 #[inline]
 pub unsafe fn add_assign_fraction_non_zero<const S: usize>(
     left_numerator: &mut SmallVec<[usize; S]>, left_denominator: &mut SmallVec<[usize; S]>, 
@@ -70,28 +112,20 @@ pub unsafe fn add_assign_fraction_non_zero<const S: usize>(
             add_assign(left_numerator, right_numerator);
             *left_denominator = SmallVec::from_slice(right_denominator);
 
-            // SAFETY: The numerator is a product of non zero values plus a non zero value, so it
-            // is not empty.
-            if !unsafe { is_one_non_zero(left_numerator) } {
-                // SAFETY: The numerator is not one by the check above. The denominator is now
-                // `right_denominator`, which is not one, because the left one was and the two
-                // differ. The numerator is `a * d + c` with every factor at least one, which is
-                // larger than `d`, so the two are not equal either.
-                unsafe { simplify_fraction_gcd(left_numerator, left_denominator) };
-            }
+            // The result `(a * d + c) / d` is already in lowest terms, so it is left as it is: a
+            // common divisor of the numerator and `d` divides `a * d`, so it divides `c` as well,
+            // and `c / d` is in lowest terms by the caller's guarantee. Reducing here would walk
+            // the whole binary gcd only to divide both sides by one.
         // SAFETY: All four operands are non zero and so not empty.
         } else if unsafe { is_one_non_zero(right_denominator) } {
             // SAFETY: All four operands are well formed and not empty.
             let numerator = unsafe { mul_non_zero::<S>(right_numerator, left_denominator) };
             // TODO(PERFORMANCE): Try reusing storage of `numerator`.
             add_assign(left_numerator, &numerator);
-            // SAFETY: The numerator is a sum of non zero magnitudes, so it is not empty.
-            if !unsafe { is_one_non_zero(left_numerator) } {
-                // SAFETY: The numerator is not one by the check above, and the denominator is not
-                // one because this is the branch where the left denominator is not. The numerator
-                // is `a + c * b`, which is larger than `b`, so the two are not equal either.
-                unsafe { simplify_fraction_gcd(left_numerator, left_denominator) };
-            }
+
+            // The result `(a + c * b) / b` is already in lowest terms, by the argument above with
+            // the roles of the two fractions exchanged: a common divisor of the numerator and `b`
+            // divides `c * b`, so it divides `a` as well, and `a / b` is in lowest terms.
         } else {
             // Neither denominator is 1
             // TODO(OPTIMIZATION): Should powers of two be kept out of the gcd?
@@ -222,15 +256,11 @@ pub unsafe fn sub_assign_fraction_non_zero<const S: usize>(
             };
 
             *left_denominator = SmallVec::from_slice(right_denominator);
-            // SAFETY: The equal case panics above, so the difference is non zero and not empty.
-            if !unsafe { is_one_non_zero(left_numerator) } {
-                // SAFETY: The numerator is not one by the check above, and the denominator is now
-                // `right_denominator`, which is not one because the left one was and the two
-                // differ. They are not equal either: the numerator is `|a * d - c|`, and that
-                // being `d` would make `d` divide `c`, which contradicts `c / d` being in lowest
-                // terms with `d` larger than one.
-                unsafe { simplify_fraction_gcd(left_numerator, left_denominator) };
-            }
+
+            // The result `|a * d - c| / d` is already in lowest terms, so it is left as it is: a
+            // common divisor of the numerator and `d` divides `a * d`, so it divides `c` as well,
+            // and `c / d` is in lowest terms by the caller's guarantee. Reducing here would walk
+            // the whole binary gcd only to divide both sides by one.
 
             sign_change
         // SAFETY: All four operands are non zero and so not empty.
@@ -244,14 +274,9 @@ pub unsafe fn sub_assign_fraction_non_zero<const S: usize>(
                 Ordering::Equal => panic!(),
             };
 
-            // SAFETY: The equal case panics above, so the difference is non zero and not empty.
-            if !unsafe { is_one_non_zero(left_numerator) } {
-                // SAFETY: The numerator is not one by the check above and the denominator `b` is
-                // not one because this is the branch where the left denominator is not. They are
-                // not equal either: the numerator is `|a - c * b|`, and that being `b` would make
-                // `b` divide `a`, which contradicts `a / b` being in lowest terms.
-                unsafe { simplify_fraction_gcd(left_numerator, left_denominator) };
-            }
+            // The result `|a - c * b| / b` is already in lowest terms, by the argument above with
+            // the roles of the two fractions exchanged: a common divisor of the numerator and `b`
+            // divides `c * b`, so it divides `a` as well, and `a / b` is in lowest terms.
 
             sign_change
         } else {
@@ -366,7 +391,7 @@ pub unsafe fn mul_assign_fraction_non_zero<const S: usize>(
             Ordering::Less | Ordering::Greater => {
                 // SAFETY: Both are well formed and not empty, neither is one by the check above,
                 // and this arm is the one where they differ.
-                unsafe { simplify_fraction_gcd(left_numerator, &mut right_denominator) };
+                unsafe { simplify_fraction_gcd_dispatch(left_numerator, &mut right_denominator) };
             }
         }
     }
@@ -386,7 +411,7 @@ pub unsafe fn mul_assign_fraction_non_zero<const S: usize>(
             Ordering::Less | Ordering::Greater => {
                 // SAFETY: Both are well formed and not empty, neither is one by the check above,
                 // and this arm is the one where they differ.
-                unsafe { simplify_fraction_gcd(&mut right_numerator, left_denominator) };
+                unsafe { simplify_fraction_gcd_dispatch(&mut right_numerator, left_denominator) };
             }
         }
     }
@@ -477,14 +502,32 @@ pub unsafe fn add_small<const S: usize>(
 
             mul_assign_single_non_zero(left_denominator, right_denominator);
 
+            // Whatever is left to cancel divides `gcd`, so it fits in a single word.
+            //
+            // The sum stands over `lcm(b, d)` with numerator `a * (d / g) + c * (b / g)`, writing
+            // `g` for `gcd`. A prime dividing both has to divide `b` as well as `d`: one dividing
+            // `b` alone divides `c * (b / g)` but not `a * (d / g)`, because `a / b` is in lowest
+            // terms, so it cannot divide their sum, and the same argument with the two fractions
+            // exchanged rules out one dividing `d` alone. So it divides `g`. Since `g` divides the
+            // least common multiple too, the common factor sought is exactly the gcd of the
+            // numerator and `g`, which a single word gcd finds.
+            //
             // SAFETY: The numerator is a sum of positive magnitudes, so it is not empty.
-            if !unsafe { is_one_non_zero(left_numerator) } {
-                // SAFETY: The numerator is not one by the check above, and the denominator is a
-                // multiple of `right_denominator`, which is larger than one in this branch. They
-                // are not equal: the fraction is written over the least common multiple of the two
-                // denominators, and both inputs are in lowest terms, so the numerator shares no
-                // factor with it.
-                unsafe { simplify_fraction_gcd(left_numerator, left_denominator) };
+            if gcd != 1 && !unsafe { is_one_non_zero(left_numerator) } {
+                // SAFETY: The numerator is well formed, not zero and not one by the check above,
+                // and `gcd` is neither zero nor one by the check beside it.
+                let remaining = unsafe { simplify_fraction_gcd_single(left_numerator, gcd) };
+
+                // `simplify_fraction_gcd_single` divided the numerator by the common factor and
+                // returned what is left of `gcd`, so their quotient is that factor.
+                let cancelled = gcd / remaining;
+                shr_mut(left_denominator, 0, cancelled.trailing_zeros());
+                let cancelled_odd = cancelled >> cancelled.trailing_zeros();
+                if cancelled_odd != 1 {
+                    // SAFETY: The denominator is well formed and not empty, and `cancelled_odd` is
+                    // odd by construction. It divides the denominator, which is a multiple of `g`.
+                    unsafe { div_assign_one_word(left_denominator, cancelled_odd) };
+                }
             }
         }
     }
@@ -609,14 +652,26 @@ pub unsafe fn sub_small<const S: usize>(
             };
             mul_assign_single_non_zero(left_denominator, right_denominator);
 
+            // Whatever is left to cancel divides `gcd`, so it fits in a single word, by the same
+            // argument as in `add_small`: divisibility does not care that the numerator is now a
+            // difference rather than a sum.
+            //
             // SAFETY: The equal case panics above, so the difference is non zero and not empty.
-            if !unsafe { is_one_non_zero(left_numerator) } {
-                // SAFETY: The numerator is not one by the check above, and the denominator is a
-                // multiple of `right_denominator`, which is larger than one in this branch. They
-                // are not equal: the fraction is written over the least common multiple of the two
-                // denominators, and both inputs are in lowest terms, so the numerator shares no
-                // factor with it.
-                unsafe { simplify_fraction_gcd(left_numerator, left_denominator) };
+            if gcd != 1 && !unsafe { is_one_non_zero(left_numerator) } {
+                // SAFETY: The numerator is well formed, not zero and not one by the check above,
+                // and `gcd` is neither zero nor one by the check beside it.
+                let remaining = unsafe { simplify_fraction_gcd_single(left_numerator, gcd) };
+
+                // `simplify_fraction_gcd_single` divided the numerator by the common factor and
+                // returned what is left of `gcd`, so their quotient is that factor.
+                let cancelled = gcd / remaining;
+                shr_mut(left_denominator, 0, cancelled.trailing_zeros());
+                let cancelled_odd = cancelled >> cancelled.trailing_zeros();
+                if cancelled_odd != 1 {
+                    // SAFETY: The denominator is well formed and not empty, and `cancelled_odd` is
+                    // odd by construction. It divides the denominator, which is a multiple of `g`.
+                    unsafe { div_assign_one_word(left_denominator, cancelled_odd) };
+                }
             }
 
             sign_change

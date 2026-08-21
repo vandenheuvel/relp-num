@@ -555,3 +555,180 @@ fn test_consistent() {
         }.is_well_formed());
     }
 }
+
+/// The normalisation shortcuts in the addition, subtraction and multiplication kernels.
+///
+/// Those kernels skip a gcd where the result is provably in lowest terms already, and reach for the
+/// single word gcd where the general one would spend a full binary gcd on a single word answer.
+/// Both are claims about arithmetic rather than about code, so they are checked here against the
+/// path that reduces unconditionally, and against `is_well_formed`, which is what "lowest terms"
+/// means for this type.
+mod normalisation {
+    use crate::{NonZero, Rational64, RationalBig, RB};
+    use crate::rational::big::Big8;
+
+    /// Deterministic, so that a failure reproduces. A xorshift is plenty for spreading operands
+    /// over the branches; nothing here depends on the quality of the bits.
+    fn next(state: &mut u64) -> u64 {
+        *state ^= *state << 13;
+        *state ^= *state >> 7;
+        *state ^= *state << 17;
+        *state
+    }
+
+    /// A rational grown by multiplication, which keeps it in lowest terms by construction.
+    ///
+    /// Building one out of words directly would have to establish coprimality separately, and
+    /// getting that wrong would make the test assert against a value the type never represents.
+    fn wide(state: &mut u64, factors: usize) -> RationalBig {
+        let mut value = RB!(1);
+        for _ in 0..factors {
+            let numerator = ((next(state) >> 2) | 1) as i64;
+            let denominator = (next(state) >> 2) | 1;
+            value *= RationalBig::new(numerator, denominator).unwrap();
+        }
+        value
+    }
+
+    /// A whole number, so that the denominator is one and the unit denominator branches are taken.
+    fn wide_integer(state: &mut u64, factors: usize) -> RationalBig {
+        let mut value = RB!(1);
+        for _ in 0..factors {
+            let numerator = ((next(state) >> 2) | 1) as i64;
+            value *= RationalBig::new(numerator, 1).unwrap();
+        }
+        value
+    }
+
+    fn assert_lowest_terms(value: &RationalBig, what: &str) {
+        // SAFETY: The value came out of this crate's own arithmetic, so it is at least well formed
+        // enough to inspect; that is exactly what is being checked.
+        assert!(unsafe { value.is_well_formed() }, "{what}: {value} is not in lowest terms");
+    }
+
+    /// The specialised small right hand side has to agree with widening it and using the general
+    /// path, at every width. This is the cross check that matters: the two share no code.
+    #[test]
+    fn small_agrees_with_general() {
+        let mut state = 0x2545_f491_4f6c_dd1d;
+
+        for factors in [0, 1, 2, 4, 8] {
+            for _ in 0..50 {
+                let big = wide(&mut state, factors);
+                let numerator = (next(&mut state) % 4_000) as i64 - 2_000;
+                let denominator = next(&mut state) % 4_000 + 1;
+                let small = match Rational64::new(numerator, denominator) {
+                    Some(small) if small.is_not_zero() => small,
+                    _ => continue,
+                };
+                let widened = RationalBig::from(small);
+
+                let by_small = big.clone() + small;
+                assert_eq!(by_small, big.clone() + widened.clone(), "{big} + {small}");
+                assert_lowest_terms(&by_small, "add");
+
+                let by_small = big.clone() - small;
+                assert_eq!(by_small, big.clone() - widened.clone(), "{big} - {small}");
+                assert_lowest_terms(&by_small, "sub");
+
+                let by_small = big.clone() * small;
+                assert_eq!(by_small, big.clone() * widened.clone(), "{big} * {small}");
+                assert_lowest_terms(&by_small, "mul");
+            }
+        }
+    }
+
+    /// Adding and subtracting the same value has to come back to where it started, whatever
+    /// cancelling happened on the way.
+    #[test]
+    fn small_round_trips() {
+        let mut state = 0x9e37_79b9_7f4a_7c15;
+
+        for factors in [1, 2, 4, 8] {
+            for _ in 0..50 {
+                let big = wide(&mut state, factors);
+                let denominator = next(&mut state) % 4_000 + 1;
+                let small = match Rational64::new((next(&mut state) % 4_000) as i64 + 1, denominator) {
+                    Some(small) => small,
+                    None => continue,
+                };
+
+                assert_eq!((big.clone() + small) - small, big, "{big} + {small} - {small}");
+                assert_eq!((big.clone() * small) / small, big, "{big} * {small} / {small}");
+            }
+        }
+    }
+
+    /// A denominator of one is where the addition kernel stopped reducing, so the result of taking
+    /// that branch is checked to be in lowest terms and to equal what the other operand order gives.
+    #[test]
+    fn unit_denominator_branches() {
+        let mut state = 0xdead_beef_cafe_f00d;
+
+        for factors in [1, 2, 4] {
+            for _ in 0..50 {
+                let fraction = wide(&mut state, factors);
+                let integer = wide_integer(&mut state, factors);
+
+                // `left_denominator` is one: the first of the two branches.
+                let sum = integer.clone() + fraction.clone();
+                assert_lowest_terms(&sum, "integer + fraction");
+                // `right_denominator` is one: the second.
+                let other = fraction.clone() + integer.clone();
+                assert_lowest_terms(&other, "fraction + integer");
+                assert_eq!(sum, other, "{integer} + {fraction}");
+
+                let difference = integer.clone() - fraction.clone();
+                assert_lowest_terms(&difference, "integer - fraction");
+                let negated = fraction.clone() - integer.clone();
+                assert_lowest_terms(&negated, "fraction - integer");
+                assert_eq!(difference, -negated, "{integer} - {fraction}");
+
+                assert_eq!((integer.clone() + fraction.clone()) - fraction.clone(), integer);
+            }
+        }
+    }
+
+    /// The multiplication kernel dispatches on the width of each side before cross cancelling, so
+    /// single word and multi word operands are paired up in both orders.
+    #[test]
+    fn multiplication_cross_cancels_at_every_width() {
+        let mut state = 0x0123_4567_89ab_cdef;
+
+        for left_factors in [0, 1, 4] {
+            for right_factors in [0, 1, 4] {
+                for _ in 0..30 {
+                    let left = wide(&mut state, left_factors);
+                    let right = wide(&mut state, right_factors);
+
+                    let product = left.clone() * right.clone();
+                    assert_lowest_terms(&product, "mul");
+                    assert_eq!(product, right.clone() * left.clone(), "{left} * {right}");
+
+                    // A shared factor on the cross diagonal is what the cancelling is for.
+                    let inverse = RationalBig::from(1) / right.clone();
+                    assert_lowest_terms(&(left.clone() * inverse.clone()), "mul by inverse");
+                    assert_eq!(left.clone() * right.clone() * inverse, left, "{left} * {right} / {right}");
+                }
+            }
+        }
+    }
+
+    /// `Big8` is the type the crate exports; the shortcuts are not specific to its inline capacity,
+    /// so a narrower one has to behave the same.
+    #[test]
+    fn narrow_inline_capacity_agrees() {
+        let mut state = 0x5deece66d;
+
+        for _ in 0..50 {
+            let numerator = ((next(&mut state) >> 2) | 1) as i64;
+            let denominator = (next(&mut state) >> 2) | 1;
+            let left = Big8::new(numerator, denominator).unwrap();
+            let right = Big8::new(((next(&mut state) >> 2) | 1) as i64, 1).unwrap();
+
+            let sum = left.clone() + right.clone();
+            assert_lowest_terms(&sum, "narrow add");
+            assert_eq!(sum - right, left);
+        }
+    }
+}

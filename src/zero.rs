@@ -17,7 +17,7 @@ use crate::{Sign, Signed, Negateable};
 /// The same applies to a matrix provider whose coefficients are structurally absent: the incidence
 /// matrix of a network is mostly zero, and storing a rational number for each of those entries
 /// wastes both space and time. This type stores the coefficient in no space at all, and
-/// [`Widen`](crate::Widen) applies it to a wide accumulator without ever materialising a `0`:
+/// [`Absorb`](crate::Absorb) applies it to a wide accumulator without ever materialising a `0`:
 /// adding it is nothing at all, multiplying by it clears the accumulator.
 ///
 /// # Absent traits

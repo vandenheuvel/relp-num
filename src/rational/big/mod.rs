@@ -16,8 +16,14 @@ mod with_binary;
 mod with_zero;
 mod with_one;
 mod with_option;
+mod absorb;
 
+/// An arbitrary precision rational, with `S` words of its numerator and denominator held inline.
+///
+/// The capacity is part of the type, so a crate implementing [`Absorb`](crate::Absorb) for its own
+/// narrow value against this one names the capacity it implements it for.
 pub type Big<const S: usize> = Ratio<Sign, Ubig<S>, NonZeroUbig<S>>;
+/// An arbitrary precision rational that is known not to be zero.
 pub type NonZeroBig<const S: usize> = Ratio<NonZeroSign, NonZeroUbig<S>, NonZeroUbig<S>>;
 
 /// An arbitrary precision type.

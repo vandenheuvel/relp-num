@@ -9,7 +9,7 @@ use smallvec::{smallvec, SmallVec};
 use crate::{NonZeroSign, NonZeroSigned, Signed};
 use crate::{Negateable, NonZero, Sign};
 use crate::integer::big::ops::building_blocks::is_well_formed_non_zero;
-use crate::integer::big::ops::non_zero::{add_assign, is_one_non_zero, mul_assign_single_non_zero, subtracting_cmp};
+use crate::integer::big::ops::non_zero::{add_assign, is_one_non_zero, mul_assign_single_non_zero, mul_non_zero, subtracting_cmp};
 use crate::integer::big::ops::normalize::simplify_fraction_gcd_single;
 use crate::rational::big::{Big, NonZeroBig};
 
@@ -602,13 +602,19 @@ impls_not_become_zero!(u64, i64);
 impls_not_become_zero!(usize, isize);
 
 impl<const S: usize> Big<S> {
+    #[inline]
     unsafe fn add_assign_single_int_non_zero(&mut self, rhs: usize) {
         debug_assert!(rhs.is_not_zero());
 
         match self.sign {
             Sign::Positive => {
-                let mut difference = self.denominator.inner().clone();
-                mul_assign_single_non_zero(&mut difference, rhs);
+                // Multiplying into a fresh value rather than cloning the denominator and
+                // multiplying in place: the clone allocates for the denominator's own length and
+                // the product is a word longer as often as not, so the in place form pays for a
+                // second allocation to grow into.
+                // SAFETY: The denominator is well formed and not zero, and so is a single word
+                // holding a non zero `rhs`.
+                let difference = unsafe { mul_non_zero::<S>(&self.denominator, &[rhs]) };
                 // SAFETY: The `inner_mut` hands out the numerator's words. Adding a magnitude to a
                 // non zero numerator leaves it well formed and non zero, and leaves the fraction in
                 // lowest terms, because the added term is a multiple of the denominator and so
@@ -624,8 +630,8 @@ impl<const S: usize> Big<S> {
                 debug_assert!(self.denominator.is_one());
             }
             Sign::Negative => {
-                let mut difference = self.denominator.inner().clone();
-                mul_assign_single_non_zero(&mut difference, rhs);
+                // SAFETY: As in the positive arm.
+                let difference = unsafe { mul_non_zero::<S>(&self.denominator, &[rhs]) };
                 // SAFETY: As in the positive arm, except that `subtracting_cmp` leaves the
                 // numerator holding the magnitude of the difference, which may be zero. The match
                 // below restores the sign, and with it the invariant, for each of the outcomes.
@@ -646,8 +652,11 @@ impl<const S: usize> Big<S> {
 
         match self.sign {
             Sign::Positive => {
-                let mut difference = self.denominator.inner().clone();
-                mul_assign_single_non_zero(&mut difference, rhs);
+                // Multiplying into a fresh value rather than cloning and multiplying in place;
+                // see `Big::add_assign_single_int_non_zero` for why.
+                // SAFETY: The denominator is well formed and not zero, and so is a single word
+                // holding a non zero `rhs`.
+                let difference = unsafe { mul_non_zero::<S>(&self.denominator, &[rhs]) };
                 // SAFETY: The `inner_mut` hands out the numerator's words, and `subtracting_cmp`
                 // leaves them holding the magnitude of the difference, which may be zero. The match
                 // below restores the sign, and with it the invariant, for each of the outcomes.
@@ -668,8 +677,11 @@ impl<const S: usize> Big<S> {
                 debug_assert!(self.denominator.is_one());
             }
             Sign::Negative => {
-                let mut difference = self.denominator.inner().clone();
-                mul_assign_single_non_zero(&mut difference, rhs);
+                // Multiplying into a fresh value rather than cloning and multiplying in place;
+                // see `Big::add_assign_single_int_non_zero` for why.
+                // SAFETY: The denominator is well formed and not zero, and so is a single word
+                // holding a non zero `rhs`.
+                let difference = unsafe { mul_non_zero::<S>(&self.denominator, &[rhs]) };
                 // SAFETY: Adding a magnitude to a non zero numerator leaves it well formed and non
                 // zero, and the added term is a multiple of the denominator, so the fraction stays
                 // in lowest terms.
@@ -680,11 +692,15 @@ impl<const S: usize> Big<S> {
 }
 
 impl<const S: usize> NonZeroBig<S> {
+    #[inline]
     unsafe fn add_assign_single_int_non_zero(&mut self, rhs: usize) {
         debug_assert!(rhs.is_not_zero());
 
-        let mut difference = self.denominator.inner().clone();
-        mul_assign_single_non_zero(&mut difference, rhs);
+        // Multiplying into a fresh value rather than cloning and multiplying in place; see
+        // `Big::add_assign_single_int_non_zero` for why.
+        // SAFETY: The denominator is well formed and not zero, and so is a single word holding a
+        // non zero `rhs`.
+        let difference = unsafe { mul_non_zero::<S>(&self.denominator, &[rhs]) };
 
         match self.sign {
             NonZeroSign::Positive => {
@@ -715,8 +731,11 @@ impl<const S: usize> NonZeroBig<S> {
 
         match self.sign {
             NonZeroSign::Positive => {
-                let mut difference = self.denominator.inner().clone();
-                mul_assign_single_non_zero(&mut difference, rhs);
+                // Multiplying into a fresh value rather than cloning and multiplying in place;
+                // see `Big::add_assign_single_int_non_zero` for why.
+                // SAFETY: The denominator is well formed and not zero, and so is a single word
+                // holding a non zero `rhs`.
+                let difference = unsafe { mul_non_zero::<S>(&self.denominator, &[rhs]) };
                 // SAFETY: The `inner_mut` hands out the numerator's words, and `subtracting_cmp`
                 // leaves them holding the magnitude of the difference. A `NonZeroBig` has no zero
                 // representation, so the equal case panics rather than leaving one behind, and the
@@ -730,8 +749,11 @@ impl<const S: usize> NonZeroBig<S> {
                 }
             }
             NonZeroSign::Negative => {
-                let mut difference = self.denominator.inner().clone();
-                mul_assign_single_non_zero(&mut difference, rhs);
+                // Multiplying into a fresh value rather than cloning and multiplying in place;
+                // see `Big::add_assign_single_int_non_zero` for why.
+                // SAFETY: The denominator is well formed and not zero, and so is a single word
+                // holding a non zero `rhs`.
+                let difference = unsafe { mul_non_zero::<S>(&self.denominator, &[rhs]) };
                 // SAFETY: Adding a magnitude to a non zero numerator leaves it well formed and non
                 // zero, and the added term is a multiple of the denominator, so the fraction stays
                 // in lowest terms.

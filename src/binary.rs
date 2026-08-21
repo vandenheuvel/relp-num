@@ -14,7 +14,7 @@ use crate::{NonZero, Sign, Signed};
 /// of the basis or ignored. The same shape appears in a matrix provider whose coefficients can only
 /// be `0` or `1`: an incidence matrix, or a set cover. Storing a rational number for such a
 /// coefficient wastes both space and time, so this type stores it in a byte and lets
-/// [`Widen`](crate::Widen) apply it to a wide accumulator directly — adding a `Zero` is nothing at
+/// [`Absorb`](crate::Absorb) apply it to a wide accumulator directly — adding a `Zero` is nothing at
 /// all, multiplying by a `One` is a clone.
 ///
 /// The variants are declared in increasing numeric order, so the derived [`Ord`] is the order of
@@ -30,7 +30,7 @@ use crate::{NonZero, Sign, Signed};
 ///
 /// There is also no `Add<Binary> for Binary`, and hence no [`num_traits::Zero`] or
 /// [`num_traits::One`]: `One + One` is `2`, which this type cannot represent. The only addition
-/// that makes sense is into a type that can hold the result, which is what [`Widen`](crate::Widen)
+/// that makes sense is into a type that can hold the result, which is what [`Absorb`](crate::Absorb)
 /// and the `Add<Binary> for i32`-style impls below do.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub enum Binary {

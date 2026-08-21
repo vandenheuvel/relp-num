@@ -10,6 +10,10 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssi
 
 use crate::non_zero::NonZeroSigned;
 
+mod absorb;
+pub use absorb::Absorb;
+pub use absorb::AbsorbAll;
+
 pub mod factorization;
 
 /// The simplex algorithm is defined over the ordered fields.
@@ -58,8 +62,9 @@ pub trait Field:
     for<'r> Div<&'r Self, Output=Self> +
     DivAssign<Self> +
     for<'r> DivAssign<&'r Self> +
-    // TODO: MulAdd should be possible. Only in specialization?
-    //  + MulAdd
+    // A fused multiply-add lives on `Absorb` instead, as `add_mul_narrow`. It belongs with the
+    // mixed-type operations rather than here: what makes fusing worth anything is a narrow factor
+    // that is one, where there is no multiplication to fuse and no intermediate to avoid.
 
     // Practicalities
     Clone +
@@ -70,8 +75,19 @@ pub trait Field:
 
 /// A reference to a variable that is in a `Field`.
 ///
-/// TODO: Can less HRTB be used? Can the be written down less often? Can this trait be integrated
-///  with the `Field` trait?
+/// # On writing this down less often
+///
+/// Generic code needs `F: Field, for<'r> &'r F: FieldRef<F>`, and the second half is the awkward
+/// one. Moving it onto the definition of `Field`, as `trait Field where for<'r> &'r Self:
+/// FieldRef<Self>`, does not help and makes things worse: a where clause on a type that is not
+/// `Self` is a requirement on implementors, not something a `F: Field` bound implies, so every
+/// caller still has to discharge it, and now has to do so even when it uses no reference
+/// operations at all.
+///
+/// What does work is not having a reference type to bound. [`AbsorbAll`](crate::AbsorbAll) takes
+/// every operand by reference already, so `F: AbsorbAll<F>` is a single bound with no higher
+/// ranked part and gives the same arithmetic through methods rather than operators. This trait
+/// stays for code written against the operators.
 pub trait FieldRef<Deref>:
     // Equivalence relation
     PartialEq<Self> +

@@ -14,7 +14,7 @@ use crate::{NonZero, Sign, Signed};
 /// Can be used when a type from the `MatrixProvider` can only have the value `1`, such as with some
 /// certain network problems, where the cost of a path might always equal `1`. Storing a rational
 /// number in such a matrix would waste both space and time; this type stores the coefficient in no
-/// space at all, and [`Widen`](crate::Widen) applies it to a wide accumulator without ever
+/// space at all, and [`Absorb`](crate::Absorb) applies it to a wide accumulator without ever
 /// materialising a `1`: multiplying by it is a clone, adding it is a single increment.
 ///
 /// This type is zero-sized.

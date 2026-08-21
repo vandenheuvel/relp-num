@@ -23,7 +23,7 @@ mod signed_one;
 /// A matrix provider often stores coefficients that can only take one or two values: the incidence
 /// matrix of a network is nothing but `1`, `-1` and `0`. Storing such a coefficient in a rational
 /// number wastes both space and time, so these types store it in no space at all and let
-/// [`Widen`] apply it to a wide accumulator directly.
+/// [`Absorb`] apply it to a wide accumulator directly.
 ///
 /// They live in their own module because [`One`](one::One) and [`Zero`](zero::Zero) would otherwise shadow the
 /// `num_traits` traits of the same name, which are in scope in most code that uses this crate.
@@ -45,6 +45,11 @@ pub use non_zero::sign::NonZeroSign;
 pub use non_zero::sign::NonZeroSigned;
 
 mod rational;
+// The inline capacity is part of the type, and a crate that implements `Absorb` for its own narrow
+// type has to name the wide type it implements it for. Exporting only the alias for capacity eight
+// would limit such an implementation to that one capacity.
+pub use rational::big::Big;
+pub use rational::big::NonZeroBig;
 pub use rational::RationalBig;
 pub use rational::RationalUsize;
 pub use rational::Rational128;
@@ -65,11 +70,10 @@ pub use sign::Sign;
 pub use sign::Signed;
 pub use sign::Negateable;
 
-mod widen;
-pub use widen::Widen;
-
 mod traits;
 pub use traits::Abs;
+pub use traits::Absorb;
+pub use traits::AbsorbAll;
 pub use traits::factorization::NonZeroFactorizable;
 pub use traits::factorization::NonZeroFactorization;
 pub use traits::factorization::FactorizationResidual;

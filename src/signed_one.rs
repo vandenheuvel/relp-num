@@ -15,7 +15,7 @@ use crate::{Negateable, NonZero, Sign, Signed};
 /// with some network problems, where an arc is either incoming or outgoing. The incidence matrix of
 /// a network holds nothing but these two values, and storing a rational number for each of them
 /// wastes both space and time. This type stores the coefficient in a byte and lets
-/// [`Widen`](crate::Widen) apply it to a wide accumulator directly: multiplying by `PlusOne` is a
+/// [`Absorb`](crate::Absorb) apply it to a wide accumulator directly: multiplying by `PlusOne` is a
 /// clone, multiplying by `MinusOne` is a clone and a sign flip, never a multiplication.
 ///
 /// The variants are *not* declared in increasing numeric order, so the derived [`Ord`] would be
