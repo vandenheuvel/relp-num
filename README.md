@@ -4,7 +4,7 @@
 
 # RELP-num
     
-Number types for the [Relp](https://github.com/vandenheuvel/relp) crate, most notably arbitrary precision rationals.
+Number types for the [Relp](https://github.com/vandenheuvel/relp) crate, most notably fast arbitrary precision rationals.
 
 ## Usage
 
@@ -12,7 +12,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-relp-num = "0.1.13"
+relp-num = "0.2.0"
 ```
 
 You can now use the crate, for example to compute `2 + 2`:
@@ -37,9 +37,5 @@ number types for this usecase.
 
 ### What this crate is not
 
-There are already some great general purpose numerics libraries out there, such as 
+There are already some great general purpose numerics libraries out there, such as [num](https://github.com/rust-num/num), which has a broad range of functionality. This crate descents from [ramp](https://github.com/Aatch/ramp), but is now faster and no longer requires nightly or hand-written assembly. Primarily though, this crate exists to support the [relp](https://github.com/vandenheuvel/relp) crate.
 
-- [num](https://github.com/rust-num/num) (broad range of functionality)
-- [ramp](https://github.com/Aatch/ramp) (arbitrary precision, fast, requires nightly)
-
-This crate is not trying to be one of them and exists to support RELP only.
