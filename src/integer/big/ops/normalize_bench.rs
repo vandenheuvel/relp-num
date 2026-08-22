@@ -70,6 +70,20 @@ fn bench() {
         });
     }
 
+    {
+        // Operands of very different lengths, where the reduction closes the gap word by word
+        // before any simulated Euclid steps can run
+        let cases: Vec<(SV, SV)> = (0..32)
+            .map(|_| (odd_of(8, &mut next), odd_of(2, &mut next)))
+            .collect();
+        let mut i = 0;
+        time("binary_gcd, 8 by 2 words", 20_000, || {
+            let (left, right) = &cases[i % cases.len()];
+            i += 1;
+            black_box(unsafe { binary_gcd::<8>(left.clone(), right.clone()) });
+        });
+    }
+
     for words in [2_usize, 4] {
         let cases: Vec<(SV, SV)> = (0..32)
             .map(|_| {

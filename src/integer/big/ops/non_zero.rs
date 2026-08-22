@@ -318,36 +318,6 @@ pub unsafe fn sub<const S: usize>(
     result
 }
 
-/// Subtract assign from a value.
-///
-/// # Arguments
-///
-/// * `values`: is larger than `rhs` but might have the most significant word(s) already removed, if
-///   they were equal to `rhs`. It is as such not necessarily well formed and can't be easily compared
-///   to `rhs`.
-/// * `rhs`: value to subtract.
-#[inline]
-pub unsafe fn sub_assign_result_positive<const S: usize>(
-    values: &mut SmallVec<[usize; S]>,
-    rhs: &SmallVec<[usize; S]>,
-) {
-    let smallest = min(values.len(), rhs.len());
-    let mut carry = sub_assign_slice(&mut values[..smallest], &rhs[..smallest]);
-
-    let mut index = 0;
-    while carry {
-        debug_assert!(values.len() > rhs.len());
-        borrowing_sub_mut(&mut values[rhs.len() + index], 0, &mut carry);
-        index += 1;
-    }
-
-    while let Some(0) = values.last() {
-        values.pop();
-    }
-
-    debug_assert!(is_well_formed(values));
-}
-
 #[inline]
 pub(crate) fn subtracting_cmp<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &[usize]) -> Ordering {
     debug_assert!(is_well_formed_non_zero(left));

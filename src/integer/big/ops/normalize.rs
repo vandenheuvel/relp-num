@@ -1,12 +1,11 @@
-use std::cmp::{min, Ordering};
-use std::mem;
+use std::cmp::{max, min, Ordering};
 
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 
 use crate::integer::big::BITS_PER_WORD;
-use crate::integer::big::ops::building_blocks::{is_well_formed, is_well_formed_non_zero};
+use crate::integer::big::ops::building_blocks::{is_well_formed, is_well_formed_non_zero, mul_1, submul_1};
 use crate::integer::big::ops::div::{div_assign_by_odd, div_assign_double, div_assign_one_word, remainder_one_word};
-use crate::integer::big::ops::non_zero::{both_not_one_non_zero, is_one_non_zero, shl_mut, shr, shr_mut, sub, sub_assign_result_positive};
+use crate::integer::big::ops::non_zero::{both_not_one_non_zero, is_one_non_zero, shl_mut, shr, shr_mut, sub};
 use crate::integer::big::properties::cmp;
 
 /// Do two values share no factor larger than one?
@@ -212,21 +211,29 @@ pub unsafe fn gcd_single(large: &[usize], small: usize, bits: u32) -> usize {
 ///
 /// Both operands staying odd is what makes the shift below exact: their difference is even, and
 /// shifting its factors two away cannot drop a factor the two share.
+///
+/// Which operand is the larger is a coin flip on every round, so a comparison that picks a branch
+/// mispredicts half the time. Phrased as `min`/`max`, both halves of the choice compile to
+/// conditional moves and the loop carries no branch other than its exit. The zero count runs on
+/// the wrapped difference, which has the trailing zeros of the absolute one, so it does not wait
+/// for the sign to be resolved.
 #[inline]
 fn gcd_scalar_odd(mut left: usize, mut right: usize) -> usize {
     debug_assert_eq!(left % 2, 1);
     debug_assert_eq!(right % 2, 1);
 
-    while left != right {
-        if left > right {
-            mem::swap(&mut left, &mut right);
+    loop {
+        let difference = left.wrapping_sub(right);
+        if difference == 0 {
+            break left;
         }
 
-        right -= left;
-        right >>= right.trailing_zeros();
+        let zeros = difference.trailing_zeros();
+        let smaller = min(left, right);
+        let larger = left.max(right);
+        right = smaller;
+        left = (larger - smaller) >> zeros;
     }
-
-    right
 }
 
 #[inline]
@@ -561,22 +568,36 @@ fn to_double(values: &[usize]) -> u128 {
 
 /// The greatest common divisor of two odd, non zero double width values.
 ///
-/// This is [`gcd_scalar_odd`] one type wider; see there for why the shift is exact.
+/// This is [`gcd_scalar_odd`] one type wider; see there for why the shift is exact and why the
+/// loop is phrased without a swap.
+///
+/// Every double width operation below costs a multiple of its single width version, while the
+/// reduction shrinks both operands by a couple of bits per round: once both fit in a word, which
+/// is most of every reduction's rounds, the single width loop finishes the job in a fraction of
+/// the time. A Euclid style loop with register sized quotients was tried here and lost: its
+/// quotient tests branch on data that is an even coin flip per step, and the mispredictions cost
+/// more than the larger steps saved, where this loop decides everything with conditional moves.
 #[inline]
 fn gcd_double_odd(mut left: u128, mut right: u128) -> u128 {
     debug_assert_eq!(left % 2, 1);
     debug_assert_eq!(right % 2, 1);
 
-    while left != right {
-        if left > right {
-            mem::swap(&mut left, &mut right);
+    loop {
+        if (left | right) >> BITS_PER_WORD == 0 {
+            break gcd_scalar_odd(left as usize, right as usize) as u128;
         }
 
-        right -= left;
-        right >>= right.trailing_zeros();
-    }
+        let difference = left.wrapping_sub(right);
+        if difference == 0 {
+            break left;
+        }
 
-    right
+        let zeros = difference.trailing_zeros();
+        let smaller = min(left, right);
+        let larger = left.max(right);
+        right = smaller;
+        left = (larger - smaller) >> zeros;
+    }
 }
 
 #[inline]
@@ -590,70 +611,337 @@ pub(crate) unsafe fn binary_gcd<const S: usize>(mut left: SmallVec<[usize; S]>, 
 
         if left.len() <= DOUBLE_WORDS && right.len() <= DOUBLE_WORDS {
             // Both operands have shrunk to values that fit in registers, so the rest of the
-            // reduction needs none of the machinery below, which walks and truncates both buffers
-            // on every step. Every reduction ends here, whatever size it started at.
+            // reduction needs none of the machinery below. Every reduction ends here, whatever
+            // size it started at.
             break finish_in_registers(left, &right);
         }
 
-        match cmp_and_remove(&mut left, &mut right) {
-            Ordering::Less => {
-                // SAFETY: `right` is the larger of the two, possibly with the most significant
-                // words it shares with `left` already removed, which is exactly what this expects.
-                unsafe { sub_assign_result_positive(&mut right, &left) };
-                // SAFETY: The two were unequal, so their difference is non zero and therefore not
-                // empty; `sub_assign_result_positive` pops the trailing zero words it leaves.
-                let (zero_words, zero_bits) = unsafe { trailing_zeros(&right) };
-                shr_mut(&mut right, zero_words, zero_bits);
-            }
+        let (large, small) = match cmp(&left, &right) {
+            Ordering::Less => (&mut right, &mut left),
             Ordering::Equal => break left,
-            Ordering::Greater => {
-                // SAFETY: As above, with the roles reversed.
-                unsafe { sub_assign_result_positive(&mut left, &right) };
-                // SAFETY: As above, with the roles reversed.
-                let (zero_words, zero_bits) = unsafe { trailing_zeros(&left) };
-                shr_mut(&mut left, zero_words, zero_bits);
+            Ordering::Greater => (&mut left, &mut right),
+        };
+
+        let large_bits = bit_length(large);
+        let small_bits = bit_length(small);
+        if large_bits > small_bits + BITS_PER_WORD as usize {
+            // The quotient of the two does not fit in a word, so no round of simulated steps can
+            // bridge the difference: its quotients are single words, and a round would grind the
+            // gap down a word at a time at best. One word of schoolbook division per pass closes
+            // in on the smaller value faster, and the round below takes over once quotients fit.
+            reduce_gap(large, small, large_bits, small_bits);
+            continue;
+        }
+
+        // One Lehmer round: simulate Euclid steps on the leading bits of both operands in
+        // registers, then apply the accumulated matrix to the full values in a single pass each.
+        // A subtraction pass over the full operands gives up only a bit or two of their length;
+        // a round gives up what the simulated steps consumed, typically most of a word, for the
+        // same number of passes.
+        let shift = large_bits - (2 * BITS_PER_WORD - 1) as usize;
+        let matrix = simulate_euclid_steps(
+            high_double_word(large, shift),
+            high_double_word(small, shift),
+        );
+        // The first simulated step always commits: either the leading bits decide a quotient, or
+        // they are too close to call, which the operands being unequal resolves to a quotient of
+        // one. The matrix is therefore never the identity.
+        debug_assert_ne!(matrix.small_factors.0, 0);
+
+        let (new_large, new_small) = matrix.apply(large, small);
+
+        // The simulated steps are true Euclid steps, so the results are members of the remainder
+        // sequence of the two operands: a step landing exactly on zero ends the reduction with the
+        // other value, which divides both operands and is their gcd.
+        if new_small.is_empty() {
+            debug_assert!(!new_large.is_empty());
+            break new_large;
+        }
+        if new_large.is_empty() {
+            break new_small;
+        }
+
+        // The gcd of two odd values is odd, so the factors two a remainder picks up are not part
+        // of it and shrink the operands for free.
+        // SAFETY: Both values were just checked to be non zero, and `apply` normalizes.
+        let (zero_words, zero_bits) = unsafe { trailing_zeros(&new_large) };
+        *large = new_large;
+        shr_mut(large, zero_words, zero_bits);
+        // SAFETY: As above.
+        let (zero_words, zero_bits) = unsafe { trailing_zeros(&new_small) };
+        *small = new_small;
+        shr_mut(small, zero_words, zero_bits);
+    }
+}
+
+/// The number of bits in a value, which is one more than the position of its highest set bit.
+#[inline]
+fn bit_length(values: &[usize]) -> usize {
+    debug_assert!(is_well_formed_non_zero(values));
+
+    values.len() * BITS_PER_WORD as usize - values.last().unwrap().leading_zeros() as usize
+}
+
+/// The value divided by `2 ** shift`, of which the caller knows that it fits in a double word.
+#[inline]
+fn high_double_word(values: &[usize], shift: usize) -> u128 {
+    debug_assert!(bit_length(values) <= shift + 2 * BITS_PER_WORD as usize);
+
+    let word = shift / BITS_PER_WORD as usize;
+    let bit = (shift % BITS_PER_WORD as usize) as u32;
+
+    // A shorter value simply has zeros beyond its top; the quotient is what matters, not the
+    // length, so the missing words are read as such rather than making the caller align anything.
+    let get = |index: usize| values.get(index).copied().unwrap_or(0) as u128;
+
+    let low = get(word) | (get(word + 1) << BITS_PER_WORD);
+    if bit > 0 {
+        (low >> bit) | (get(word + 2) << (2 * BITS_PER_WORD - bit))
+    } else {
+        low
+    }
+}
+
+/// Cosequence magnitudes accumulated by [`simulate_euclid_steps`].
+///
+/// The fields hold the two columns of the matrix taking the original operands to the current
+/// remainder pair: the factors that multiply the larger operand and those that multiply the
+/// smaller one. In terms of those magnitudes `(a, c)` and `(b, d)`, the matrix is
+/// `[[+a, -b], [-c, +d]]` after an even number of Euclid steps and `[[-a, +b], [+c, -d]]` after
+/// an odd number: every step swaps the rows and flips the signs of one of them, so the signs
+/// alternate with the parity and never need to be stored.
+struct StepMatrix {
+    large_factors: (usize, usize),
+    small_factors: (usize, usize),
+    even: bool,
+}
+
+/// Simulate Euclid steps on the leading bits of two values.
+///
+/// `a_hat` and `b_hat` are the leading bits of two values `a >= b`, cut off at the same bit
+/// position, so that `a = (a_hat + x) * 2 ** shift` and `b = (b_hat + y) * 2 ** shift` for some
+/// unknown `x` and `y` in `[0, 1)`. The returned matrix `M` is unimodular and such that
+/// `M * (a, b)` is a pair of consecutive members of a valid remainder sequence of `a` and `b`: it
+/// shares their gcd, and both entries are non negative.
+///
+/// Each simulated step uses a quotient that provably does not exceed the quotient of the true
+/// values, whatever `x` and `y` are. An underestimated quotient still makes a valid remainder
+/// step; it merely leaves more for the next step, so certainty about the quotient's exact value
+/// is not needed, and the single lower bound below replaces the classical test that computes the
+/// quotient from both ends of the uncertainty interval.
+#[inline]
+fn simulate_euclid_steps(mut a_hat: u128, mut b_hat: u128) -> StepMatrix {
+    debug_assert!(a_hat >= b_hat);
+    debug_assert!(a_hat < 1_u128 << (2 * BITS_PER_WORD - 1));
+
+    let (mut a0, mut b0): (usize, usize) = (1, 0);
+    let (mut c0, mut d0): (usize, usize) = (0, 1);
+    let mut even = true;
+
+    loop {
+        // The true current remainders lie in `(a_hat - numerator_sub, a_hat + _)` and
+        // `(b_hat - _, b_hat + denominator_add)`: the uncertainty `x` and `y` of the original
+        // operands, amplified by the matrix entries. Shrinking the numerator and growing the
+        // denominator by those margins makes the quotient below a lower bound on the true one.
+        let (numerator_sub, denominator_add) = if even { (b0, d0) } else { (a0, c0) };
+
+        if a_hat < numerator_sub as u128 {
+            break;
+        }
+        let numerator = a_hat - numerator_sub as u128;
+        let denominator = b_hat + denominator_add as u128;
+
+        let quotient = if numerator < denominator {
+            if b0 == 0 {
+                // No step is committed yet, and the caller guarantees `a >= b`... but the leading
+                // bits are too close to call. `a > b` holds whenever the operands differ (the
+                // caller broke off on equality), so a first step with quotient one is valid even
+                // though the leading bits cannot confirm it.
+                1
+            } else {
+                break;
             }
+        } else if numerator >> 1 < denominator {
+            // Small quotients dominate: each value `q` shows up in about `log2(1 + 1 / (q * (q + 2)))`
+            // of all steps, so one through seven cover five out of every six. Comparing against
+            // small multiples of the denominator resolves them exactly for a fraction of what the
+            // division below costs. Exactly, because an underestimate here is a false economy: a
+            // step short of the true quotient leaves a remainder above the denominator, and the
+            // step that cleans that up costs more than the division that was saved.
+            1
+        } else if numerator < denominator * 3 {
+            2
+        } else if numerator >> 2 < denominator {
+            3
+        } else if numerator >> 3 < denominator {
+            if numerator < denominator * 6 {
+                if numerator < denominator * 5 { 4 } else { 5 }
+            } else if numerator < denominator * 7 {
+                6
+            } else {
+                7
+            }
+        } else {
+            // A single word division on the leading word of the numerator. Cutting both operands
+            // by the same amount and dividing by one more than the cut denominator keeps the
+            // quotient an underestimate whatever is cut off, so no double width division is ever
+            // needed; while the denominator reaches past the cut, the estimate is off by at most
+            // about one part in `2 ** (BITS_PER_WORD - 1)`, and when it does not, the estimate is
+            // merely crude and the steps that follow pick up what it left behind.
+            let cut = (2 * BITS_PER_WORD - numerator.leading_zeros()).saturating_sub(BITS_PER_WORD);
+            // The denominator is at most half the numerator here, so the `+ 1` cannot overflow.
+            (numerator >> cut) as usize / ((denominator >> cut) as usize + 1)
+        };
+
+        // The updated entries are sums of products of previous ones, so they are additive in the
+        // magnitudes whatever the signs; overflowing a word is the natural end of the round,
+        // checked before anything is committed.
+        let Some(c_new) = quotient.checked_mul(c0).and_then(|value| value.checked_add(a0)) else {
+            break;
+        };
+        let Some(d_new) = quotient.checked_mul(d0).and_then(|value| value.checked_add(b0)) else {
+            break;
+        };
+
+        // The quotient is at most `a_hat / b_hat`, so this product does not exceed `a_hat`.
+        let product = quotient as u128 * b_hat;
+        debug_assert!(product <= a_hat);
+
+        (a0, c0) = (c0, c_new);
+        (b0, d0) = (d0, d_new);
+        (a_hat, b_hat) = (b_hat, a_hat - product);
+        even = !even;
+    }
+
+    StepMatrix { large_factors: (a0, c0), small_factors: (b0, d0), even }
+}
+
+/// Subtract a word sized multiple of `small`, shifted up under the top of `large`, from `large`.
+///
+/// This is one word of schoolbook division, keeping only the remainder: the multiplier is an
+/// underestimate of `large / (small * 2 ** exponent)` computed from the leading bits of both, with
+/// the exponent lining the product up one word below the top of `large`. Each pass removes almost
+/// a whole word of `large`'s length. Subtracting an underestimate rather than the exact quotient
+/// keeps the result non negative without a correction step, at the price of leaving at most a few
+/// bits more behind for the next pass.
+///
+/// `large` stays odd: the subtracted multiple carries the factor `2 ** exponent`, which is even.
+#[inline]
+fn reduce_gap<const S: usize>(
+    large: &mut SmallVec<[usize; S]>, small: &[usize], large_bits: usize, small_bits: usize,
+) {
+    debug_assert_eq!(bit_length(large), large_bits);
+    debug_assert_eq!(bit_length(small), small_bits);
+    debug_assert!(large_bits > small_bits + BITS_PER_WORD as usize);
+
+    let exponent = large_bits - small_bits - BITS_PER_WORD as usize;
+    let words = exponent / BITS_PER_WORD as usize;
+    let bits = (exponent % BITS_PER_WORD as usize) as u32;
+
+    // An underestimate of `large / (small * 2 ** exponent)`, which by the choice of exponent is
+    // about a word: divide the leading bits of `large` by one more than the leading bits of
+    // `small`, scale correction and word cap included. This single wide division pays for a whole
+    // word of progress.
+    let cut = small_bits.saturating_sub((BITS_PER_WORD - 1) as usize);
+    let small_top = high_double_word(small, cut);
+    let mut quotient = high_double_word(large, large_bits - (2 * BITS_PER_WORD - 1) as usize) / (small_top + 1);
+    if small_bits < (BITS_PER_WORD - 1) as usize {
+        quotient >>= (BITS_PER_WORD - 1) as usize - small_bits;
+    }
+    let quotient = usize::try_from(quotient).unwrap_or(usize::MAX);
+    debug_assert!(quotient >= 1);
+
+    // `small << bits`, at most one word longer than `small` itself.
+    let mut shifted: SmallVec<[usize; S]> = SmallVec::with_capacity(small.len() + 1);
+    if bits > 0 {
+        let mut previous = 0;
+        for &word in small {
+            shifted.push((word << bits) | (previous >> (BITS_PER_WORD - bits)));
+            previous = word;
+        }
+        let top = previous >> (BITS_PER_WORD - bits);
+        if top > 0 {
+            shifted.push(top);
+        }
+    } else {
+        shifted.extend_from_slice(small);
+    }
+
+    let mut borrow = submul_1(&mut large[words..], &shifted, quotient);
+    for word in &mut large[words + shifted.len()..] {
+        let (value, underflow) = word.overflowing_sub(borrow);
+        *word = value;
+        borrow = usize::from(underflow);
+        if borrow == 0 {
+            break;
+        }
+    }
+    // The subtracted multiple does not exceed `large`, so nothing borrows out of the top.
+    debug_assert_eq!(borrow, 0);
+
+    while let Some(0) = large.last() {
+        large.pop();
+    }
+}
+
+impl StepMatrix {
+    /// Multiply the matrix onto a pair of values, producing the remainder pair it encodes.
+    ///
+    /// The results are members of the remainder sequence of `large` and `small`, so both are
+    /// smaller than `large` and non negative; either can be zero, which comes back as an empty
+    /// value.
+    #[inline]
+    fn apply<const S: usize>(
+        &self, large: &[usize], small: &[usize],
+    ) -> (SmallVec<[usize; S]>, SmallVec<[usize; S]>) {
+        let StepMatrix { large_factors: (a0, c0), small_factors: (b0, d0), even } = *self;
+
+        if even {
+            (mul_sub(a0, large, b0, small), mul_sub(d0, small, c0, large))
+        } else {
+            (mul_sub(b0, small, a0, large), mul_sub(c0, large, d0, small))
         }
     }
 }
 
-/// Compare two values, stripping the most significant words they have in common off the larger.
+/// The value `p * x - q * y` for single word `p` and `q`.
 ///
-/// The caller subtracts the smaller from the larger afterwards; those shared words cancel in that
-/// subtraction, so removing them beforehand saves the work. Every access below is bounds checked,
-/// so this needs nothing of its operands for memory safety.
+/// The caller guarantees the result to be non negative and, like any member of a remainder
+/// sequence, to fit in the longer of the two operands. Zero comes back as an empty value.
 #[inline]
-fn cmp_and_remove<const S: usize>(left: &mut SmallVec<[usize; S]>, right: &mut SmallVec<[usize; S]>) -> Ordering {
-    debug_assert!(is_well_formed(left));
-    debug_assert!(is_well_formed(right));
+fn mul_sub<const S: usize>(p: usize, x: &[usize], q: usize, y: &[usize]) -> SmallVec<[usize; S]> {
+    debug_assert_ne!(p, 0);
+    debug_assert!(!x.is_empty() && !y.is_empty());
 
-    match left.len().cmp(&right.len()) {
-        Ordering::Less => Ordering::Less,
-        Ordering::Equal => {
-            let length = left.len();
-            debug_assert_eq!(right.len(), length);
+    let length = max(x.len(), y.len());
+    let mut result: SmallVec<[usize; S]> = smallvec![0; length];
 
-            let mut nr_equal = 0;
-            for (left_word, right_word) in left.iter().zip(right.iter()).rev() {
-                match left_word.cmp(right_word) {
-                    Ordering::Less => {
-                        right.truncate(length - nr_equal);
-                        return Ordering::Less
-                    },
-                    Ordering::Equal => {
-                        nr_equal += 1;
-                    }
-                    Ordering::Greater => {
-                        left.truncate(length - nr_equal);
-                        return Ordering::Greater
-                    },
-                }
-            }
-
-            Ordering::Equal
-        }
-        Ordering::Greater => Ordering::Greater,
+    let carry = mul_1(&mut result[..x.len()], x, p);
+    let mut top = 0;
+    if x.len() < length {
+        result[x.len()] = carry;
+    } else {
+        // The word that carries out of the buffer has nowhere to go; the subtraction below
+        // borrows it back out exactly, because the result fits in the buffer.
+        top = carry;
     }
+
+    let mut borrow = submul_1(&mut result, y, q);
+    for word in &mut result[y.len()..] {
+        let (value, underflow) = word.overflowing_sub(borrow);
+        *word = value;
+        borrow = usize::from(underflow);
+        if borrow == 0 {
+            break;
+        }
+    }
+    debug_assert_eq!(borrow, top);
+
+    while let Some(0) = result.last() {
+        result.pop();
+    }
+
+    result
 }
 
 /// Count the number of trailing zeros.
@@ -697,7 +985,8 @@ mod test {
     use smallvec::{smallvec, SmallVec};
 
     use crate::integer::big::io::from_str_radix;
-    use crate::integer::big::ops::building_blocks::is_well_formed;
+    use crate::integer::big::ops::building_blocks::{carrying_add_mut, is_well_formed};
+    use crate::integer::big::ops::non_zero::mul_non_zero;
     use crate::integer::big::ops::normalize::{binary_gcd, gcd_scalar, gcd_single, prepare_gcd_single, prepare_gcd_single_mut, remove_shared_two_factors_mut, simplify_fraction_gcd, simplify_fraction_gcd_single, simplify_fraction_without_info, trailing_zeros, WhichOdd};
     use crate::integer::big::ops::normalize::gcd;
     use crate::Ubig;
@@ -827,6 +1116,137 @@ mod test {
         check("1023252987299016841533870263425231730508862118967216225750764660190838265954255348065817221787128", "1293952258958624867620379547592971490806513826554373256803404505348879862627623245817342285447304", "33467907793400953496");
         check("1805470657352698014196789547994947146325104095726116408477835014627109088790297405931869796673469", "2058527418669397385879012659391228444069189964404255587402144910976167759048288184781847570037608", "1");
         check("16719076066866201936912145143271387284233845045525627699043748426168633999699788800261397671426974604915276030965422650447171652549468043641170769558268775240279605758916779627084117447704336623156643711571400949636670246553631789248231248444568", "2813909279938232501258637705332641443573692088462671992360262407309344264411975071031104431295428451930775178161770529981685118781355014974374688179279571115684871313651622971594739901360", "1653650929223887310197130497400344829595384098828559533780726349020130812745509712258905464");
+    }
+
+    /// Cross check the multi word reduction against an independent implementation, over random
+    /// operands shaped to reach every path: plain random pairs, pairs with a planted many word
+    /// common factor, near equal pairs whose leading bits agree, and pairs of very different
+    /// lengths.
+    #[test]
+    fn test_binary_gcd_against_reference() {
+        use std::cmp::Ordering;
+
+        /// Subtract and shift binary gcd on odd operands, written directly against `Vec` and
+        /// shared with nothing under test.
+        fn reference_gcd(mut left: Vec<usize>, mut right: Vec<usize>) -> Vec<usize> {
+            fn compare(left: &[usize], right: &[usize]) -> Ordering {
+                left.len().cmp(&right.len()).then_with(|| left.iter().rev().cmp(right.iter().rev()))
+            }
+
+            /// `left - right` for `left >= right`, normalized.
+            fn subtract(left: &[usize], right: &[usize]) -> Vec<usize> {
+                let mut result = Vec::with_capacity(left.len());
+                let mut borrow = false;
+                for (index, &word) in left.iter().enumerate() {
+                    let (value, first) = word.overflowing_sub(right.get(index).copied().unwrap_or(0));
+                    let (value, second) = value.overflowing_sub(usize::from(borrow));
+                    result.push(value);
+                    borrow = first || second;
+                }
+                assert!(!borrow);
+                while result.last() == Some(&0) {
+                    result.pop();
+                }
+                result
+            }
+
+            /// Shift out all trailing zeros of a non zero value.
+            fn make_odd(value: &mut Vec<usize>) {
+                let words = value.iter().position(|&word| word != 0).unwrap();
+                value.drain(..words);
+                let bits = value[0].trailing_zeros();
+                if bits > 0 {
+                    for index in 0..value.len() {
+                        value[index] >>= bits;
+                        if let Some(&next) = value.get(index + 1) {
+                            value[index] |= next << (usize::BITS - bits);
+                        }
+                    }
+                    while value.last() == Some(&0) {
+                        value.pop();
+                    }
+                }
+            }
+
+            loop {
+                match compare(&left, &right) {
+                    Ordering::Equal => break left,
+                    Ordering::Greater => {
+                        left = subtract(&left, &right);
+                        make_odd(&mut left);
+                    }
+                    Ordering::Less => {
+                        right = subtract(&right, &left);
+                        make_odd(&mut right);
+                    }
+                }
+            }
+        }
+
+        let mut state = 0x853c49e6748fea9b_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state as usize
+        };
+
+        fn random_odd(words: usize, next: &mut impl FnMut() -> usize) -> SV {
+            let mut value: SV = (0..words).map(|_| next()).collect();
+            value[0] |= 1;
+            while let Some(0) = value.last() {
+                value.pop();
+            }
+            value
+        }
+
+        for round in 0..2_000 {
+            let (left, right): (SV, SV) = match round % 4 {
+                0 => {
+                    // Plain random pairs of up to eight words
+                    (random_odd(1 + next() % 8, &mut next), random_odd(1 + next() % 8, &mut next))
+                }
+                1 => {
+                    // A planted common factor of up to three words
+                    let shared = random_odd(1 + next() % 3, &mut next);
+                    let left = unsafe { mul_non_zero::<8>(&random_odd(1 + next() % 5, &mut next), &shared) };
+                    let right = unsafe { mul_non_zero::<8>(&random_odd(1 + next() % 5, &mut next), &shared) };
+                    (left, right)
+                }
+                2 => {
+                    // Near equal pairs, whose leading bits agree for several words
+                    let base = random_odd(3 + next() % 6, &mut next);
+                    let mut other = base.clone();
+                    let difference = next() >> (next() % (usize::BITS as usize));
+                    // Adding an even difference to an odd value keeps it odd, and any carry stays
+                    // within one extra word.
+                    let mut carry = false;
+                    carrying_add_mut(&mut other[0], difference & !1, &mut carry);
+                    let mut index = 1;
+                    while carry {
+                        if index == other.len() {
+                            other.push(0);
+                        }
+                        carrying_add_mut(&mut other[index], 0, &mut carry);
+                        index += 1;
+                    }
+                    (base, other)
+                }
+                _ => {
+                    // Very different lengths, which the leading bits cannot bridge
+                    (random_odd(1 + next() % 2, &mut next), random_odd(5 + next() % 4, &mut next))
+                }
+            };
+
+            if left == right {
+                continue;
+            }
+
+            let expected = reference_gcd(left.to_vec(), right.to_vec());
+            let result = unsafe { binary_gcd(left.clone(), right.clone()) };
+            assert_eq!(result.to_vec(), expected, "gcd({left:?}, {right:?})");
+            assert!(is_well_formed(&result));
+        }
     }
 
     /// Cross check the register sized fall back of the reduction against `u128` arithmetic.
