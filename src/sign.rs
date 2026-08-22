@@ -32,6 +32,12 @@ pub trait Signed {
 /// A number that can be negated, that is, who's sign can be flipped.
 pub trait Negateable: Signed {
     /// Negate the number, e.g. go from 1 to -1.
+    ///
+    /// # Panics
+    ///
+    /// When the negation is not representable. A two's complement integer has one more negative
+    /// value than positive ones, so `MIN` has no counterpart; every other implementation in this
+    /// crate is total, because a sign and magnitude representation negates by writing the sign.
     fn negate(&mut self);
 }
 
@@ -128,15 +134,18 @@ impl Mul for Sign {
     }
 }
 
+/// Signs are totally ordered as `Negative < Zero < Positive`, matching the discriminants.
+impl Ord for Sign {
+    #[inline]
+    fn cmp(&self, other: &Self) -> Ordering {
+        (*self as i8).cmp(&(*other as i8))
+    }
+}
+
 impl PartialOrd for Sign {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match (self, other) {
-            (Sign::Negative, Sign::Zero | Sign::Positive) | (Sign::Zero, Sign::Positive) => Some(Ordering::Less),
-            (Sign::Zero, Sign::Zero) => Some(Ordering::Equal),
-            (Sign::Positive, Sign::Zero | Sign::Negative) | (Sign::Zero, Sign::Negative) => Some(Ordering::Greater),
-            (Sign::Negative, Sign::Negative) | (Sign::Positive, Sign::Positive) => None,
-        }
+        Some(self.cmp(other))
     }
 }
 
@@ -162,6 +171,8 @@ impl fmt::Display for Sign {
 
 #[cfg(test)]
 mod test {
+    use std::cmp::Ordering;
+
     use crate::{Sign, Signed};
     use crate::RB;
 
@@ -193,6 +204,22 @@ mod test {
         assert_eq!(Sign::Positive * Sign::Positive, Sign::Positive);
         assert_eq!(Sign::Negative * Sign::Negative, Sign::Positive);
         assert_eq!(Sign::Negative * Sign::Zero, -Sign::Zero);
+    }
+
+    /// `a == b` must imply `partial_cmp(a, b) == Some(Equal)`.
+    #[test]
+    fn test_sign_ord_contract() {
+        for a in [Sign::Negative, Sign::Zero, Sign::Positive] {
+            assert_eq!(a.partial_cmp(&a), Some(Ordering::Equal));
+            assert!(a <= a);
+            assert!(a >= a);
+            for b in [Sign::Negative, Sign::Zero, Sign::Positive] {
+                assert_eq!(a == b, a.partial_cmp(&b) == Some(Ordering::Equal));
+                assert_eq!(a.partial_cmp(&b), Some(a.cmp(&b)));
+                assert_eq!(a.cmp(&b), b.cmp(&a).reverse());
+            }
+        }
+        assert!(Sign::Negative < Sign::Zero && Sign::Zero < Sign::Positive);
     }
 
     #[test]

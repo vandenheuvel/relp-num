@@ -1,6 +1,7 @@
+use std::hint::black_box;
 use std::str::FromStr;
 
-use criterion::{black_box, Criterion, criterion_group};
+use criterion::{Criterion, criterion_group};
 
 use relp_num::{RationalBig, RB};
 

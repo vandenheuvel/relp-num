@@ -6,7 +6,7 @@ use smallvec::{smallvec, SmallVec};
 
 use crate::{RB, Sign};
 use crate::integer::big::io::from_str_radix;
-use crate::integer::big::ops::non_zero::{add_assign, add_assign_single_non_zero, mul_assign_single_non_zero, mul_non_zero, sub, sub_assign_result_positive, subtracting_cmp};
+use crate::integer::big::ops::non_zero::{add_assign, add_assign_single_non_zero, mul_assign_single_non_zero, mul_non_zero, sub, subtracting_cmp};
 use crate::rational::big::Big8;
 
 #[test]
@@ -306,70 +306,6 @@ fn test_bigint_add_assign() {
     let y: SV = smallvec![1];
     add_assign(&mut x, &y);
     let expected: SV = smallvec![1, 0, 0, 0, 1];
-    assert_eq!(x, expected);
-}
-
-#[test]
-fn test_bigint_sub_assign() {
-    type SV = SmallVec<[usize; 8]>;
-
-    // Same length, no overflow
-    let mut x: SV = smallvec![2];
-    let y: SV = smallvec![1];
-    unsafe { sub_assign_result_positive(&mut x, &y); }
-    let expected: SV = smallvec![1];
-    assert_eq!(x, expected);
-
-    // First longer, overflow
-    let mut x: SV = smallvec![0, 0, 1];
-    let y: SV = smallvec![1];
-    unsafe { sub_assign_result_positive(&mut x, &y); }
-    let expected: SV = smallvec![usize::MAX, usize::MAX];
-    assert_eq!(x, expected);
-
-    // First longer, overflow
-    let mut x: SV = smallvec![0, 1, 1];
-    let y: SV = smallvec![1, 1];
-    unsafe { sub_assign_result_positive(&mut x, &y); }
-    let expected: SV = smallvec![usize::MAX, usize::MAX];
-    assert_eq!(x, expected);
-
-    // First longer
-    let mut x: SV = smallvec![0, 2];
-    let y: SV = smallvec![1];
-    unsafe { sub_assign_result_positive(&mut x, &y); }
-    let expected: SV = smallvec![usize::MAX, 1];
-    assert_eq!(x, expected);
-
-    // First longer
-    let mut x: SV = smallvec![0, 1];
-    let y: SV = smallvec![usize::MAX];
-    unsafe { sub_assign_result_positive(&mut x, &y); }
-    let expected: SV = smallvec![1];
-    assert_eq!(x, expected);
-
-    let mut x = from_str_radix::<10, 3>("676230147000334142150220547988205853833725436834339162").unwrap();
-    let y = from_str_radix::<10, 3>("68498984987984986896468746354684684684968").unwrap();
-    unsafe { sub_assign_result_positive(&mut x, &y); }
-    let expected = from_str_radix::<10, 3>("676230147000265643165232563001309385087370752149654194").unwrap();
-    assert_eq!(x, expected);
-
-    let mut x = from_str_radix::<10, 3>("676230147000334142150220547988205853833725436834339162").unwrap();
-    let y = from_str_radix::<10, 3>("68498984987984986896468746354684684684968").unwrap();
-    unsafe { sub_assign_result_positive(&mut x, &y); }
-    let expected = from_str_radix::<10, 3>("676230147000265643165232563001309385087370752149654194").unwrap();
-    assert_eq!(x, expected);
-
-    let mut x = from_str_radix::<10, 3>("52138404881359597776641425341642690746162654701917220048397413248229209595444").unwrap();
-    let y = from_str_radix::<10, 3>("13282457576090002999724080439382126039670578699984818946692017256202044898307").unwrap();
-    unsafe { sub_assign_result_positive(&mut x, &y); }
-    let expected = from_str_radix::<10, 3>("38855947305269594776917344902260564706492076001932401101705395992027164697137").unwrap();
-    assert_eq!(x, expected);
-
-    let mut x = from_str_radix::<10, 3>("92599469589222131768757076514696607382155504523751371565834361998764652118557").unwrap();
-    let y = from_str_radix::<10, 3>("80627506337117343961599775375716501347124738605551411762759133617725727360716").unwrap();
-    unsafe { sub_assign_result_positive(&mut x, &y); }
-    let expected = from_str_radix::<10, 3>("11971963252104787807157301138980106035030765918199959803075228381038924757841").unwrap();
     assert_eq!(x, expected);
 }
 

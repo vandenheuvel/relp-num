@@ -204,7 +204,13 @@ macro_rules! rational_non_zero {
                         match sign_change {
                             SignChange::None => {}
                             SignChange::Flip => self.sign.negate(),
-                            SignChange::Zero => panic!("attempt to add with overflow"),
+                            // Adding opposite signs subtracts the magnitudes, which can cancel
+                            // exactly. That is not an overflow: the result is zero, which this
+                            // type deliberately cannot represent.
+                            SignChange::Zero => panic!(concat!(
+                                "the result of this addition is zero, which ", stringify!($name),
+                                " cannot represent",
+                            )),
                         }
                     }
                 }
@@ -224,7 +230,11 @@ macro_rules! rational_non_zero {
                         match sign_change {
                             SignChange::None => {}
                             SignChange::Flip => self.sign.negate(),
-                            SignChange::Zero => panic!("attempt to subtract with overflow"),
+                            // Equal values subtract to zero, which this type cannot represent.
+                            SignChange::Zero => panic!(concat!(
+                                "the result of this subtraction is zero, which ", stringify!($name),
+                                " cannot represent",
+                            )),
                         }
                     }
                     (NonZeroSign::Positive, NonZeroSign::Negative) | (NonZeroSign::Negative, NonZeroSign::Positive) => {
@@ -302,8 +312,14 @@ rational_non_zero!(NonZeroRational64, add64, sub64, mul64);
 rational_non_zero!(NonZeroRational128, add128, sub128, mul128);
 rational_non_zero!(NonZeroRationalUsize, add_usize, sub_usize, mul_usize);
 
-macro_rules! rational_requiring_wide {
-    ($name:ident, $uty:ty, $BITS:literal, $wide:ty, $sign:ident) => {
+/// Compare two ratios by cross multiplication.
+///
+/// `$widening_mul` computes the exact product of two magnitudes as a tuple that orders like the
+/// number it represents: the most significant half first. Comparing the two tuples
+/// lexicographically therefore compares `a * d` against `b * c` exactly, which is the comparison
+/// of `a / b` against `c / d` because both denominators are positive.
+macro_rules! rational_ord {
+    ($name:ident, $sign:ident, $widening_mul:expr) => {
         impl PartialOrd for $name {
             #[inline]
             fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -315,37 +331,65 @@ macro_rules! rational_requiring_wide {
             #[inline]
             #[allow(unreachable_patterns)]
             fn cmp(&self, other: &Self) -> Ordering {
-                self.sign.partial_cmp(&other.sign).or_else(|| {
-                    debug_assert_eq!(self.sign, other.sign);
-                    debug_assert!(self.is_not_zero());
+                match self.sign.cmp(&other.sign) {
+                    Ordering::Less => return Ordering::Less,
+                    Ordering::Greater => return Ordering::Greater,
+                    // Both zero, or both nonzero with the same sign; compare the magnitudes.
+                    Ordering::Equal => {}
+                }
 
-                    let widening_mul = |left, right| {
-                        let wide = unsafe { (left as $wide).unchecked_mul(right as $wide) };
-                        ((wide >> $BITS) as $uty, wide as $uty)
-                    };
+                if !self.sign.is_not_zero() {
+                    // Equal signs and the sign is zero, so both values are zero.
+                    return Ordering::Equal;
+                }
 
-                    let ad = widening_mul(self.numerator, other.denominator);
-                    let bc = widening_mul(self.denominator, other.numerator);
+                let widening_mul = $widening_mul;
 
-                    Some(match (ad.cmp(&bc), self.sign) {
-                        (Ordering::Less, $sign::Positive) | (Ordering::Greater, $sign::Negative) => Ordering::Less,
-                        (Ordering::Equal, _) => Ordering::Equal,
-                        (Ordering::Greater, $sign::Positive) | (Ordering::Less, $sign::Negative) => Ordering::Greater,
-                        _ => panic!("Zero case would have been equal or nonzero type"),
-                    })
-                }).expect("bug: the fallback branch always yields an ordering")
+                let ad = widening_mul(self.numerator, other.denominator);
+                let bc = widening_mul(self.denominator, other.numerator);
+
+                match (ad.cmp(&bc), self.sign) {
+                    (Ordering::Less, $sign::Positive) | (Ordering::Greater, $sign::Negative) => Ordering::Less,
+                    (Ordering::Equal, _) => Ordering::Equal,
+                    (Ordering::Greater, $sign::Positive) | (Ordering::Less, $sign::Negative) => Ordering::Greater,
+                    _ => unreachable!("sign was checked to be nonzero"),
+                }
             }
         }
     }
 }
-rational_requiring_wide!(Rational8, u8, 8, u16, Sign);
-rational_requiring_wide!(Rational16, u16, 16, u32, Sign);
-rational_requiring_wide!(Rational32, u32, 32, u64, Sign);
-rational_requiring_wide!(Rational64, u64, 64, u128, Sign);
-rational_requiring_wide!(NonZeroRational8, u8, 8, u16, NonZeroSign);
-rational_requiring_wide!(NonZeroRational16, u16, 16, u32, NonZeroSign);
-rational_requiring_wide!(NonZeroRational32, u32, 32, u64, NonZeroSign);
-rational_requiring_wide!(NonZeroRational64, u64, 64, u128, NonZeroSign);
+
+/// Order a ratio by cross multiplying its magnitudes.
+///
+/// The two products are the `(high, low)` pairs [`carrying_mul`](u64::carrying_mul) returns: with
+/// a zero carry it is a widening multiply, which every width has, including the widest one, where
+/// no doubled width integer exists to widen into.
+///
+/// Comparing by the continued fraction expansion of the two ratios would avoid the wide product
+/// altogether, but it costs a division per term of the expansion rather than a single
+/// multiplication, and the number of terms is not bounded by anything better than the width.
+macro_rules! rational_cross_multiplying_ord {
+    ($name:ident, $uty:ty, $sign:ident) => {
+        rational_ord!($name, $sign, |left: $uty, right: $uty| {
+            // `carrying_mul` returns the low half first.
+            let (low, high) = left.carrying_mul(right, 0);
+            (high, low)
+        });
+    }
+}
+
+rational_cross_multiplying_ord!(Rational8, u8, Sign);
+rational_cross_multiplying_ord!(Rational16, u16, Sign);
+rational_cross_multiplying_ord!(Rational32, u32, Sign);
+rational_cross_multiplying_ord!(Rational64, u64, Sign);
+rational_cross_multiplying_ord!(RationalUsize, usize, Sign);
+rational_cross_multiplying_ord!(Rational128, u128, Sign);
+rational_cross_multiplying_ord!(NonZeroRational8, u8, NonZeroSign);
+rational_cross_multiplying_ord!(NonZeroRational16, u16, NonZeroSign);
+rational_cross_multiplying_ord!(NonZeroRational32, u32, NonZeroSign);
+rational_cross_multiplying_ord!(NonZeroRational64, u64, NonZeroSign);
+rational_cross_multiplying_ord!(NonZeroRationalUsize, usize, NonZeroSign);
+rational_cross_multiplying_ord!(NonZeroRational128, u128, NonZeroSign);
 
 macro_rules! rational_forward {
     ($name:ident) => {
@@ -534,3 +578,273 @@ rational_forward!(NonZeroRational32);
 rational_forward!(NonZeroRational64);
 rational_forward!(NonZeroRational128);
 rational_forward!(NonZeroRationalUsize);
+
+#[cfg(test)]
+mod order_test {
+    use std::cmp::Ordering;
+
+    use crate::{Field, OrderedField};
+    use crate::non_zero::NonZeroSign;
+    use crate::rational::Ratio;
+    use crate::rational::small::{NonZeroRational128, NonZeroRationalUsize, Rational128, RationalUsize};
+    use crate::sign::Sign;
+
+    /// Build a value directly, to reach magnitudes that the `new` constructors can't take.
+    ///
+    /// The caller is responsible for the invariants: lowest terms, nonzero denominator and a sign
+    /// that is zero exactly when the numerator is.
+    fn ratio128(sign: Sign, numerator: u128, denominator: u128) -> Rational128 {
+        Ratio { sign, numerator, denominator }
+    }
+
+    fn ratio_usize(sign: Sign, numerator: usize, denominator: usize) -> RationalUsize {
+        Ratio { sign, numerator, denominator }
+    }
+
+    /// The widest types used to have no total order, and so were not fields either.
+    #[test]
+    fn test_ordered_field() {
+        fn assert_field<T: Field>() {}
+        fn assert_ordered_field<T: OrderedField>() {}
+        fn assert_ord<T: Ord>() {}
+
+        assert_field::<Rational128>();
+        assert_ordered_field::<Rational128>();
+        assert_field::<RationalUsize>();
+        assert_ordered_field::<RationalUsize>();
+
+        assert_ord::<NonZeroRational128>();
+        assert_ord::<NonZeroRationalUsize>();
+
+        // `Abs` is implemented for ratios that are ordered.
+        assert_eq!(crate::Abs::abs(ratio128(Sign::Negative, u128::MAX, 2)), ratio128(Sign::Positive, u128::MAX, 2));
+        assert_eq!(crate::Abs::abs(ratio_usize(Sign::Negative, usize::MAX, 2)), ratio_usize(Sign::Positive, usize::MAX, 2));
+    }
+
+    /// All pairs and triples of a small range, against an exact `f64` reference.
+    #[test]
+    fn test_order_usize_brute_force() {
+        let mut values = Vec::new();
+        for numerator in -5_isize..=5 {
+            for denominator in 1_usize..=5 {
+                let value = RationalUsize::new(numerator, denominator).unwrap();
+                values.push((value, numerator as f64 / denominator as f64));
+            }
+        }
+
+        for &(left, left_float) in &values {
+            for &(right, right_float) in &values {
+                let expected = left_float.partial_cmp(&right_float).unwrap();
+
+                assert_eq!(left.cmp(&right), expected, "{:?} <=> {:?}", left, right);
+                assert_eq!(left.partial_cmp(&right), Some(expected));
+                // Antisymmetry.
+                assert_eq!(right.cmp(&left), expected.reverse(), "{:?} <=> {:?}", right, left);
+                // Agreement with `PartialEq`.
+                assert_eq!(left == right, expected == Ordering::Equal, "{:?} == {:?}", left, right);
+            }
+        }
+
+        // Transitivity.
+        for &(left, _) in &values {
+            for &(middle, _) in &values {
+                if left > middle {
+                    continue;
+                }
+
+                for &(right, _) in &values {
+                    if middle <= right {
+                        assert!(left <= right, "{:?} <= {:?} <= {:?}", left, middle, right);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Products that don't fit a `usize`, which is why the comparison multiplies into a `u128`.
+    #[test]
+    fn test_order_usize_wide_product() {
+        // `(2 ^ (usize::BITS - 1) + 1) * 2` wraps to `2` in a `usize`, which is less than `1 * 3`,
+        // so a comparison that multiplies at the width of the type gets this pair backwards.
+        let large = ratio_usize(Sign::Positive, (1 << (usize::BITS - 1)) + 1, 1);
+        let small = ratio_usize(Sign::Positive, 3, 2);
+        assert!(large > small);
+        assert!(small < large);
+        assert!(-large < -small);
+
+        // The difference between these two is in the low half of the product.
+        let left = ratio_usize(Sign::Positive, usize::MAX, usize::MAX - 1);
+        let right = ratio_usize(Sign::Positive, usize::MAX - 1, usize::MAX - 2);
+        assert!(left < right);
+        assert!(right > left);
+        assert_eq!(left.cmp(&left), Ordering::Equal);
+        assert_eq!(right.cmp(&right), Ordering::Equal);
+        assert_eq!(left.cmp(&right).reverse(), right.cmp(&left));
+    }
+
+    /// Magnitudes above `u64::MAX`, whose products need more than the 128 bits of a `u128`.
+    #[test]
+    fn test_order_128_above_64_bits() {
+        // `(2 ^ 127 + 1) * 2` wraps to `2` in a `u128`, which is less than `1 * 3`.
+        let large = ratio128(Sign::Positive, (1 << 127) + 1, 1);
+        let small = ratio128(Sign::Positive, 3, 2);
+        assert!(large > small);
+        assert!(small < large);
+        assert!(-large < -small);
+
+        // `1 + 1 / 2 ^ 64` against `1 + 1 / (2 ^ 64 + 1)`; both cross products exceed a `u128`.
+        let left = ratio128(Sign::Positive, (1 << 64) + 1, 1 << 64);
+        let right = ratio128(Sign::Positive, (1 << 64) + 2, (1 << 64) + 1);
+        assert!(left > right);
+        assert!(right < left);
+
+        // The two products are `2 ^ 254 - 2 ^ 128` and `2 ^ 254 - 2 ^ 128 + 1`: they share their
+        // high 128 bits and differ in the last bit of the low half.
+        let left = ratio128(Sign::Positive, 1 << 127, (1 << 127) - 1);
+        let right = ratio128(Sign::Positive, (1 << 127) - 1, (1 << 127) - 2);
+        assert!(left < right);
+        assert!(right > left);
+        assert_eq!(left.cmp(&left), Ordering::Equal);
+        assert_eq!(left.cmp(&right).reverse(), right.cmp(&left));
+
+        // Large values that differ only in the last bit of the numerator.
+        let left = ratio128(Sign::Positive, u128::MAX, 2);
+        let right = ratio128(Sign::Positive, u128::MAX - 2, 2);
+        assert!(left > right);
+        assert!(-left < -right);
+    }
+
+    #[test]
+    fn test_order_128_signs() {
+        let zero = ratio128(Sign::Zero, 0, 1);
+        let positive = ratio128(Sign::Positive, u128::MAX, u128::MAX - 1);
+        let negative = ratio128(Sign::Negative, 1, u128::MAX);
+
+        assert_eq!(zero.cmp(&zero), Ordering::Equal);
+        assert_eq!(zero.cmp(&positive), Ordering::Less);
+        assert_eq!(positive.cmp(&zero), Ordering::Greater);
+        assert_eq!(zero.cmp(&negative), Ordering::Greater);
+        assert_eq!(negative.cmp(&zero), Ordering::Less);
+        assert_eq!(negative.cmp(&positive), Ordering::Less);
+        assert_eq!(positive.cmp(&negative), Ordering::Greater);
+        assert_eq!(positive.cmp(&positive), Ordering::Equal);
+        assert_eq!(negative.cmp(&negative), Ordering::Equal);
+
+        // Negation reverses the order of the magnitudes.
+        let left = ratio128(Sign::Negative, (1 << 100) + 1, (1 << 100) - 1);
+        let right = ratio128(Sign::Negative, (1 << 100) + 3, (1 << 100) - 1);
+        assert!(left > right);
+        assert!(-left < -right);
+    }
+
+    /// Compare `a / b` against `c / d` by their continued fraction expansions.
+    ///
+    /// This never computes a product, so it is independent of the implementation under test.
+    fn euclidean_cmp(mut a: u128, mut b: u128, mut c: u128, mut d: u128) -> Ordering {
+        let mut reversed = false;
+
+        loop {
+            let (left_quotient, left_remainder) = (a / b, a % b);
+            let (right_quotient, right_remainder) = (c / d, c % d);
+
+            let ordering = if left_quotient != right_quotient {
+                left_quotient.cmp(&right_quotient)
+            } else {
+                match (left_remainder == 0, right_remainder == 0) {
+                    (true, true) => Ordering::Equal,
+                    (true, false) => Ordering::Less,
+                    (false, true) => Ordering::Greater,
+                    (false, false) => {
+                        // Recurse on the reciprocals of the remainders, which flips the order.
+                        a = b;
+                        b = left_remainder;
+                        c = d;
+                        d = right_remainder;
+                        reversed = !reversed;
+                        continue;
+                    }
+                }
+            };
+
+            return if reversed { ordering.reverse() } else { ordering };
+        }
+    }
+
+    #[test]
+    fn test_order_128_against_continued_fractions() {
+        fn gcd(mut left: u128, mut right: u128) -> u128 {
+            while right != 0 {
+                let remainder = left % right;
+                left = right;
+                right = remainder;
+            }
+            left
+        }
+
+        // A linear congruential generator, so that the values are reproducible.
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let mut next = || {
+            let mut value = 0_u128;
+            for _ in 0..2 {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                value = (value << 64) | (state >> 1) as u128;
+            }
+            // Zero magnitudes are not representable in a nonzero ratio.
+            value.max(1)
+        };
+
+        for _ in 0..200 {
+            let (mut a, mut b, mut c, mut d) = (next(), next(), next(), next());
+            let (left_gcd, right_gcd) = (gcd(a, b), gcd(c, d));
+            a /= left_gcd;
+            b /= left_gcd;
+            c /= right_gcd;
+            d /= right_gcd;
+
+            let expected = euclidean_cmp(a, b, c, d);
+            let left = ratio128(Sign::Positive, a, b);
+            let right = ratio128(Sign::Positive, c, d);
+
+            assert_eq!(left.cmp(&right), expected, "{} / {} <=> {} / {}", a, b, c, d);
+            assert_eq!(right.cmp(&left), expected.reverse(), "{} / {} <=> {} / {}", c, d, a, b);
+            assert_eq!((-left).cmp(&-right), expected.reverse());
+            assert_eq!(left == right, expected == Ordering::Equal);
+        }
+    }
+
+    /// Small values of the widest type, against an exact `f64` reference.
+    #[test]
+    fn test_order_128_brute_force() {
+        let mut values = Vec::new();
+        for numerator in -5_i128..=5 {
+            for denominator in 1_u128..=5 {
+                let value = Rational128::new(numerator, denominator).unwrap();
+                values.push((value, numerator as f64 / denominator as f64));
+            }
+        }
+
+        for &(left, left_float) in &values {
+            for &(right, right_float) in &values {
+                let expected = left_float.partial_cmp(&right_float).unwrap();
+
+                assert_eq!(left.cmp(&right), expected, "{:?} <=> {:?}", left, right);
+                assert_eq!(right.cmp(&left), expected.reverse());
+                assert_eq!(left == right, expected == Ordering::Equal);
+            }
+        }
+    }
+
+    #[test]
+    fn test_order_non_zero() {
+        let left: NonZeroRational128 = Ratio { sign: NonZeroSign::Positive, numerator: (1 << 127) + 1, denominator: 1 };
+        let right: NonZeroRational128 = Ratio { sign: NonZeroSign::Positive, numerator: 3, denominator: 2 };
+        assert!(left > right);
+        assert!(-left < -right);
+
+        let left: NonZeroRationalUsize = Ratio { sign: NonZeroSign::Positive, numerator: usize::MAX, denominator: usize::MAX - 1 };
+        let right: NonZeroRationalUsize = Ratio { sign: NonZeroSign::Positive, numerator: usize::MAX - 1, denominator: usize::MAX - 2 };
+        assert!(left < right);
+        assert_eq!(left.cmp(&left), Ordering::Equal);
+        assert!(-left > -right);
+    }
+}

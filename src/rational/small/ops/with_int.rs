@@ -283,7 +283,11 @@ macro_rules! impls {
         impl AddAssign<$ty> for $name {
             #[inline]
             fn add_assign(&mut self, rhs: $ty) {
-                self.add_assign(rhs as $large);
+                // The inherent method assumes a non zero right hand side: a zero would be given a
+                // sign, breaking the invariant that only a zero numerator has sign `Sign::Zero`.
+                if rhs.is_not_zero() {
+                    self.add_assign(rhs as $large);
+                }
             }
         }
 
@@ -320,7 +324,11 @@ macro_rules! impls {
         impl SubAssign<$ty> for $name {
             #[inline]
             fn sub_assign(&mut self, rhs: $ty) {
-                self.sub_assign(rhs as $large);
+                // The inherent method assumes a non zero right hand side: a zero would be given a
+                // sign, breaking the invariant that only a zero numerator has sign `Sign::Zero`.
+                if rhs.is_not_zero() {
+                    self.sub_assign(rhs as $large);
+                }
             }
         }
 
@@ -465,14 +473,16 @@ macro_rules! impls {
         impl PartialEq<$ty> for $name {
             #[inline]
             fn eq(&self, rhs: &$ty) -> bool {
-                self.numerator == *rhs as $large && self.denominator.is_one() && self.sign == Sign::Positive
+                // A zero has sign `Sign::Zero`, not `Sign::Positive`, so the sign of the right hand
+                // side has to be compared rather than assumed.
+                self.numerator == *rhs as $large && self.denominator.is_one() && self.sign == Signed::signum(rhs)
             }
         }
 
         impl PartialEq<$nzty> for $name {
             #[inline]
             fn eq(&self, rhs: &$nzty) -> bool {
-                self.numerator == rhs.get() as $large && self.denominator.is_one() && self.sign == Sign::Positive
+                self.numerator == rhs.get() as $large && self.denominator.is_one() && self.sign == Signed::signum(rhs)
             }
         }
 
@@ -521,49 +531,79 @@ impls!(RationalUsize, usize, u64, NonZeroU64, i64, NonZeroI64, mul_usize, gcd_us
 impls!(RationalUsize, usize, usize, NonZeroUsize, isize, NonZeroIsize, mul_usize, gcd_usize);
 
 macro_rules! shared {
-    ($ty:ty, $large:ty, $mul_name:ident, $gcd_name:ident) => {
+    ($ty:ty, $large:ty, $wide:ty, $mul_name:ident, $gcd_name:ident) => {
         impl $ty {
+            /// Add a non zero integer.
+            ///
+            /// The caller guarantees that `rhs` is not zero, because a zero would be given a sign
+            /// in the `Sign::Zero` arm.
             #[inline]
             fn add_assign(&mut self, rhs: $large) {
                 match self.signum() {
                     Sign::Positive => self.numerator += rhs * self.denominator,
                     Sign::Zero => {
-                        self.numerator = rhs as $large;
+                        self.numerator = rhs;
+                        self.sign = Sign::Positive;
                         debug_assert!(self.denominator.is_one());
                     }
-                    Sign::Negative => {
-                        let difference = rhs * self.denominator;
-                        match self.numerator.cmp(&difference) {
-                            Ordering::Less => {
-                                self.numerator = difference - self.numerator;
-                                self.sign = Sign::Positive;
-                            }
-                            Ordering::Equal => self.set_zero(),
-                            Ordering::Greater => self.numerator -= difference,
-                        }
-                    }
+                    Sign::Negative => self.sub_assign_magnitude(rhs),
                 }
             }
+            /// Subtract a non zero integer.
+            ///
+            /// The caller guarantees that `rhs` is not zero, because a zero would be given a sign
+            /// in the `Sign::Zero` arm.
             #[inline]
             fn sub_assign(&mut self, rhs: $large) {
                 match self.signum() {
-                    Sign::Positive => {
-                        let difference = rhs * self.denominator;
-                        match self.numerator.cmp(&difference) {
-                            Ordering::Less => {
-                                self.numerator = difference - self.numerator;
-                                self.sign = Sign::Negative;
-                            }
-                            Ordering::Equal => self.set_zero(),
-                            Ordering::Greater => self.numerator -= difference,
-                        }
-                    },
+                    Sign::Positive => self.sub_assign_magnitude(rhs),
                     Sign::Zero => {
-                        self.numerator = rhs as $large;
-                        debug_assert!(self.denominator.is_one());
+                        self.numerator = rhs;
                         self.sign = Sign::Negative;
+                        debug_assert!(self.denominator.is_one());
                     }
                     Sign::Negative => self.numerator += rhs * self.denominator,
+                }
+            }
+            /// Subtract the integer `rhs` from the magnitude of a non zero `self`.
+            ///
+            /// The sign is negated when `rhs` is the larger of the two, that is, when the value
+            /// moves past zero.
+            ///
+            /// The product `rhs * denominator` is computed in a wider type where one exists, so
+            /// that a product too large for the numerator still compares correctly, and so that a
+            /// result which does fit is exact. Only for the widest type can the product itself
+            /// overflow, and such a product is by definition larger than any representable
+            /// numerator, which is enough to get the sign right. The magnitude can then not be
+            /// represented; debug builds panic on the assertions, release builds truncate.
+            #[inline]
+            fn sub_assign_magnitude(&mut self, rhs: $large) {
+                let product = (rhs as $wide).checked_mul(self.denominator as $wide);
+                debug_assert!(product.is_some(), "attempt to multiply with overflow");
+
+                match product {
+                    Some(product) => {
+                        let numerator = self.numerator as $wide;
+                        match numerator.cmp(&product) {
+                            Ordering::Less => {
+                                let difference = product - numerator;
+                                debug_assert!(
+                                    difference <= <$large>::MAX as $wide,
+                                    "attempt to subtract with overflow",
+                                );
+                                self.numerator = difference as $large;
+                                self.sign.negate();
+                            }
+                            Ordering::Equal => self.set_zero(),
+                            // Smaller than the numerator, so it fits.
+                            Ordering::Greater => self.numerator -= product as $large,
+                        }
+                    }
+                    None => {
+                        self.numerator = rhs.wrapping_mul(self.denominator)
+                            .wrapping_sub(self.numerator);
+                        self.sign.negate();
+                    }
                 }
             }
         }
@@ -585,17 +625,24 @@ macro_rules! shared {
     }
 }
 
-shared!(Rational8, u8, mul8, gcd8);
-shared!(Rational16, u16, mul16, gcd16);
-shared!(Rational32, u32, mul32, gcd32);
-shared!(Rational64, u64, mul64, gcd64);
-shared!(Rational128, u128, mul128, gcd128);
-shared!(RationalUsize, usize, mul_usize, gcd_usize);
+// The third type is the one the intermediate products are computed in. It is twice as wide as the
+// second, except for the widest type, which has nothing to widen into.
+shared!(Rational8, u8, u16, mul8, gcd8);
+shared!(Rational16, u16, u32, mul16, gcd16);
+shared!(Rational32, u32, u64, mul32, gcd32);
+shared!(Rational64, u64, u128, mul64, gcd64);
+shared!(Rational128, u128, u128, mul128, gcd128);
+shared!(RationalUsize, usize, u128, mul_usize, gcd_usize);
 
 #[cfg(test)]
 mod test {
+    use std::num::NonZeroU32;
+
+    use num_traits::Zero;
+
+    use crate::{NonZero, Rational16, Rational8, Sign, Signed};
     use crate::{R16, R32, R64};
-    
+
     #[test]
     fn test_add() {
         assert_eq!(R64!(2, 3) + 2, R64!(8, 3));
@@ -609,6 +656,84 @@ mod test {
         assert_eq!(R64!(2, 3) - 2, R64!(-4, 3));
         assert_eq!(R64!(0) - 1, R64!(-1));
         assert_eq!(R64!(-2, 3) - 2, R64!(-8, 3));
+    }
+
+    /// Adding an integer to zero has to set the sign as well as the numerator.
+    #[test]
+    fn test_add_to_zero() {
+        assert_eq!(R64!(0) + 1_u64, R64!(1));
+        assert_eq!(R64!(0) + 1_i32, R64!(1));
+        assert_eq!(R64!(0) - 1_u64, R64!(-1));
+        assert_eq!(R64!(0) - 1_i32, R64!(-1));
+
+        let value = R64!(0) + 1_u64;
+        assert!(!value.is_zero());
+        assert!(value.is_not_zero());
+        assert_eq!(value.signum(), Sign::Positive);
+    }
+
+    /// A zero right hand side leaves the value alone; in particular, it doesn't create a zero with
+    /// a sign, which would break the invariant that only a zero numerator has sign `Sign::Zero`.
+    #[test]
+    fn test_add_zero_integer() {
+        for value in [R64!(0), R64!(2, 3), R64!(-2, 3)] {
+            assert_eq!(value + 0_u64, value);
+            assert_eq!(value - 0_u64, value);
+            assert_eq!(value + 0_i64, value);
+            assert_eq!(value - 0_i64, value);
+        }
+
+        let zero = R64!(0) - 0_u64;
+        assert_eq!(zero, R64!(0));
+        assert!(zero.is_zero());
+        assert!(!zero.is_not_zero());
+        assert_eq!(zero.signum(), Sign::Zero);
+    }
+
+    /// A zero has sign `Sign::Zero`, so comparing with an integer can't assume `Sign::Positive`.
+    #[test]
+    fn test_eq_integer() {
+        assert_eq!(R32!(0), 0_u32);
+        assert_eq!(0_u32, R32!(0));
+        assert_eq!(R32!(0), 0_i32);
+        assert_eq!(R32!(3), 3_u32);
+        assert_eq!(R32!(3), NonZeroU32::new(3).unwrap());
+        assert_ne!(R32!(3), 0_u32);
+        assert_ne!(R32!(0), 3_u32);
+        assert_ne!(R32!(-3), 3_u32);
+        assert_ne!(R32!(3, 2), 3_u32);
+    }
+
+    /// The product of the integer with the denominator decides the sign of the result, so it may
+    /// not silently wrap: it is computed in a wider type.
+    #[test]
+    fn test_add_integer_wide_intermediate() {
+        // `130 * 2` doesn't fit in a `u8`, while the result `-5 / 2` does.
+        let value = Rational8::new_signed(Sign::Positive, 255, 2).unwrap();
+        assert_eq!(value - 130_u8, Rational8::new_signed(Sign::Negative, 5, 2).unwrap());
+        assert_eq!(-value + 130_u8, Rational8::new_signed(Sign::Positive, 5, 2).unwrap());
+        assert_eq!(value - 128_u8, Rational8::new_signed(Sign::Negative, 1, 2).unwrap());
+        assert_eq!(value - 127_u8, Rational8::new_signed(Sign::Positive, 1, 2).unwrap());
+
+        // `10_000 * 7` doesn't fit in a `u16`, while the result `-40_000 / 7` does.
+        let value = Rational16::new_signed(Sign::Positive, 30_000, 7).unwrap();
+        assert_eq!(value - 10_000_u16, Rational16::new_signed(Sign::Negative, 40_000, 7).unwrap());
+        assert_eq!(-value + 10_000_u16, Rational16::new_signed(Sign::Positive, 40_000, 7).unwrap());
+    }
+
+    /// The widest type has nothing to widen into, so a product that overflows can't be represented.
+    /// The sign of the result can be, and has to be right.
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn test_add_integer_widest_intermediate() {
+        use crate::Rational128;
+
+        // `2^127 * 2` wraps to zero, which is smaller than any numerator: without the check on the
+        // product, the subtraction would look like it doesn't pass zero at all. Only the sign of
+        // the result is guaranteed; its magnitude can't be represented in general.
+        let value = Rational128::new_signed(Sign::Positive, u128::MAX, 2).unwrap();
+        assert!((value - (1_u128 << 127)).is_negative());
+        assert!((-value + (1_u128 << 127)).is_positive());
     }
 
     #[test]

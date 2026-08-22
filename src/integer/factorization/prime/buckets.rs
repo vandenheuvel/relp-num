@@ -1,4 +1,10 @@
-pub const BUCKETS_32: [u16; 2_usize.pow(8)] = [
+//! # Precomputed bases for the primality test
+//!
+//! Both tables are `static` rather than `const`, such that they exist once in the binary and are
+//! indexed in place; a `const` of this size would be materialized at every use.
+
+/// Bases for the 32-bit primality test, indexed by `hash_function_32`.
+pub static BUCKETS_32: [u16; 2_usize.pow(8)] = [
     15591, 2018, 166, 7429, 8064, 16045, 10503, 4399, 1949, 1295, 2776, 3620, 560, 3128, 5212,
     2657, 2300, 2021, 4652, 1471, 9336, 4018, 2398, 20462, 10277, 8028, 2213, 6219, 620, 3763,
     4852, 5012, 3185, 1333, 6227, 5298, 1074, 2391, 5113, 7061, 803, 1269, 3875, 422, 751, 580,
@@ -18,6 +24,9 @@ pub const BUCKETS_32: [u16; 2_usize.pow(8)] = [
     1559, 194,
 ];
 
+/// Bases for the 64-bit primality test, indexed by `hash_function_64`.
+///
+/// Each value packs two bases: the lower 12 bits and the upper bits.
 pub static BUCKETS_64: [u32; 2_usize.pow(14)] = [
     2404423, 3027617, 3715179, 3264583, 1593555, 5853461, 1552463, 1896881, 2904107, 5600043,
     1356087, 2044251, 290821, 1150981, 1642719, 3076389, 667689, 2650251, 1200327, 1724421,

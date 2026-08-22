@@ -4,7 +4,7 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 use num_traits::Zero;
 
 use crate::{Rational128, Rational16, Rational32, Rational64, Rational8, Sign};
-use crate::one::One;
+use crate::fixed::One;
 
 macro_rules! impls {
     ($name:ty) => {
@@ -242,7 +242,8 @@ impls!(Rational128);
 
 #[cfg(test)]
 mod test {
-    use crate::{One, R8};
+    use crate::{R8};
+    use crate::fixed::One;
 
     #[test]
     fn test_add_sub() {

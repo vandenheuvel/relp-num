@@ -58,7 +58,7 @@ impl<const S: usize> Mul<Option<&Big<S>>> for &Big<S> {
 mod test {
     use std::str::FromStr;
 
-    use crate::{Binary, One};
+    use crate::fixed::{Binary, One};
     use crate::rational::big::Big8;
     use crate::RB;
 

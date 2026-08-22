@@ -1,7 +1,7 @@
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
-use crate::binary::Binary;
-use crate::one::One;
+use crate::fixed::Binary;
+use crate::fixed::One;
 use crate::rational::big::Big;
 
 impl<const S: usize> From<Binary> for Big<S> {

@@ -5,22 +5,38 @@ use crate::rational::big::Big;
 use crate::rational::big::ops::building_blocks::{add_assign_fraction_non_zero, SignChange, sub_assign_fraction_non_zero};
 
 impl<const S: usize> Big<S> {
+    /// Subtract the magnitude of `rhs`, then fold the resulting sign change into `self.sign`.
+    ///
+    /// # Safety
+    ///
+    /// Neither value may be zero; the caller dispatches on the two signs to establish that.
     unsafe fn sub_assign_update_sign(&mut self, rhs: &Self) {
-        debug_assert!(self.numerator.is_well_formed());
+        // SAFETY: These four only read the last word of the value they are asked about; they are
+        // `unsafe` as a marker on the invariant they report on, and impose nothing on the caller.
+        unsafe {
+            debug_assert!(self.numerator.is_well_formed());
+            debug_assert!(self.denominator.is_well_formed());
+            debug_assert!(rhs.numerator.is_well_formed());
+            debug_assert!(rhs.denominator.is_well_formed());
+        }
         debug_assert!(self.numerator.is_not_zero());
-        debug_assert!(self.denominator.is_well_formed());
         debug_assert!(self.denominator.is_not_zero());
-        debug_assert!(rhs.numerator.is_well_formed());
         debug_assert!(rhs.numerator.is_not_zero());
-        debug_assert!(rhs.denominator.is_well_formed());
         debug_assert!(rhs.denominator.is_not_zero());
 
-        let sign_change = sub_assign_fraction_non_zero(
-            self.numerator.inner_mut(),
-            self.denominator.inner_mut(),
-            &rhs.numerator,
-            &rhs.denominator,
-        );
+        // SAFETY: Both fractions are well formed, non zero by this function's contract, and in
+        // lowest terms because that is the invariant every `Big` upholds, which is what the
+        // subtraction needs. The two `inner_mut` calls hand out mutable access to the words behind
+        // that invariant; the subtraction restores it before returning, and the sign is brought
+        // back in line with the new magnitude just below.
+        let sign_change = unsafe {
+            sub_assign_fraction_non_zero(
+                self.numerator.inner_mut(),
+                self.denominator.inner_mut(),
+                &rhs.numerator,
+                &rhs.denominator,
+            )
+        };
         match sign_change {
             SignChange::None => {}
             SignChange::Flip => self.sign.negate(),

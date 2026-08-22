@@ -2,26 +2,38 @@ use std::convert::TryInto;
 use std::fmt;
 use std::str::FromStr;
 
-use num_traits::{One, Zero};
+use num_traits::Zero;
 use num_traits::ToPrimitive;
 
 use crate::non_zero::NonZeroSign;
 use crate::rational::big::Big;
 use crate::rational::small::{Rational128, Rational16, Rational32, Rational64, Rational8, RationalUsize};
 use crate::rational::small::{NonZeroRational128, NonZeroRational16, NonZeroRational32, NonZeroRational64, NonZeroRational8, NonZeroRationalUsize};
-use crate::rational::small::gcd_scalar;
+use crate::rational::small::ops::building_blocks::{gcd128, gcd16, gcd32, gcd64, gcd8, gcd_usize};
 use crate::rational::small::ops::building_blocks::{simplify128, simplify16, simplify32, simplify64, simplify8, simplify_usize};
 use crate::sign::{Sign, Signed};
 
 macro_rules! signed_floor {
-    ($value:expr, $target:ty) => {
+    ($value:expr, $target:ty, $unsigned_target:ty) => {
         {
             let floor = $value.numerator / $value.denominator;
-            floor.try_into().ok()
-                .map(|value: $target| match $value.sign {
-                    Sign::Zero | Sign::Positive => value,
-                    Sign::Negative => -value,
-                })
+            // The magnitude is converted to the *unsigned* target, because the most negative value
+            // of the target has a magnitude one larger than its largest positive value. Converting
+            // to the signed target and negating afterwards would reject exactly that value.
+            let magnitude: Option<$unsigned_target> = floor.try_into().ok();
+
+            magnitude.and_then(|magnitude| match $value.sign {
+                Sign::Zero | Sign::Positive => <$target>::try_from(magnitude).ok(),
+                Sign::Negative => {
+                    if magnitude <= <$target>::MIN.unsigned_abs() {
+                        // Negation in the unsigned domain, where the magnitude of the most
+                        // negative value is representable; the bit pattern is the same.
+                        Some(magnitude.wrapping_neg() as $target)
+                    } else {
+                        None
+                    }
+                }
+            })
         }
     }
 }
@@ -57,6 +69,18 @@ macro_rules! float {
 macro_rules! creation {
     ($name:ident, $ity:ty, $uty:ty, $gcd_name:ident, $simplify_name:ident) => {
         impl $name {
+            /// A ratio in lowest terms, or `None` when the denominator is zero.
+            ///
+            /// # Range
+            ///
+            /// The magnitude of this type is stored unsigned, while this constructor takes a
+            /// signed numerator of the same width. A `Rational8` therefore represents every value
+            /// from `-255` to `255`, but this constructor only reaches `-128` to `127`; the values
+            /// in between are reached by [`FromStr`](std::str::FromStr), by
+            /// [`FromPrimitive`](num_traits::FromPrimitive) from a wider primitive, and by
+            /// arithmetic. They are representable but not convertible back:
+            /// [`to_i8`](num_traits::ToPrimitive::to_i8) returns `None` for them, because an `i8`
+            /// is what doesn't fit, not the ratio.
             #[must_use]
             pub fn new(numerator: $ity, mut denominator: $uty) -> Option<Self> {
                 if denominator.is_zero() {
@@ -74,7 +98,9 @@ macro_rules! creation {
                             }
                         } else {
                             if numerator_abs != 1 && denominator != 1 {
-                                let gcd = gcd_scalar(numerator_abs as usize, denominator as usize) as $uty;
+                                // Note that this gcd is computed at the width of this type; casting
+                                // to `usize` first would discard the high bits of a `u128`.
+                                let gcd = $gcd_name(numerator_abs, denominator);
 
                                 numerator_abs /= gcd;
                                 denominator /= gcd;
@@ -89,26 +115,34 @@ macro_rules! creation {
                     })
                 }
             }
-            pub fn new_signed<T: Into<Sign>>(sign: T, numerator: $uty, denominator: $uty) -> Self {
-                debug_assert_ne!(denominator, 0);
-                let sign = sign.into();
-                debug_assert!((numerator == 0) == (sign == Sign::Zero));
-
-                match sign {
-                    Sign::Positive => debug_assert_ne!(numerator, 0),
-                    Sign::Zero => {
-                        debug_assert_eq!(numerator, 0);
-                        return <Self as num_traits::Zero>::zero();
-                    },
-                    Sign::Negative => {}
+            /// A ratio in lowest terms from a sign and a magnitude.
+            ///
+            /// # Return value
+            ///
+            /// `None` when the arguments describe no number: the denominator has to be nonzero,
+            /// and the sign has to be [`Sign::Zero`] exactly when the numerator is zero. These
+            /// invariants used to be checked with `debug_assert!` only, which let a release build
+            /// construct a ratio with a zero denominator; `Big::new_signed` returns an `Option`
+            /// for the same reason.
+            #[must_use]
+            pub fn new_signed<T: Into<Sign>>(sign: T, numerator: $uty, denominator: $uty) -> Option<Self> {
+                if denominator == 0 {
+                    return None;
                 }
 
-                let (numerator, denominator) = $simplify_name(numerator, denominator);
+                match (sign.into(), numerator) {
+                    (Sign::Zero, 0) => Some(<Self as num_traits::Zero>::zero()),
+                    // `$simplify_name` doesn't terminate on a zero numerator.
+                    (sign @ (Sign::Positive | Sign::Negative), numerator) if numerator != 0 => {
+                        let (numerator, denominator) = $simplify_name(numerator, denominator);
 
-                Self {
-                    sign,
-                    numerator,
-                    denominator,
+                        Some(Self {
+                            sign,
+                            numerator,
+                            denominator,
+                        })
+                    }
+                    _ => None,
                 }
             }
         }
@@ -119,21 +153,10 @@ macro_rules! creation {
             }
         }
 
+        /// Renders exactly like [`Display`](fmt::Display), so the output parses back.
         impl fmt::Debug for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                match self.sign {
-                    Sign::Positive => {}
-                    Sign::Zero => return f.write_str("0"),
-                    Sign::Negative => f.write_str("-")?,
-                }
-
-                fmt::Debug::fmt(&self.numerator, f)?;
-                if !self.denominator.is_one() {
-                    f.write_str(" / ")?;
-                    fmt::Debug::fmt(&self.denominator, f)?;
-                }
-
-                Ok(())
+                fmt::Display::fmt(self, f)
             }
         }
 
@@ -164,6 +187,32 @@ macro_rules! creation {
                 }
             }
 
+            /// The default implementation goes through [`from_i64`](num_traits::FromPrimitive::from_i64),
+            /// which discards every value that only a wider magnitude type can hold.
+            #[inline]
+            fn from_i128(n: i128) -> Option<Self> {
+                let numerator = n.unsigned_abs().try_into().ok()?;
+
+                Some(Self {
+                    sign: Signed::signum(&n),
+                    numerator,
+                    denominator: 1,
+                })
+            }
+
+            /// The default implementation goes through [`from_u64`](num_traits::FromPrimitive::from_u64),
+            /// which discards every value that only a wider magnitude type can hold.
+            #[inline]
+            fn from_u128(n: u128) -> Option<Self> {
+                let numerator = n.try_into().ok()?;
+
+                Some(Self {
+                    sign: Signed::signum(&n),
+                    numerator,
+                    denominator: 1,
+                })
+            }
+
             #[inline]
             fn from_f32(n: f32) -> Option<Self> {
                 Big::<8>::from_f32(n).map(Self::from_big_if_it_fits).flatten()
@@ -177,27 +226,27 @@ macro_rules! creation {
 
         impl ToPrimitive for $name {
             fn to_isize(&self) -> Option<isize> {
-                signed_floor!(self, isize)
+                signed_floor!(self, isize, usize)
             }
 
             fn to_i8(&self) -> Option<i8> {
-                signed_floor!(self, i8)
+                signed_floor!(self, i8, u8)
             }
 
             fn to_i16(&self) -> Option<i16> {
-                signed_floor!(self, i16)
+                signed_floor!(self, i16, u16)
             }
 
             fn to_i32(&self) -> Option<i32> {
-                signed_floor!(self, i32)
+                signed_floor!(self, i32, u32)
             }
 
             fn to_i64(&self) -> Option<i64> {
-                signed_floor!(self, i64)
+                signed_floor!(self, i64, u64)
             }
 
             fn to_i128(&self) -> Option<i128> {
-                signed_floor!(self, i128)
+                signed_floor!(self, i128, u128)
             }
 
             fn to_usize(&self) -> Option<usize> {
@@ -252,17 +301,39 @@ macro_rules! creation {
                     return Some(<Self as num_traits::Zero>::zero());
                 }
 
-                if big.numerator.len() == 1 && big.denominator.len() == 1 {
-                    if big.numerator[0] <= <$uty>::MAX as usize && big.denominator[0] <= <$uty>::MAX as usize {
-                        return Some(Self {
-                            sign: big.sign,
-                            numerator: big.numerator[0] as $uty,
-                            denominator: big.denominator[0] as $uty,
-                        })
+                /// The number of `usize` words of a `Big` that this magnitude type can hold.
+                ///
+                /// At least one, also when a `usize` is not narrower than the magnitude type; a
+                /// single word that is too large is rejected by the conversion below instead.
+                const WORDS: usize = {
+                    let words = std::mem::size_of::<$uty>() / std::mem::size_of::<usize>();
+                    if words > 0 { words } else { 1 }
+                };
+
+                /// Reassemble the little endian `usize` words of a `Big` magnitude.
+                fn scalar(words: &[usize]) -> Option<$uty> {
+                    if words.len() > WORDS {
+                        // More words than the magnitude type has room for, whatever they contain.
+                        return None;
                     }
+
+                    // `WORDS` words of a `usize` are never more than the 128 bits of the
+                    // accumulator, so no shift below reaches its width.
+                    let mut value = 0_u128;
+                    for (index, &word) in words.iter().enumerate() {
+                        value |= (word as u128) << (index as u32 * usize::BITS);
+                    }
+
+                    // A single word can still be too large, when the magnitude type is narrower
+                    // than a `usize`.
+                    value.try_into().ok()
                 }
 
-                None
+                Some(Self {
+                    sign: big.sign,
+                    numerator: scalar(&big.numerator)?,
+                    denominator: scalar(&big.denominator)?,
+                })
             }
         }
 
@@ -371,6 +442,11 @@ macro_rules! size_dependent_unsigned {
             fn from(other: ($other, $other)) -> Self {
                 assert_ne!(other.1, 0, "attempt to divide by zero");
 
+                // `$simplify` doesn't terminate on a zero numerator.
+                if other.0 == 0 {
+                    return <Self as num_traits::Zero>::zero();
+                }
+
                 let (numerator, denominator) = $simplify(other.0, other.1);
 
                 Self {
@@ -426,6 +502,11 @@ macro_rules! size_dependent_signed {
             fn from(other: ($other_signed, $other_signed)) -> Self {
                 assert_ne!(other.1, 0, "attempt to divide by zero");
 
+                // `$simplify` doesn't terminate on a zero numerator.
+                if other.0 == 0 {
+                    return <Self as num_traits::Zero>::zero();
+                }
+
                 let (numerator, denominator) = $simplify(other.0.unsigned_abs(), other.1.unsigned_abs());
 
                 Self {
@@ -456,17 +537,31 @@ size_dependent_signed!(Rational128, u128, i128, simplify128);
 
 #[cfg(test)]
 mod test {
-    use num_traits::ToPrimitive;
+    use std::str::FromStr;
 
-    use crate::{R16, R32, R64, R8, Rational16, Rational32, Rational8};
+    use num_traits::{FromPrimitive, ToPrimitive};
+
+    use crate::{R16, R32, R64, R8, Rational128, Rational16, Rational32, Rational64, Rational8, RationalUsize};
+    use crate::rational::Ratio;
+    use crate::sign::Sign;
 
     #[test]
     fn test_debug() {
-        assert_eq!(format!("{:?}", R8!(2, 3)), "2 / 3");
+        assert_eq!(format!("{:?}", R8!(2, 3)), "2/3");
         assert_eq!(format!("{:?}", R8!(0)), "0");
         assert_eq!(format!("{:?}", R8!(-1)), "-1");
         assert_eq!(format!("{:?}", R8!(-0)), "0");
-        assert_eq!(format!("{:?}", -R8!(2, 3)), "-2 / 3");
+        assert_eq!(format!("{:?}", -R8!(2, 3)), "-2/3");
+    }
+
+    /// `Debug` output has to parse back, which means rendering it exactly like `Display`.
+    #[test]
+    fn test_debug_round_trips() {
+        for value in [R8!(2, 3), R8!(0), R8!(-1), R8!(1), R8!(-2, 3), R8!(127, 2)] {
+            let rendered = format!("{value:?}");
+            assert_eq!(rendered, format!("{value}"));
+            assert_eq!(Rational8::from_str(&rendered), Ok(value), "{rendered}");
+        }
     }
 
     #[test]
@@ -506,10 +601,206 @@ mod test {
         assert_eq!(R8!(-3, 2).to_f64(), Some(-1.5_f64));
     }
 
+    /// The invariants used to be checked with `debug_assert!`, so a release build accepted them.
+    #[test]
+    fn test_new_signed_invalid() {
+        // A zero denominator used to build a ratio that divides by zero.
+        assert_eq!(Rational8::new_signed(Sign::Positive, 1, 0), None);
+        assert_eq!(Rational8::new_signed(Sign::Zero, 0, 0), None);
+        assert_eq!(Rational128::new_signed(Sign::Negative, u128::MAX, 0), None);
+
+        // A sign that disagrees with the numerator.
+        assert_eq!(Rational64::new_signed(Sign::Zero, 1, 1), None);
+        assert_eq!(Rational64::new_signed(Sign::Positive, 0, 1), None);
+        assert_eq!(Rational64::new_signed(Sign::Negative, 0, 1), None);
+
+        // Valid arguments are unchanged.
+        assert_eq!(Rational64::new_signed(Sign::Positive, 6, 18), Rational64::new(1, 3));
+        assert_eq!(Rational64::new_signed(Sign::Zero, 0, 6), Some(R64!(0)));
+        assert_eq!(Rational64::new_signed(Sign::Negative, 9, 18), Some(-R64!(1, 2)));
+        assert_eq!(Rational128::new_signed(Sign::Negative, u128::MAX, 1).unwrap().numerator, u128::MAX);
+    }
+
+    /// The magnitude of the most negative value of a target doesn't fit its positive range.
+    #[test]
+    fn test_to_primitive_most_negative() {
+        assert_eq!(Rational8::from_str("-128").unwrap().to_i8(), Some(i8::MIN));
+        assert_eq!(Rational8::from_str("-129").unwrap().to_i8(), None);
+        assert_eq!(Rational8::from_str("128").unwrap().to_i8(), None);
+        assert_eq!(Rational8::from_str("-255/2").unwrap().to_i8(), Some(-127));
+        assert_eq!(Rational16::from_str("-257/2").unwrap().to_i8(), Some(i8::MIN));
+
+        assert_eq!(Rational16::from_str("-32768").unwrap().to_i16(), Some(i16::MIN));
+        assert_eq!(Rational16::from_str("-32769").unwrap().to_i16(), None);
+
+        assert_eq!(Rational64::from_i64(i64::MIN).unwrap().to_i64(), Some(i64::MIN));
+        assert_eq!(Rational64::from_i64(i64::MIN).unwrap().to_i32(), None);
+        assert_eq!(Rational128::from_i128(i128::MIN).unwrap().to_i128(), Some(i128::MIN));
+        assert_eq!(Rational128::from_i128(i128::MIN).unwrap().to_i64(), None);
+        assert_eq!(Rational128::from_i64(i64::MIN).unwrap().to_i64(), Some(i64::MIN));
+
+        // The most negative `isize`, whose magnitude a `RationalUsize` can hold.
+        let value: RationalUsize = Ratio {
+            sign: Sign::Negative,
+            numerator: 1 << (usize::BITS - 1),
+            denominator: 1,
+        };
+        assert_eq!(value.to_isize(), Some(isize::MIN));
+        let value: RationalUsize = Ratio { sign: Sign::Negative, numerator: usize::MAX, denominator: 1 };
+        assert_eq!(value.to_isize(), None);
+
+        // Truncation towards zero and the unsigned conversions are unchanged.
+        assert_eq!(R8!(-3, 2).to_i8(), Some(-1));
+        assert_eq!(R8!(-0).to_i8(), Some(0));
+        assert_eq!(R8!(-1).to_u8(), None);
+        assert_eq!(R8!(127).to_i8(), Some(127));
+    }
+
+    /// Values that need more than a single `usize` word of the `Big` they are parsed into.
+    #[test]
+    fn test_from_str_above_64_bits() {
+        let value = Rational128::from_str("18446744073709551616").unwrap();
+        assert_eq!(value.sign, Sign::Positive);
+        assert_eq!(value.numerator, 1 << 64);
+        assert_eq!(value.denominator, 1);
+
+        let value = Rational128::from_str(&i128::MAX.to_string()).unwrap();
+        assert_eq!(value.numerator, i128::MAX as u128);
+        assert_eq!(value.denominator, 1);
+
+        let value = Rational128::from_str(&u128::MAX.to_string()).unwrap();
+        assert_eq!(value.numerator, u128::MAX);
+        assert_eq!(value.denominator, 1);
+
+        let value = Rational128::from_str(&format!("-{}", u128::MAX)).unwrap();
+        assert_eq!(value.sign, Sign::Negative);
+        assert_eq!(value.numerator, u128::MAX);
+
+        // A denominator of more than one word.
+        let value = Rational128::from_str("1/18446744073709551616").unwrap();
+        assert_eq!(value.numerator, 1);
+        assert_eq!(value.denominator, 1 << 64);
+
+        // One word too many is still rejected, at every width; this is `2 ^ 128`.
+        assert_eq!(
+            Rational128::from_str("340282366920938463463374607431768211456"),
+            Err("value was too large for this type"),
+        );
+        assert_eq!(Rational64::from_str("18446744073709551616"), Err("value was too large for this type"));
+        assert_eq!(Rational32::from_str("4294967296"), Err("value was too large for this type"));
+        assert_eq!(Rational8::from_str("256"), Err("value was too large for this type"));
+        assert_eq!(Rational8::from_str("1/256"), Err("value was too large for this type"));
+        assert_eq!(RationalUsize::from_str(&usize::MAX.to_string()).unwrap().numerator, usize::MAX);
+        assert_eq!(
+            RationalUsize::from_str(&(usize::MAX as u128 + 1).to_string()),
+            Err("value was too large for this type"),
+        );
+    }
+
+    /// Floats larger than a `u64`, which are parsed into a multi word `Big` as well.
+    #[test]
+    fn test_from_f64_above_64_bits() {
+        // `1e30` is exactly representable in an `f64`, as this many.
+        let value = Rational128::from_f64(1e30).unwrap();
+        assert_eq!(value.numerator, 1_000_000_000_000_000_019_884_624_838_656);
+        assert_eq!(value.denominator, 1);
+
+        let value = Rational128::from_f64(-(2_f64.powi(100))).unwrap();
+        assert_eq!(value.sign, Sign::Negative);
+        assert_eq!(value.numerator, 1 << 100);
+        assert_eq!(value.denominator, 1);
+
+        let value = Rational128::from_f32(2_f32.powi(80)).unwrap();
+        assert_eq!(value.numerator, 1 << 80);
+
+        // `2 ^ 128` needs one word more than a `u128` has.
+        assert_eq!(Rational128::from_f64(2_f64.powi(128)), None);
+        assert_eq!(Rational128::from_f64(u128::MAX as f64), None);
+        assert_eq!(Rational64::from_f64(1e30), None);
+    }
+
+    /// The default implementations of these two route through the 64 bit ones.
+    #[test]
+    fn test_from_128_bit_primitive() {
+        assert_eq!(Rational128::from_i128(i128::MAX).unwrap().numerator, i128::MAX as u128);
+        assert_eq!(Rational128::from_i128(i128::MIN).unwrap().numerator, 1 << 127);
+        assert_eq!(Rational128::from_i128(i128::MIN).unwrap().sign, Sign::Negative);
+        assert_eq!(Rational128::from_u128(u128::MAX).unwrap().numerator, u128::MAX);
+        assert_eq!(Rational128::from_i128(0).unwrap(), <Rational128 as num_traits::Zero>::zero());
+
+        assert_eq!(RationalUsize::from_u128(usize::MAX as u128).unwrap().numerator, usize::MAX);
+        assert_eq!(RationalUsize::from_u128(usize::MAX as u128 + 1), None);
+
+        assert_eq!(Rational64::from_i128(i128::MAX), None);
+        assert_eq!(Rational64::from_u128(u128::MAX), None);
+        assert_eq!(Rational64::from_i128(i64::MIN as i128).unwrap().numerator, 1 << 63);
+        assert_eq!(Rational8::from_i128(-128).unwrap().numerator, 128);
+        assert_eq!(Rational8::from_i128(-256), None);
+    }
+
     #[test]
     #[should_panic]
     #[allow(unused_must_use)]
     fn test_from_div_zero() {
         Rational32::from((4, 0));
+    }
+
+    #[test]
+    fn test_from_tuple_zero_numerator() {
+        // A zero numerator used to be handed to `simplify`, which doesn't terminate on it.
+        macro_rules! assert_canonical_zero {
+            ($value:expr) => {{
+                let value = $value;
+                assert_eq!(value.sign, Sign::Zero);
+                assert_eq!(value.numerator, 0);
+                assert_eq!(value.denominator, 1);
+            }}
+        }
+
+        // Signed tuples
+        assert_canonical_zero!(Rational8::from((0_i8, 5_i8)));
+        assert_canonical_zero!(Rational32::from((0_i32, 5_i32)));
+        assert_canonical_zero!(Rational32::from((0_i16, -3_i16)));
+        assert_canonical_zero!(Rational128::from((0_i128, -7_i128)));
+
+        // Unsigned tuples
+        assert_canonical_zero!(Rational8::from((0_u8, 5_u8)));
+        assert_canonical_zero!(Rational32::from((0_u32, 5_u32)));
+        assert_canonical_zero!(Rational32::from((0_u16, 3_u16)));
+        assert_canonical_zero!(Rational128::from((0_u128, 7_u128)));
+
+        assert_eq!(Rational32::from((0_i32, 5_i32)), R32!(0));
+        assert_eq!(Rational32::from((0_u32, 5_u32)), R32!(0));
+    }
+
+    #[test]
+    fn test_new_128_bit_gcd() {
+        // The gcd used to be computed after casting both arguments to `usize`, discarding the
+        // high 64 bits on a 64-bit platform.
+        let value = Rational128::new(3 << 64, 2_u128 << 64).unwrap();
+        assert_eq!(value.sign, Sign::Positive);
+        assert_eq!(value.numerator, 3);
+        assert_eq!(value.denominator, 2);
+
+        let value = Rational128::new(6, 1_u128 << 64).unwrap();
+        assert_eq!(value.numerator, 3);
+        assert_eq!(value.denominator, 1_u128 << 63);
+
+        // Numerator and denominator both larger than 64 bits, result in lowest terms.
+        let value = Rational128::new(6_i128 << 70, 4_u128 << 70).unwrap();
+        assert_eq!(value.numerator, 3);
+        assert_eq!(value.denominator, 2);
+
+        // The low 64 bits of these are 3 and 2, coprime, while the actual gcd is 2 ^ 64 + 1.
+        let large_factor = (1_i128 << 64) + 1;
+        let value = Rational128::new(3 * large_factor, 2 * large_factor as u128).unwrap();
+        assert_eq!(value.sign, Sign::Positive);
+        assert_eq!(value.numerator, 3);
+        assert_eq!(value.denominator, 2);
+
+        let value = Rational128::new(-(5 << 100), 15_u128 << 100).unwrap();
+        assert_eq!(value.sign, Sign::Negative);
+        assert_eq!(value.numerator, 1);
+        assert_eq!(value.denominator, 3);
     }
 }

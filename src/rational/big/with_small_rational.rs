@@ -55,6 +55,7 @@ macro_rules! define_interations {
                             match self.sign {
                                 Sign::Zero => other.sign == Sign::Zero,
                                 Sign::Positive | Sign::Negative => {
+                                    self.sign == other.sign &&
                                     self.numerator[0] == other.numerator as usize &&
                                     self.numerator.len() == 1 &&
                                     self.denominator.len() == 1
@@ -451,7 +452,7 @@ macro_rules! define_interations {
                                         );
                                     }
                                 }
-                                (Sign::Positive | Sign::Negative, Sign::Zero) => panic!("attempt to divide by zero"),
+                                (_, Sign::Zero) => panic!("attempt to divide by zero"),
                                 (Sign::Zero, _) => {}
                             }
                         }
@@ -472,7 +473,7 @@ mod test {
     use num_traits::One;
     use smallvec::smallvec;
 
-    use crate::{R16, R32, R64, R8, RationalBig, RB, Sign, Ubig};
+    use crate::{R16, R32, R64, R8, Rational64, RationalBig, RB, Sign, Ubig};
     use crate::integer::big::NonZeroUbig;
 
     #[test]
@@ -574,5 +575,46 @@ mod test {
                 }
             }
         }
+    }
+
+    /// The sign has to take part in the comparison.
+    ///
+    /// It used to be dropped for non-zero values, so `-2` compared equal to `2`.
+    #[test]
+    fn eq_small_respects_sign() {
+        assert_eq!(RB!(2) == R64!(2), true);
+        assert_eq!(RB!(-2) == R64!(2), false);
+        assert_eq!(RB!(2) == R64!(-2), false);
+        assert_eq!(RB!(-2) == R64!(-2), true);
+        assert_eq!(RB!(1, 2) == R8!(1, 2), true);
+        assert_eq!(RB!(-1, 2) == R8!(1, 2), false);
+        assert_eq!(RB!(1, 2) == R8!(-1, 2), false);
+        assert_eq!(RB!(-1, 2) == R8!(-1, 2), true);
+        assert_eq!(RB!(0) == R32!(0), true);
+
+        // Equality has to agree with the ordering it is paired with.
+        for numerator in -4_i64..=4 {
+            for denominator in 1_u64..=4 {
+                let small = Rational64::new(numerator, denominator).unwrap();
+                let big = RationalBig::from(small);
+                for other in -4_i64..=4 {
+                    let other = Rational64::new(other, denominator).unwrap();
+                    #[allow(clippy::cmp_owned, reason = "comparing after conversion is what is being tested")]
+                    let converted = big == RationalBig::from(other);
+                    assert_eq!(
+                        big == other,
+                        converted,
+                        "{numerator}/{denominator} vs {other}",
+                    );
+                }
+            }
+        }
+    }
+
+    /// Dividing zero by zero has to fail the same way any other division by zero does.
+    #[test]
+    #[should_panic(expected = "attempt to divide by zero")]
+    fn div_zero_by_zero_panics() {
+        let _ = RB!(0) / R8!(0);
     }
 }

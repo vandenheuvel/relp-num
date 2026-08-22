@@ -18,6 +18,11 @@ pub trait Prime: NonZero {
     fn is_prime(&self) -> bool;
 }
 
+/// The 64-bit test is public API, but the factorization routines only reach for the 32-bit one.
+///
+/// The bases in `BUCKETS_64` were verified exhaustively for every value below `2 ** 32` and on
+/// millions of hard cases above it, base-2 strong pseudoprimes among them. Don't change the logic
+/// without redoing that work.
 impl Prime for u64 {
     fn is_prime(&self) -> bool {
         debug_assert!(self.is_not_zero());
@@ -180,6 +185,15 @@ impl ProbablePrime for u64 {
     }
 }
 
+/// Index into [`BUCKETS_32`] for a value that fits in 32 bits.
+///
+/// # Warning
+///
+/// This deliberately mixes in 64-bit arithmetic: the value is widened to `u64` and the
+/// multiplications carry into the upper half rather than wrapping at 32 bits. Most published
+/// versions of this hash wrap at 32 bits, but [`BUCKETS_32`] was computed for *this* function.
+/// Substituting the 32-bit variant gives a different bucket for some values and, with these bases,
+/// 80 wrong answers below `2 * 10 ** 6` alone. Do not "fix" it.
 #[inline]
 fn hash_function_32(mut hash: u64) -> usize {
     for _ in 0..2 {

@@ -241,7 +241,9 @@ impl<const S: usize> DivAssign for Big<S> {
                     );
                 }
             }
-            (Sign::Positive | Sign::Negative, Sign::Zero) => panic!("attempt to divide by zero"),
+            // Matched before the zero numerator arm, so that zero divided by zero panics too,
+            // as it does in every other division impl in the crate.
+            (_, Sign::Zero) => panic!("attempt to divide by zero"),
             (Sign::Zero, _) => {}
         }
     }
@@ -328,5 +330,22 @@ mod test {
         let mut x = RB!(-5, 6);
         x /= RB!(0);
         assert_eq!(x, RB!(-5, 6));
+    }
+
+    /// Dividing zero by zero has to fail the same way any other division by zero does.
+    ///
+    /// The zero numerator arm used to be matched first, which returned zero instead of panicking,
+    /// while every other division impl in the crate panicked.
+    #[test]
+    #[should_panic(expected = "attempt to divide by zero")]
+    fn test_div_zero_by_zero() {
+        let _ = RB!(0) / RB!(0);
+    }
+
+    #[test]
+    #[should_panic(expected = "attempt to divide by zero")]
+    fn test_div_assign_zero_by_zero() {
+        let mut x = RB!(0);
+        x /= RB!(0);
     }
 }

@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 use std::str::FromStr;
+use std::cmp::Ordering;
 
 use num_traits::Zero;
 use smallvec::smallvec;
@@ -136,17 +137,18 @@ fn add() {
     let expected = Big8::from_str("76682181630963772103758511304607920049504288847839925168388021404881164840000000/80485319769746097976607076963162564582789311659779").unwrap();
     assert_eq!(&x + y, expected);
 
-    let mut x = Big8::try_from((
+    // Built unreduced on purpose, so that `simplify_fraction_gcd` has something to do
+    let mut x = Big8::from_raw_limbs(
         Sign::Positive,
         [13284626917187606528, 14353657804625640860, 11366567065457835548, 501247837944],
         [10945929334190035713, 13004504757950498814, 9],
-    )).unwrap();
+    );
     unsafe { simplify_fraction_gcd(x.numerator.inner_mut(), x.denominator.inner_mut()); }
-    let mut y = Big8::try_from((
+    let mut y = Big8::from_raw_limbs(
         Sign::Positive,
         [12384794773201432064, 64560677146],
         [12499693862731150083, 66111026448],
-    )).unwrap();
+    );
     unsafe { simplify_fraction_gcd(y.numerator.inner_mut(), y.denominator.inner_mut()); }
     let z = Big8::try_from((Sign::Negative, [4], [5])).unwrap();
 
@@ -402,6 +404,33 @@ fn test_div() {
     assert_eq!(x, Big8::from_str("-16229381642834663314847732106441783006/1032297130200835312942712593365546686796500").unwrap());
 }
 
+/// `TryFrom` over raw limbs has to reduce, or the stored ratio breaks its own invariant.
+///
+/// A stored `2/4` makes `PartialEq` (which compares components) disagree with `Ord` (which cross
+/// multiplies), and reaches a `panic!` in the subtraction kernel that is documented as unreachable.
+#[test]
+fn test_try_from_limbs_reduces() {
+    let two_over_four = Big8::try_from((Sign::Positive, [2], [4])).unwrap();
+    let half = Big8::from_str("1/2").unwrap();
+
+    assert_eq!(two_over_four.to_string(), "1/2");
+    assert_eq!(two_over_four, half);
+    assert_eq!(two_over_four.cmp(&half), Ordering::Equal);
+    assert_eq!(&two_over_four - &half, Big8::from_str("0").unwrap());
+
+    // A shared factor spanning more than one word
+    let big = Big8::try_from((
+        Sign::Negative,
+        [0, 0, 6],
+        [0, 4],
+    )).unwrap();
+    assert_eq!(big, Big8::from_str("-3/2").unwrap() * Big8::from_str("18446744073709551616").unwrap());
+
+    // Already coprime input is left alone
+    let coprime = Big8::try_from((Sign::Positive, [3], [5])).unwrap();
+    assert_eq!(coprime.to_string(), "3/5");
+}
+
 #[test]
 fn test_display() {
     assert_eq!(RB!(0).to_string(), "0");
@@ -410,11 +439,12 @@ fn test_display() {
     assert_eq!(RB!(1, 2).to_string(), "1/2");
     assert_eq!(RB!(-1, 2).to_string(), "-1/2");
 
-    let x = Big8::try_from((
+    // Deliberately not in lowest terms, to show the stored components
+    let x = Big8::from_raw_limbs(
         Sign::Positive,
         [13284626917187606528, 14353657804625640860, 11366567065457835548, 501247837944],
         [10945929334190035713, 13004504757950498814, 9],
-    )).unwrap();
+    );
     assert_eq!(x.to_string(), "3146383673420971972032023490593198871229613539715389096610302560000000/3302432073363697202172148890923583722241");
 
     let x = Big8::try_from((
@@ -523,5 +553,182 @@ fn test_consistent() {
             numerator: Ubig::from_inner_unchecked(smallvec![9381074085307]),
             denominator: NonZeroUbig::from_inner_unchecked(smallvec![3795475922420]),
         }.is_well_formed());
+    }
+}
+
+/// The normalisation shortcuts in the addition, subtraction and multiplication kernels.
+///
+/// Those kernels skip a gcd where the result is provably in lowest terms already, and reach for the
+/// single word gcd where the general one would spend a full binary gcd on a single word answer.
+/// Both are claims about arithmetic rather than about code, so they are checked here against the
+/// path that reduces unconditionally, and against `is_well_formed`, which is what "lowest terms"
+/// means for this type.
+mod normalisation {
+    use crate::{NonZero, Rational64, RationalBig, RB};
+    use crate::rational::big::Big8;
+
+    /// Deterministic, so that a failure reproduces. A xorshift is plenty for spreading operands
+    /// over the branches; nothing here depends on the quality of the bits.
+    fn next(state: &mut u64) -> u64 {
+        *state ^= *state << 13;
+        *state ^= *state >> 7;
+        *state ^= *state << 17;
+        *state
+    }
+
+    /// A rational grown by multiplication, which keeps it in lowest terms by construction.
+    ///
+    /// Building one out of words directly would have to establish coprimality separately, and
+    /// getting that wrong would make the test assert against a value the type never represents.
+    fn wide(state: &mut u64, factors: usize) -> RationalBig {
+        let mut value = RB!(1);
+        for _ in 0..factors {
+            let numerator = ((next(state) >> 2) | 1) as i64;
+            let denominator = (next(state) >> 2) | 1;
+            value *= RationalBig::new(numerator, denominator).unwrap();
+        }
+        value
+    }
+
+    /// A whole number, so that the denominator is one and the unit denominator branches are taken.
+    fn wide_integer(state: &mut u64, factors: usize) -> RationalBig {
+        let mut value = RB!(1);
+        for _ in 0..factors {
+            let numerator = ((next(state) >> 2) | 1) as i64;
+            value *= RationalBig::new(numerator, 1).unwrap();
+        }
+        value
+    }
+
+    fn assert_lowest_terms(value: &RationalBig, what: &str) {
+        // SAFETY: The value came out of this crate's own arithmetic, so it is at least well formed
+        // enough to inspect; that is exactly what is being checked.
+        assert!(unsafe { value.is_well_formed() }, "{what}: {value} is not in lowest terms");
+    }
+
+    /// The specialised small right hand side has to agree with widening it and using the general
+    /// path, at every width. This is the cross check that matters: the two share no code.
+    #[test]
+    fn small_agrees_with_general() {
+        let mut state = 0x2545_f491_4f6c_dd1d;
+
+        for factors in [0, 1, 2, 4, 8] {
+            for _ in 0..50 {
+                let big = wide(&mut state, factors);
+                let numerator = (next(&mut state) % 4_000) as i64 - 2_000;
+                let denominator = next(&mut state) % 4_000 + 1;
+                let small = match Rational64::new(numerator, denominator) {
+                    Some(small) if small.is_not_zero() => small,
+                    _ => continue,
+                };
+                let widened = RationalBig::from(small);
+
+                let by_small = big.clone() + small;
+                assert_eq!(by_small, big.clone() + widened.clone(), "{big} + {small}");
+                assert_lowest_terms(&by_small, "add");
+
+                let by_small = big.clone() - small;
+                assert_eq!(by_small, big.clone() - widened.clone(), "{big} - {small}");
+                assert_lowest_terms(&by_small, "sub");
+
+                let by_small = big.clone() * small;
+                assert_eq!(by_small, big.clone() * widened.clone(), "{big} * {small}");
+                assert_lowest_terms(&by_small, "mul");
+            }
+        }
+    }
+
+    /// Adding and subtracting the same value has to come back to where it started, whatever
+    /// cancelling happened on the way.
+    #[test]
+    fn small_round_trips() {
+        let mut state = 0x9e37_79b9_7f4a_7c15;
+
+        for factors in [1, 2, 4, 8] {
+            for _ in 0..50 {
+                let big = wide(&mut state, factors);
+                let denominator = next(&mut state) % 4_000 + 1;
+                let small = match Rational64::new((next(&mut state) % 4_000) as i64 + 1, denominator) {
+                    Some(small) => small,
+                    None => continue,
+                };
+
+                assert_eq!((big.clone() + small) - small, big, "{big} + {small} - {small}");
+                assert_eq!((big.clone() * small) / small, big, "{big} * {small} / {small}");
+            }
+        }
+    }
+
+    /// A denominator of one is where the addition kernel stopped reducing, so the result of taking
+    /// that branch is checked to be in lowest terms and to equal what the other operand order gives.
+    #[test]
+    fn unit_denominator_branches() {
+        let mut state = 0xdead_beef_cafe_f00d;
+
+        for factors in [1, 2, 4] {
+            for _ in 0..50 {
+                let fraction = wide(&mut state, factors);
+                let integer = wide_integer(&mut state, factors);
+
+                // `left_denominator` is one: the first of the two branches.
+                let sum = integer.clone() + fraction.clone();
+                assert_lowest_terms(&sum, "integer + fraction");
+                // `right_denominator` is one: the second.
+                let other = fraction.clone() + integer.clone();
+                assert_lowest_terms(&other, "fraction + integer");
+                assert_eq!(sum, other, "{integer} + {fraction}");
+
+                let difference = integer.clone() - fraction.clone();
+                assert_lowest_terms(&difference, "integer - fraction");
+                let negated = fraction.clone() - integer.clone();
+                assert_lowest_terms(&negated, "fraction - integer");
+                assert_eq!(difference, -negated, "{integer} - {fraction}");
+
+                assert_eq!((integer.clone() + fraction.clone()) - fraction.clone(), integer);
+            }
+        }
+    }
+
+    /// The multiplication kernel dispatches on the width of each side before cross cancelling, so
+    /// single word and multi word operands are paired up in both orders.
+    #[test]
+    fn multiplication_cross_cancels_at_every_width() {
+        let mut state = 0x0123_4567_89ab_cdef;
+
+        for left_factors in [0, 1, 4] {
+            for right_factors in [0, 1, 4] {
+                for _ in 0..30 {
+                    let left = wide(&mut state, left_factors);
+                    let right = wide(&mut state, right_factors);
+
+                    let product = left.clone() * right.clone();
+                    assert_lowest_terms(&product, "mul");
+                    assert_eq!(product, right.clone() * left.clone(), "{left} * {right}");
+
+                    // A shared factor on the cross diagonal is what the cancelling is for.
+                    let inverse = RationalBig::from(1) / right.clone();
+                    assert_lowest_terms(&(left.clone() * inverse.clone()), "mul by inverse");
+                    assert_eq!(left.clone() * right.clone() * inverse, left, "{left} * {right} / {right}");
+                }
+            }
+        }
+    }
+
+    /// `Big8` is the type the crate exports; the shortcuts are not specific to its inline capacity,
+    /// so a narrower one has to behave the same.
+    #[test]
+    fn narrow_inline_capacity_agrees() {
+        let mut state = 0x5deece66d;
+
+        for _ in 0..50 {
+            let numerator = ((next(&mut state) >> 2) | 1) as i64;
+            let denominator = (next(&mut state) >> 2) | 1;
+            let left = Big8::new(numerator, denominator).unwrap();
+            let right = Big8::new(((next(&mut state) >> 2) | 1) as i64, 1).unwrap();
+
+            let sum = left.clone() + right.clone();
+            assert_lowest_terms(&sum, "narrow add");
+            assert_eq!(sum - right, left);
+        }
     }
 }

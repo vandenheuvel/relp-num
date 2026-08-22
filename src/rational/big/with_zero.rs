@@ -1,7 +1,7 @@
 use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 
 use crate::rational::big::Big;
-use crate::Zero;
+use crate::fixed::Zero;
 
 impl<const S: usize> From<Zero> for Big<S> {
     #[inline]

@@ -1,7 +1,7 @@
 use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 
 use crate::{Rational128, Rational16, Rational32, Rational64, Rational8};
-use crate::zero::Zero;
+use crate::fixed::Zero;
 
 macro_rules! impls {
     ($name:ty) => {

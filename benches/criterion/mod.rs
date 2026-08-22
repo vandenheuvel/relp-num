@@ -4,10 +4,12 @@ pub mod primes;
 pub mod factors;
 pub mod rational_big;
 pub mod rational_small;
+pub mod absorb;
 
 criterion_main! {
     primes::group,
     factors::group,
     rational_big::add::group,
     rational_small::add::group,
+    absorb::matrix::group,
 }

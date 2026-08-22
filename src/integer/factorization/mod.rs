@@ -17,8 +17,11 @@ macro_rules! forwards {
         impl NonZeroFactorizable for $ity {
             type Factor = $uty;
             type Power = u32;
+            /// The value is factorized through its absolute value, so the residual is positive and
+            /// the sign is kept separately.
+            type Residual = $uty;
 
-            fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power> {
+            fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power, Self::Residual> {
                 let as_non_zero = <$nzity>::new(*self)
                     .expect("attempt to factorize zero");
                 as_non_zero.factorize()
@@ -28,33 +31,41 @@ macro_rules! forwards {
         impl NonZeroFactorizable for $nzity {
             type Factor = $uty;
             type Power = u32;
+            /// The value is factorized through its absolute value, so the residual is positive and
+            /// the sign is kept separately.
+            type Residual = $uty;
 
-            fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power> {
+            fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power, Self::Residual> {
                 let sign = self.non_zero_signum();
-                let factors = $method_name(self.unsigned_abs());
+                let (factors, residual) = $method_name(self.unsigned_abs());
 
-                NonZeroFactorization { sign, factors }
+                NonZeroFactorization { sign, factors, residual }
             }
         }
 
         impl NonZeroFactorizable for $uty {
             type Factor = $uty;
             type Power = u32;
+            type Residual = $uty;
 
-            fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power> {
+            fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power, Self::Residual> {
                 let as_non_zero = <$nzuty>::new(*self)
                     .expect("attempt to factorize zero");
+                let (factors, residual) = $method_name(as_non_zero);
 
-                NonZeroFactorization { sign: NonZeroSign::Positive, factors: $method_name(as_non_zero) }
+                NonZeroFactorization { sign: NonZeroSign::Positive, factors, residual }
             }
         }
 
         impl NonZeroFactorizable for $nzuty {
             type Factor = $uty;
             type Power = u32;
+            type Residual = $uty;
 
-            fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power> {
-                NonZeroFactorization { sign: NonZeroSign::Positive, factors: $method_name(*self) }
+            fn factorize(&self) -> NonZeroFactorization<Self::Factor, Self::Power, Self::Residual> {
+                let (factors, residual) = $method_name(*self);
+
+                NonZeroFactorization { sign: NonZeroSign::Positive, factors, residual }
             }
         }
     }
@@ -67,12 +78,10 @@ forwards!(NonZeroI32, NonZeroU32, i32, u32, size_32::factorize);
 // TODO(PERFORMANCE): Tune these values
 const NR_SMALL_PRIMES: usize = 256;
 const TRIAL_DIVISION_LIMIT: u64 = 0;
-// TODO(ARCHITECTURE): Eliminate this redundant constant which should be a copy of the above
-const TRIAL_DIVISION_LIMIT_USIZE: usize = 0;
 const RHO_BASE_LIMIT: u64 = 0;
 const KEEP_RESIDUAL: bool = false;
 
-fn factorize64(value: NonZeroU64) -> Vec<(u64, u32)> {
+fn factorize64(value: NonZeroU64) -> (Vec<(u64, u32)>, u64) {
     size_64::factorize::<
         NR_SMALL_PRIMES,
         TRIAL_DIVISION_LIMIT,

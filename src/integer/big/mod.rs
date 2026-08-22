@@ -45,12 +45,16 @@ impl<const S: usize> NonZeroUbig<S> {
         &mut self.0
     }
     pub(crate) fn first(&self) -> &usize {
+        // SAFETY: A `NonZeroUbig` is never empty, so index zero is always in bounds.
         unsafe {
             self.0.get_unchecked(0)
         }
     }
     pub(crate) unsafe fn first_mut(&mut self) -> &mut usize {
-        self.0.get_unchecked_mut(0)
+        // SAFETY: A `NonZeroUbig` is never empty, so index zero is always in bounds. This is
+        // `unsafe` for what the caller may write through the reference, not for the read: setting
+        // the only word to zero would break that invariant.
+        unsafe { self.0.get_unchecked_mut(0) }
     }
     pub(crate) fn into_inner(self) -> SmallVec<[usize; S]> {
         self.0

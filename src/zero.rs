@@ -1,7 +1,6 @@
 //! # Zero
 //!
 //! A type that is always zero.
-use std::cmp::Ordering;
 use std::fmt;
 use std::ops::{Add, AddAssign, Mul, Neg};
 
@@ -14,7 +13,18 @@ use crate::{Sign, Signed, Negateable};
 /// Can be used in specific situations where one knows that, for example, the right-hand side `b` is
 /// always zero. Operations related to `b` should then be compiled away because the operations on
 /// its elements are no-ops.
-#[derive(Copy, Clone)]
+///
+/// The same applies to a matrix provider whose coefficients are structurally absent: the incidence
+/// matrix of a network is mostly zero, and storing a rational number for each of those entries
+/// wastes both space and time. This type stores the coefficient in no space at all, and
+/// [`Absorb`](crate::Absorb) applies it to a wide accumulator without ever materialising a `0`:
+/// adding it is nothing at all, multiplying by it clears the accumulator.
+///
+/// # Absent traits
+///
+/// There is deliberately no [`NonZero`](crate::NonZero) impl: this type *is* zero, and the whole
+/// point of that trait is to assert the opposite.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Zero;
 
 impl num_traits::Zero for Zero {
@@ -24,12 +34,6 @@ impl num_traits::Zero for Zero {
 
     fn is_zero(&self) -> bool {
         true
-    }
-}
-
-impl Default for Zero {
-    fn default() -> Self {
-        Zero
     }
 }
 
@@ -49,32 +53,15 @@ impl Mul for Zero {
     }
 }
 
-impl Eq for Zero {}
-
-impl PartialEq for Zero {
-    fn eq(&self, _: &Self) -> bool {
-        true
-    }
-}
-
-impl PartialOrd for Zero {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Zero {
-    fn cmp(&self, _: &Self) -> Ordering {
-        Ordering::Equal
-    }
-}
-
+/// The only value of this type is `0`, which is neither positive nor negative.
 impl Signed for Zero {
+    #[inline]
     fn signum(&self) -> Sign {
         Sign::Zero
     }
 }
 
+/// Negating zero is a no-op, and the result is representable, so this type is negateable.
 impl Negateable for Zero {
     #[inline]
     fn negate(&mut self) {
@@ -84,11 +71,13 @@ impl Negateable for Zero {
 impl Neg for Zero {
     type Output = Self;
 
+    #[inline]
     fn neg(self) -> Self::Output {
         self
     }
 }
 
+/// Debug forwards to `Display`, because `0` reads better in test output than `Zero`.
 impl fmt::Debug for Zero {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         <Self as fmt::Display>::fmt(self, f)
@@ -175,7 +164,10 @@ define_ops!(u128);
 
 #[cfg(test)]
 mod test {
-    use crate::{Abs, Sign, Signed, Zero};
+    use std::cmp::Ordering;
+
+    use crate::{Abs, Negateable, Sign, Signed};
+    use crate::fixed::Zero;
 
     #[test]
     fn test() {
@@ -184,9 +176,51 @@ mod test {
         assert_eq!(Zero + Zero, Zero);
         assert_eq!(Zero * Zero, Zero);
         assert_eq!(Zero.abs(), Zero);
-        assert_eq!(Zero.signum(), Sign::Zero);
     }
-    
+
+    /// Constructing a unit struct through `Default` is exactly what is under test here.
+    #[test]
+    #[allow(clippy::default_constructed_unit_structs)]
+    fn test_default() {
+        assert_eq!(Zero::default(), Zero);
+    }
+
+    #[test]
+    fn test_signum() {
+        assert_eq!(Zero.signum(), Sign::Zero);
+        assert!(!Zero.is_positive());
+        assert!(!Zero.is_negative());
+    }
+
+    /// This type is the one of the four fixed types that must *not* implement
+    /// [`NonZero`](crate::NonZero); all it can do is report that it is zero.
+    #[test]
+    fn test_non_zero() {
+        assert!(num_traits::Zero::is_zero(&Zero));
+    }
+
+    #[test]
+    fn test_negate() {
+        let mut value = Zero;
+        value.negate();
+        assert_eq!(value, Zero);
+        assert_eq!(-Zero, Zero);
+    }
+
+    #[test]
+    fn test_ord() {
+        assert_eq!(Zero.cmp(&Zero), Ordering::Equal);
+        assert_eq!(Zero.partial_cmp(&Zero), Some(Ordering::Equal));
+        assert_eq!(Zero, Zero);
+    }
+
+    #[test]
+    fn test_display() {
+        assert_eq!(Zero.to_string(), "0");
+        assert_eq!(format!("{Zero:?}"), "0");
+    }
+
+
     #[test]
     fn test_integer() {
         assert_eq!(1 + Zero, 1);
