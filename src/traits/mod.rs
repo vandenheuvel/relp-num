@@ -14,6 +14,16 @@ mod absorb;
 pub use absorb::Absorb;
 pub use absorb::AbsorbAll;
 
+// The other direction across the same boundary as `absorb`, kept beside it.
+mod narrow;
+pub use narrow::Narrow;
+
+mod gcd;
+pub use gcd::Gcd;
+
+mod size;
+pub use size::EncodingSize;
+
 pub mod factorization;
 
 /// The simplex algorithm is defined over the ordered fields.

@@ -12,6 +12,9 @@
 //! that was written for exactly this pair. A trait written from the narrow side and generic over
 //! the wide type cannot, because inside such a body the wide type is opaque and converting is the
 //! only thing left to do.
+//!
+//! [`Narrow`](crate::Narrow) is the same boundary in the other direction, and is written from the
+//! wide side for the same reason.
 
 use crate::Field;
 

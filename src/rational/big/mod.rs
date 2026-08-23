@@ -17,6 +17,9 @@ mod with_zero;
 mod with_one;
 mod with_option;
 mod absorb;
+mod gcd;
+mod narrow;
+mod size;
 
 /// An arbitrary precision rational, with `S` words of its numerator and denominator held inline.
 ///

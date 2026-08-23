@@ -74,11 +74,14 @@ mod traits;
 pub use traits::Abs;
 pub use traits::Absorb;
 pub use traits::AbsorbAll;
+pub use traits::EncodingSize;
 pub use traits::factorization::NonZeroFactorizable;
 pub use traits::factorization::NonZeroFactorization;
 pub use traits::factorization::FactorizationResidual;
 pub use traits::Field;
 pub use traits::FieldRef;
+pub use traits::Gcd;
+pub use traits::Narrow;
 pub use traits::OrderedField;
 pub use traits::OrderedFieldRef;
 
